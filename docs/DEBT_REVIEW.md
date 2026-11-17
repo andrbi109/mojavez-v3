@@ -360,11 +360,62 @@
 
 ### فاز ۵: مهاجرت داده
 
-**تاریخ تکمیل:** ____________
-**Maintainer:** ____________
-**نسخهٔ منتشرشده:** ____________
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 0.1.0 (phase/5-data-migration branch)
 
-_(قالب همان فاز ۰)_
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-5-1 | seed_lookups.php در sandbox بدون upstream کار نمی‌کند — --from-gateway fallback فقط townships از sub_organization می‌سازد، نه provinces/organizations واقعی. در production با upstream واقعی حل می‌شود. | `scripts/seed_lookups.php` | low | در فاز ۶ با deploy در محیط کاربر داخل ایران. |
+| D-5-2 | migrate_from_v2.php فقط جداول اصلی را مهاجرت می‌دهد — جداول جانبی (applicant_revisions, identity_checks, fee_groups, payment_audit_log, postal_code_changes, wizard_steps) هنوز در plan نیستند. در production اگر دادهٔ واقعی در این جداول باشد، باید اضافه شوند. | `scripts/migrate_from_v2.php` plan array | low | در فاز ۶ هنگام deploy واقعی. |
+| D-5-3 | migrate_from_gateway.php عدد `result_count` را در jobs مهاجرت نمی‌دهد (v3 ستون دارد ولی gateway schema متفاوت). در صورت نیاز به historical job stats، باید اضافه شود. | `scripts/migrate_from_gateway.php` jobs section | low | در فاز ۶. |
+| D-5-4 | business_address در PatternMatcher اغلب mismatch می‌شود چون upstream آدرس را با `*****` prefix-mask می‌کند (۵ کاراکتر اول پنهان) ولی property address محلی طولانی‌تر است و suffix مچ نمی‌شود. این محدودیت ذاتی suffix-mask matching است. | `app/Modules/NationalGateway/Services/PatternMatcher::matchText()` | low | در فاز ۶ با fuzzy address matching (contains به‌جای suffix). |
+| D-5-5 | property_details.county به‌عنوان township به matcher فرستاده می‌شود (در v2/v3 county = township). در production اگر county و township متفاوت باشند، باید جداگانه handle شوند. | `app/Modules/NationalGateway/Services/ApplicantSyncAdapter::matchAndAct()` | low | در فاز ۶. |
+| D-5-6 | tests/setup_v2_source.php یک helper است که v2_src_ schema را در همان database v3 می‌سازد — در CI باید قبل از tests/run.php اجرا شود. در حال حاضر دستی است. | `tests/setup_v2_source.php` | low | در فاز ۶ با CI pipeline. |
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-4-2 | property_details در PatternMatcher wire نشده | ApplicantSyncAdapter حالا PropertyDetail را از JobAndPropertyRepository می‌خواند و province/township/business_address/postal_code را به matchQuorum می‌فرستد. PatternMatcher اصلاح شد تا provinceTitle/townshipTitle (نه businessProvince) بخواند. quorum حالا 6 فیلد مچ می‌کند (قبلاً 3). |
+| D-4-3 | national_lookups seed هنوز اجرا نشده | scripts/seed_lookups.php ساخته شد — upstream fetch در production، --from-gateway fallback در sandbox. |
+
+#### Debt carried forward به فاز ۶
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-1-4 | install.php و check.php | medium | فاز ۶ |
+| D-1-8 | static_analysis fail-on-warning | low | فاز ۶ |
+| D-1-9 | writable storage assumptions | low | فاز ۶ |
+| D-2-1 | Viewهای بدون Bootstrap/Vazirmatn | medium | فاز ۶ |
+| D-2-2 | AdminController فقط ۴ متد | medium | فاز ۶ |
+| D-2-3 | کنترلرهای باقی‌مانده | medium | فاز ۶ |
+| D-2-4 | FeeCalculatorService reads income_decile directly | low | فاز ۶ |
+| D-2-5 | AutoCancelService::updatePriorities slow | low | فاز ۶ |
+| D-2-6 | rate_limit not applied in controllers | high | فاز ۶ |
+| D-2-7 | schema.sql و install.sql واحد | medium | فاز ۶ |
+| D-2-8 | install.php تعاملی | medium | فاز ۶ |
+| D-2-9 | seed migration پیش‌فرض | low | فاز ۶ |
+| D-4-1 | SMS ارسال واقعی نشده | medium | فاز ۶ |
+| D-4-4 | Worker::run(1) کند در poor man's cron | low | فاز ۶ |
+| D-4-5 | SSE تست واقعی نیاز به Apache | low | فاز ۶ |
+| D-4-6 | License::fromArray anchor‌ها را پر نمی‌کند | low | فاز ۶ |
+| D-4-7 | OperatorFlag notification به admin | low | فاز ۶ |
+| D-4-8 | SyncAdminController requireRole guard | medium | فاز ۶ |
+| D-5-1 | seed_lookups sandbox fallback محدود | low | فاز ۶ |
+| D-5-2 | جداول جانبی v2 در migration نیستند | low | فاز ۶ |
+| D-5-3 | result_count در jobs migration نیست | low | فاز ۶ |
+| D-5-4 | business_address suffix-mask محدودیت | low | فاز ۶ |
+| D-5-5 | county = township assumption | low | فاز ۶ |
+| D-5-6 | tests/setup_v2_source.php دستی | low | فاز ۶ |
+
+#### توصیه برای فاز ۶
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — D-4-8 (SyncAdminController requireRole) و D-4-1 (SMS واقعی) در فاز ۶ پرداخت می‌شوند چون به امنیت و deploy وابسته‌اند.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-2-6 (rate limit، high)، D-4-8 (requireRole guard)، D-4-1 (SMS gateway)، D-1-4 (install.php).
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ بالا — فاز ۶ شامل امنیت کامل + deploy + تست end-to-end است. حدود ۳-۴ جلسه کاری.
 
 ---
 
@@ -407,13 +458,13 @@ _(قالب همان فاز ۰)_
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 1 | 2026-11-17 | D-2-6 |
-| medium | 9 | 2026-11-17 | D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8, D-4-1, D-4-2, D-4-8 |
-| low | 11 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-3, D-4-4, D-4-5, D-4-6, D-4-7 |
+| medium | 7 | 2026-11-17 | D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8, D-4-1, D-4-8 |
+| low | 16 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-4, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-3, D-5-4, D-5-5, D-5-6 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۴:** ۰ critical، ۱ high (rate limit — فاز ۶)، 9 medium (D-4-2 و D-4-3 در فاز ۵ پرداخت می‌شوند، بقیه در فاز ۶)، 11 low.
-فاز ۴ بزرگ‌ترین فاز بود و 9 debt از فاز ۳ را پرداخت کرد. اتصال طلایی کامل کار می‌کند (تست integration 18 assertion).
+**وضعیت پس از فاز ۵:** ۰ critical، ۱ high (rate limit — فاز ۶)، 7 medium (همگی به فاز ۶ موکول)، 16 low.
+فاز ۵ ۲ debt (D-4-2، D-4-3) را پرداخت کرد و ۶ debt جدید (D-5-1 تا D-5-6) اضافه کرد که همه low هستند. golden-link quorum حالا ۶ فیلد مچ می‌کند (قبلاً ۳). مهاجرت داده از هر دو منبع (v2 MySQL + gateway SQLite) کار می‌کند.
 
 ---
 
