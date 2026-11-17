@@ -1567,6 +1567,62 @@ array دسترسی داشت (`$t['status']`) اما controller آبجکت‌ها
 
 
 
+### فاز ۲۸: آماده‌سازی v2.0.0 (v1.9.10)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.10 (phase/28-v2-prep branch, tag v1.9.10)
+
+#### شرح
+
+این آخرین فاز قبل از v2.0.0 است. پروژه **ZERO debt** دارد. این فاز
+فقط تست نهایی + آماده‌سازی است — هیچ کد جدیدی اضافه نشد.
+
+#### تأیید نهایی
+
+- **Unit tests:** 580 assertion، 0 failure ✅
+- **HTTP endpoint sweep:** همه public 200، همه user/admin 302 (unauth)، 404 ✅
+- **Session persistence:** admin login → navigate → return → session persists ✅
+- **18-status workflow:** همه ۱۸ وضعیت، manual + automatic ✅
+- **No stubs / no version-gated:** همه قابلیت‌ها فعال ✅
+
+#### آمار نهایی پروژه
+
+- **مسیرها:** 200 (Core 157 + NationalGateway 43)
+- **کنترلرها:** 27 (Core 25 + NationalGateway 2)
+- **ویوها:** 62+
+- **migrations:** 21 (Core 14 + NationalGateway 5 + Queue 2)
+- **تست‌ها:** 580 assertion، 0 failure
+
+#### وضعیت debt نهایی
+
+| شدت | تعداد |
+|---|---|
+| critical | 0 |
+| high | 0 |
+| medium | 0 |
+| low | 0 |
+
+**ZERO DEBT.** پروژه آمادهٔ v2.0.0 است.
+
+#### Debt paid در این فاز
+
+هیچ (فاز آماده‌سازی-only).
+
+#### Debt introduced
+
+هیچ.
+
+#### توصیه نهایی
+
+- [x] همه قابلیت‌های v2 + gateway پیاده‌سازی شد
+- [x] همه 200 مسیر تست شد (HTTP + browser)
+- [x] 580 assertion، 0 failure
+- [x] ZERO debt
+- [ ] **منتظر تأیید کاربر برای v2.0.0**
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود

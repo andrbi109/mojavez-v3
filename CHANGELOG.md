@@ -149,6 +149,88 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.10] — 2026-11-17
+
+### Phase 28: v2.0.0 preparation — final test + zero debt confirmed
+
+This is the **final phase before v2.0.0**. The project has **ZERO debt**
+(0 critical, 0 high, 0 medium, 0 low). All 7 phases (22-28) requested by
+the user are complete. The project is ready for the user's approval to
+release v2.0.0.
+
+### Final state
+
+**Routes:** 200 unique routes (Core 157 + NationalGateway 43).
+**Controllers:** 27 (Core 25 + NationalGateway 2).
+**Views:** 62+ (all v2 views ported + v3 additions).
+**Migrations:** 14 (Core) + 5 (NationalGateway) + 2 (Queue) = 21 total.
+**Tests:** 580 assertions, 0 failures.
+**Debt:** 0 critical, 0 high, 0 medium, 0 low — **ZERO debt**.
+
+### Final verification
+
+- **Unit tests:** 580 assertions, 0 failures ✅
+- **HTTP endpoint sweep:** all public 200, all user/admin 302 (unauth), 404 ✅
+- **Session persistence:** admin login → navigate → return → session persists ✅
+- **18-status workflow:** all 18 statuses, manual + automatic transitions ✅
+- **No stubs / no version-gated features:** everything is active ✅
+
+### What v2.0.0 will include (pending user approval)
+
+All features from v2 (Mojavez-v2) + gateway (mojavez-gateway) are
+implemented in v3's modular architecture:
+
+- **Public:** home, guide, about, services, signup, login, tracking,
+  health, license view by token.
+- **User:** panel (overview + 7 sub-pages), profile + avatar, requests,
+  payments, licenses, notifications, tracking, registration wizard (4
+  steps), revision request, my-records.
+- **Admin:** dashboard, applications (list + view + edit), manual
+  registration, document upload/delete, status change (18 statuses,
+  manual + automatic), payment request, license state, postal-code
+  requests, my-tasks, users CRUD, service types CRUD, wizard steps
+  CRUD + reorder, form fields CRUD + reorder, license titles CRUD +
+  toggle + by-service, fee tariff CRUD + groups + items + tick,
+  settings + image upload, sms templates + entry review, payments
+  review + csv + channels, bulk import (8 routes), reports (5
+  dimensions), output (general + grouped + csv + pdf), revisions
+  (approve/reject + apply payload), license requests review, license
+  upload, sync (status + pending + run + readiness), status-cycle
+  diagram.
+- **National gateway:** 43 API v1 routes, sync orchestrator, stage 2
+  readiness checker, outbound sync service, pattern matcher (fuzzy
+  address), golden-link.
+- **Services:** AvatarService (GD), SmsService (Kavenegar), FileStorage,
+  FeeCalculatorService, AutoCancelService (cancel + auto-progress),
+  NotificationService, NationalSyncOrchestrator, OutboundSyncService,
+  Stage2ReadinessChecker, PatternMatcher.
+
+### Files changed (Phase 28)
+
+| File | Change |
+|---|---|
+| `VERSION` | `1.9.9` → `1.9.10` |
+| `README.md` | header version + status "آمادهٔ تأیید برای v2.0.0" |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 28 section (final state) |
+| `docs/PHASE_28_V2_PREP.md` | new — Phase 28 documentation |
+
+### Next step: user approval for v2.0.0
+
+The user has explicitly requested that no change should reach v2.0.0
+without their approval. Phase 28 is therefore a preparation-only phase.
+The project is ready — awaiting the user's go-ahead to tag v2.0.0.
+
+When approved, v2.0.0 will be:
+- `VERSION` → `2.0.0`
+- `README.md` → `2.0.0`
+- `CHANGELOG.md` → `## [2.0.0] — 2026-11-17` (final release section)
+- `git tag v2.0.0` + push
+
+No code changes from v1.9.10 → v2.0.0 (it's a version-bump release).
+
+---
+
 ## [1.9.9] — 2026-11-17
 
 ### Phase 27: final polish + comprehensive test sweep — zero debt confirmed
