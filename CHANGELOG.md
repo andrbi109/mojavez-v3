@@ -13,6 +13,12 @@ This is the fix for the version three-way split seen in v2 (see
 
 ### Added — Phase 10: Route/View 404/500 prevention
 
+> **Forward reference:** these Phase 10 features shipped in **v1.2.0** on
+> 2026-11-17 — see the `## [1.2.0]` section below for the full release notes
+> (which include Phase 11 on top of Phase 10). This section is kept here
+> for the next phase cycle (Phase 12 / v1.3+) and as a historical anchor
+> for the Phase 10 detail file at `docs/PHASE_10_ROUTES_VIEWS.md`.
+
 After Phase 9 closed the `/panel/*` 404-after-login, the user requested a
 broader audit of ALL routes and views to find every remaining 404 or hidden
 500 that would surface at run time. This is the result of that audit.
@@ -121,15 +127,14 @@ planned sections without hitting a dead end.
 | `app/Modules/Core/Controllers/TrackingController.php` | `printView` uses `render('print', ..., 'none')` |
 | `app/Modules/Core/Controllers/UsersController.php` | Fix constructor (add `Hash` + `StructuredLogger`); fix `render()` calls (title via `$data`, no third arg) |
 | `app/Modules/Core/Controllers/SettingsController.php` | Same fix as UsersController |
-| `app/Modules/Core/Controllers/AdminController.php` | +3 stub actions: `formFields`, `feeTariff`, `licenseTitles` |
+| `app/Modules/Core/Controllers/AdminController.php` | +3 stub actions: `formFields`, `feeTariff`, `licenseTitles` (removed in v1.2.0 — see the [1.2.0] section) |
 | `app/Modules/NationalGateway/Controllers/SyncAdminController.php` | Now extends `Controller`; `requireRole()` in every action |
-| `app/Modules/Core/Module.php` | +3 stub routes: `/admin/form-fields`, `/admin/fee-tariff`, `/admin/license-titles` |
+| `app/Modules/Core/Module.php` | +3 stub routes (replaced by full CRUD in v1.2.0) |
 | `public/index.php` | 404 handler now renders `errors/404.php` view inside `layout.php`, with fallback to bare HTML |
 | `app/Views/admin/stub_coming_soon.php` | new — shared "coming soon" view |
 | `app/Views/errors/404.php` | new — content-only 404 page with recovery buttons |
 | `docs/DEBT_REVIEW.md` | Phase 10 section + updated live-debt summary |
 | `docs/PHASE_10_ROUTES_VIEWS.md` | new — Phase 10 documentation |
-| `CHANGELOG.md` | this section |
 
 ### Notes
 
@@ -141,6 +146,111 @@ planned sections without hitting a dead end.
 - The `Container` self-registration fix is the highest-impact change: it
   converts a class of "first logged-in admin click → 500" failures into
   working pages.
+
+---
+
+## [1.2.0] — 2026-11-17
+
+Phase 11 — admin CRUD + Stage2ReadinessChecker UI. The three Phase-10
+"coming soon" stub admin routes (`/admin/form-fields`, `/admin/fee-tariff`,
+`/admin/license-titles`) are replaced with **full CRUD controllers + views**,
+and a new `/admin/sync/readiness` admin page surfaces the Stage2ReadinessChecker
+report (the admin-facing piece of the Stage-2 enablement path).
+
+Pays down debt items **D-7-1, D-10-1, D-2-2, D-8-4**, and partially pays
+**D-2-3** (3 of the ~15 deferred admin controllers built; the rest remain
+tracked as low debt for v1.4+).
+
+### Added — Phase 11: admin CRUD + readiness UI
+
+- **`FormFieldController`** (`/admin/form-fields/*`) — 7 routes:
+  `index`, `create`, `store`, `edit`, `update`, `destroy`, `move` (reorder).
+  Full CRUD on the `form_fields` table — wizard_step + service_type joins,
+  JSON `field_options` + `validation_rules` validation, system/required/active
+  flags, sort_order swap (up/down) via POST `/move`.
+- **`FeeTariffController`** (`/admin/fee-tariff/*`) — 6 routes:
+  `index`, `create`, `store`, `edit`, `update`, `destroy`.
+  Full CRUD on `fee_tariffs` — service_type join, decile_min/max range,
+  integer `base_amount` in toman (displayed with `number_format()` + " تومان"
+  suffix on the index page), valid_from/until, notes.
+- **`LicenseTitleController`** (`/admin/license-titles/*`) — 8 routes:
+  `index`, `create`, `store`, `edit`, `update`, `destroy`, `toggle`
+  (flip `is_active`), `byService` (JSON `[{id,title,...}]` filtered by
+  `service_type_id`, used by the wizard's license-title dropdown).
+- **`/admin/sync/readiness`** — admin UI for `Stage2ReadinessChecker::check()`.
+  Renders the 4 §29.2 conditions (stage1 stable ≥ 90d, false-positive < 0.1%,
+  circuit-breaker < 5%, contract tests exist) as Bootstrap cards with
+  pass/fail badges + the overall `ready` flag + a Settings-page hint.
+- **3 new unit tests** — `FormFieldTest`, `FeeTariffTest`, `LicenseTitleTest`
+  (CRUD happy path on a real MariaDB Connection, fixture cleaned up in
+  tearDown). Total unit assertions: 391 → ~420.
+
+### Removed
+
+- `AdminController::formFields()`, `feeTariff()`, `licenseTitles()` — the
+  three Phase-10 stub actions and their docblock are deleted; the
+  routes are now wired to the dedicated controllers in `Core/Module.php`.
+- The three Phase-10 stub routes in `Core/Module.php` (replaced by the new
+  full-route registrations above).
+
+### Files changed (Phase 11)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/Controllers/FormFieldController.php` | new — full CRUD + move/reorder on `form_fields` |
+| `app/Modules/Core/Controllers/FeeTariffController.php` | new — full CRUD on `fee_tariffs` |
+| `app/Modules/Core/Controllers/LicenseTitleController.php` | new — full CRUD + toggle + by-service JSON on `license_titles` |
+| `app/Modules/Core/Controllers/AdminController.php` | −3 stub actions + docblock (formFields/feeTariff/licenseTitles) |
+| `app/Modules/Core/Module.php` | −3 stub routes, +7 form_fields + 6 fee_tariff + 8 license_titles routes |
+| `app/Modules/NationalGateway/Controllers/SyncAdminController.php` | +1 action: `readiness()` |
+| `app/Modules/NationalGateway/Module.php` | +1 route: `GET /admin/sync/readiness` |
+| `app/Views/admin/form_fields/index.php` | new — list with reorder up/down buttons |
+| `app/Views/admin/form_fields/edit.php` | new — shared create/edit form |
+| `app/Views/admin/fee_tariff/index.php` | new — list with Persian-formatted amounts |
+| `app/Views/admin/fee_tariff/edit.php` | new — shared create/edit form |
+| `app/Views/admin/license_titles/index.php` | new — list with toggle button |
+| `app/Views/admin/license_titles/edit.php` | new — shared create/edit form |
+| `app/Views/admin/sync_readiness.php` | new — Stage2ReadinessChecker report |
+| `app/Views/admin_layout.php` | +1 sidebar link: `/admin/sync/readiness` (under درگاه ملی) |
+| `tests/Unit/FormFieldTest.php` | new — CRUD happy path |
+| `tests/Unit/FeeTariffTest.php` | new — CRUD happy path |
+| `tests/Unit/LicenseTitleTest.php` | new — CRUD happy path |
+| `VERSION` | `1.1.0` → `1.2.0` |
+| `README.md` | header version reference updated |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 11 section + live-debt summary updated (medium 6→2) |
+| `docs/PHASE_11_ADMIN_CRUD.md` | new — Phase 11 documentation |
+
+### Notes
+
+- All existing unit tests (391), contract tests (21), and HTTP smoke tests
+  (66 pass / 8 pre-existing D-8-5) remain green — no regression introduced.
+- The `static_analysis.py` and `php_lint_simple.py` warnings are unchanged
+  (all pre-existing false positives around `$csrfField` / `$content` /
+  CSS braces); no new warnings from the new files.
+- `check_schema_ownership.py` still passes — no new migrations were added
+  (the three tables already existed in `database/schema.sql` and the
+  schema-ownership matrix lists them under `Core`).
+- `D-2-3` is marked **partial paid**: 3 of the ~15 deferred controllers
+  built. The full list (PaymentController, RevisionController,
+  ReportController, ServiceTypeController, ServiceController, BulkImport,
+  WizardStep, Sms, DocumentController, RecordsController, etc.) remains
+  tracked as low debt for v1.4+.
+
+### Debt paid this release
+
+| ID | Description | How |
+|---|---|---|
+| D-7-1 | Remaining admin controllers (deferred since Phase 7) | Three of them (form-fields, fee-tariff, license-titles) now have full CRUD controllers + views. |
+| D-10-1 | Three Phase-10 stub admin actions had no CRUD | Replaced by the three dedicated controllers; the stubs are deleted. |
+| D-2-2 | AdminController only had 5 methods | Three new controllers take over form_fields/fee_tariffs/license_titles — AdminController drops 3 stubs, so it returns to its core 4 (dashboard/applications/viewApplication/changeStatus). The admin surface is now spread across dedicated controllers, matching the Phase-7 UsersController/SettingsController pattern. |
+| D-8-4 | No admin UI for /admin/sync/readiness | `SyncAdminController::readiness()` + `admin/sync_readiness.php` view + sidebar link under "درگاه ملی". |
+| D-2-3 (partial) | ~15 deferred admin controllers | 3 of 15 built. Remaining 12 still tracked as low debt. |
+
+### Debt carried forward
+
+- D-9-1 (medium, v1.3): `/panel/profile` + `/panel/avatar` stubs.
+- D-2-3 (low, v1.4, partial): remaining ~12 deferred admin controllers.
 
 ---
 

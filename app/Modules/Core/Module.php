@@ -220,13 +220,40 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/admin/view/{id}', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'viewApplication'],
             ['method' => 'POST', 'path' => '/admin/change-status', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'changeStatus'],
 
-            // ----- Phase 10 admin stubs — close 404s in the admin sidebar -----
-            // These three routes are linked from admin_layout.php's sidebar but
-            // the full controllers are deferred to v1.2 (DEBT_REVIEW D-7-1).
-            // The stubs render a "coming soon" view (HTTP 200) instead of 404.
-            ['method' => 'GET', 'path' => '/admin/form-fields',    'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'formFields'],
-            ['method' => 'GET', 'path' => '/admin/fee-tariff',      'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'feeTariff'],
-            ['method' => 'GET', 'path' => '/admin/license-titles',  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'licenseTitles'],
+            // ----- Phase 11 admin: form_fields CRUD (replaces Phase-10 stub) -----
+            // Replaces the single GET /admin/form-fields stub with full CRUD
+            // on the form_fields table. Pays D-7-1 + D-10-1 (DEBT_REVIEW).
+            // Note: /move must be registered BEFORE /{id} so the POST
+            // /admin/form-fields/{id} regex ([^/]+) doesn't catch "move".
+            ['method' => 'GET',  'path' => '/admin/form-fields',              'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/form-fields/new',           'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'create'],
+            ['method' => 'POST', 'path' => '/admin/form-fields',               'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'store'],
+            ['method' => 'POST', 'path' => '/admin/form-fields/move',          'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'move'],
+            ['method' => 'GET',  'path' => '/admin/form-fields/{id}/edit',    'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'edit'],
+            ['method' => 'POST', 'path' => '/admin/form-fields/{id}',          'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'update'],
+            ['method' => 'POST', 'path' => '/admin/form-fields/{id}/delete',   'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'destroy'],
+
+            // ----- Phase 11 admin: fee_tariffs CRUD (replaces Phase-10 stub) -----
+            ['method' => 'GET',  'path' => '/admin/fee-tariff',               'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/fee-tariff/new',            'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'create'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff',                'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'store'],
+            ['method' => 'GET',  'path' => '/admin/fee-tariff/{id}/edit',     'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'edit'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}',           'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'update'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}/delete',  'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'destroy'],
+
+            // ----- Phase 11 admin: license_titles CRUD (replaces Phase-10 stub) -----
+            // /by-service/{id} must be registered before any catch-all GET
+            // route on /admin/license-titles/* (none here, but explicit for
+            // readability — both /by-service/{id} and /{id}/edit have 3 path
+            // segments after /admin/license-titles and don't conflict).
+            ['method' => 'GET',  'path' => '/admin/license-titles',                 'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/license-titles/new',              'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'create'],
+            ['method' => 'POST', 'path' => '/admin/license-titles',                  'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'store'],
+            ['method' => 'GET',  'path' => '/admin/license-titles/{id}/edit',       'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'edit'],
+            ['method' => 'POST', 'path' => '/admin/license-titles/{id}',            'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'update'],
+            ['method' => 'POST', 'path' => '/admin/license-titles/{id}/delete',     'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'destroy'],
+            ['method' => 'POST', 'path' => '/admin/license-titles/{id}/toggle',     'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'toggle'],
+            ['method' => 'GET',  'path' => '/admin/license-titles/by-service/{id}', 'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'byService'],
 
             // ----- Phase 7 admin: user + settings management -----
             ['method' => 'GET',  'path' => '/admin/users',                'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'index'],

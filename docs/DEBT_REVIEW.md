@@ -689,6 +689,50 @@
 
 ---
 
+### فاز ۱۱: admin CRUD + Stage2ReadinessChecker UI
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.2.0 (phase/11-admin-crud-v1.2.0 branch, tag v1.2.0)
+
+#### زمینه
+
+پس از فاز ۱۰ که سه مسیر سایدبار ادمین را به‌صورت stub «coming soon» متصل
+کرد، فاز ۱۱ تمرکز روی **تعویض این سه stub با کنترلرهای CRUD کامل** بود. به
+علاوه، admin UI برای `/admin/sync/readiness` (که از فاز ۸ موکول شده بود)
+ساخته شد تا admin بتواند گزارش `Stage2ReadinessChecker` را ببیند و تصمیم
+بگیرد آیا Stage 2 را فعال کند.
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-7-1 | کنترلرهای ادمین باقی‌مانده (deferred از فاز ۷) | ۳ کنترلر جدید با CRUD کامل: `FormFieldController` (۷ route)، `FeeTariffController` (۶ route)، `LicenseTitleController` (۸ route شامل toggle + by-service JSON). هر کدام ۲ view (index + edit) با همان سبک Bootstrap 5 RTL + Vazirmatn فاز ۷. |
+| D-10-1 | سه stub admin اکشن CRUD کامل نداشتند | همان سه stub از `AdminController` حذف شدند و مسیرهایشان در `Core/Module.php` به کنترلرهای اختصاصی متصل شد. |
+| D-2-2 | AdminController فقط ۵ متد داشت | با حذف ۳ stub، AdminController به ۴ متد اصلی (dashboard/applications/viewApplication/changeStatus) بازگشت و surface ادمین بین کنترلرهای اختصاصی پخش شد — مطابق الگوی Phase-7 (UsersController/SettingsController). |
+| D-8-4 | admin UI برای /admin/sync/readiness ساخته نشده بود | `SyncAdminController::readiness()` + view `admin/sync_readiness.php` + لینک سایدبار تحت «درگاه ملی». گزارش ۴ شرط §29.2 به‌صورت Bootstrap card با badge pass/fail + flag کلی ready + راهنمای فعال‌سازی Stage 2. |
+| D-2-3 (partial) | ~۱۵ کنترلر ادمین موکول‌شده | ۳ از ۱۵ ساخته شد (FormFields/FeeTariff/LicenseTitle). ۱۲ تای باقی‌مانده (Payment/Revision/Report/ServiceType/Service/BulkImport/WizardStep/Sms/DocumentController/RecordsController/...) به v1.4+ موکول شد. به‌عنوان low-debt علامت‌گذاری شد (قبلاً medium بود). |
+
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-11-1 | `LicenseTitleController::byService` admin-only است. در ویزارد عمومی ثبت‌نام، endpoint مشابهی برای کاربر نهایی لازم است (fetch license_titles بر اساس service_type بدون نیاز به admin). فعلاً از همان endpoint admin استفاده می‌شود ولی CSP+auth barrier است. | `app/Modules/Core/Controllers/LicenseTitleController.php::byService` | low | در v1.3 با افزودن endpoint عمومی `GET /api/v1/service-types/{id}/license-titles` بدون auth-but-CSRF. |
+| D-11-2 | `FormFieldController::move` swap منطقش sort_order-only است؛ اگر دو فیلد sort_order برابر داشته باشند، tie-break با id می‌شود. در کد متد abruptly مشخص است ولی در docblock ذکر نشده. | `app/Modules/Core/Controllers/FormFieldController.php::move` | low | در v1.3 docblock روشن‌سازی شود. |
+
+#### توصیه برای فاز ۱۲ (post-Phase 11) — انجام‌نشده
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۱۲ (v1.3.0)
+  باید D-9-1 (updateProfile/uploadAvatar) و D-11-1 (public license-titles
+  endpoint) را پرداخت کند. هر دو نیاز به service-layer مستقل دارند.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-9-1 (medium) + D-11-1
+  (low). همچنین اگر آمادهٔ فعال‌سازی Stage 2 شدیم، تست پشتیبانی از
+  `sync_direction='two_way'` در تولید به‌صورت کامل.
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ متوسط — v1.3 باید AvatarService
+  و ProfileUpdateValidator بسازد و endpoint عمومی license-titles را اضافه کند.
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -698,13 +742,14 @@
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 0 | — | — |
-| medium | 6 | 2026-11-17 | D-2-2, D-2-3, D-7-1, D-8-4, D-9-1, D-10-1 |
-| low | 26 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5 |
+| medium | 2 | 2026-11-17 | D-2-3, D-9-1 |
+| low | 28 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5, D-11-1, D-11-2 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱۰ (Route/View 404/500 prevention):** ۰ critical، ۰ high، ۶ medium (همگی به v1.2/v1.3 موکول)، ۲۶ low.
-تغییر نسبت به فاز ۹: ۱ debt جدید اضافه شد (D-10-1 = سه stub admin برای form-fields/fee-tariff/license-titles). فاز ۱۰ هدف اصلی‌اش (برطرف‌سازی ۴۰۴ و ۵۰۰های پنهان در مسیرها و ویوها) را به‌طور کامل انجام داد — ۷ bug-fix زمان اجرا (در DEBT_REVIEW فهرست شد)، ۳ مسیر stub جدید، ۱ view جدید (`admin/stub_coming_soon.php`)، ۱ view جدید (`errors/404.php`)، ۱ sentinel جدید در `Controller::render()` (`'none'`).
+**وضعیت پس از فاز ۱۱ (admin CRUD + Stage2ReadinessChecker UI):** ۰ critical، ۰ high، ۲ medium (D-2-3 partial + D-9-1)، ۲۸ low.
+تغییر نسبت به فاز ۱۰: ۴ medium پرداخت شد (D-7-1, D-10-1, D-2-2, D-8-4)، ۱ medium به low کاهش یافت (D-2-3 partial-paid). ۲ low جدید اضافه شد (D-11-1, D-11-2).
+همچنین ۳ تست unit جدید برای CRUD happy-path کنترلرهای جدید اضافه شد (FormFieldTest, FeeTariffTest, LicenseTitleTest).
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
