@@ -10,11 +10,11 @@ final class PdoLicenseTitleRepository extends PdoRepository implements LicenseTi
     public function groupedActiveByService(?int $serviceTypeId): array
     {
         if ($serviceTypeId === null) {
-            $rows = $this->all(
+            $rows = $this->fetchAll(
                 'SELECT * FROM license_titles WHERE is_active = 1 ORDER BY sort_order, title'
             );
         } else {
-            $rows = $this->all(
+            $rows = $this->fetchAll(
                 'SELECT * FROM license_titles WHERE is_active = 1 AND service_type_id = ? ORDER BY sort_order, title',
                 [$serviceTypeId]
             );
@@ -30,9 +30,9 @@ final class PdoLicenseTitleRepository extends PdoRepository implements LicenseTi
     public function getAll(?int $serviceTypeId = null): array
     {
         if ($serviceTypeId === null) {
-            return $this->all('SELECT * FROM license_titles ORDER BY sort_order, title');
+            return $this->fetchAll('SELECT * FROM license_titles ORDER BY sort_order, title');
         }
-        return $this->all(
+        return $this->fetchAll(
             'SELECT * FROM license_titles WHERE service_type_id = ? ORDER BY sort_order, title',
             [$serviceTypeId]
         );
@@ -41,9 +41,9 @@ final class PdoLicenseTitleRepository extends PdoRepository implements LicenseTi
     public function getCategories(?int $serviceTypeId = null): array
     {
         if ($serviceTypeId === null) {
-            $rows = $this->all('SELECT DISTINCT category FROM license_titles WHERE category IS NOT NULL ORDER BY category');
+            $rows = $this->fetchAll('SELECT DISTINCT category FROM license_titles WHERE category IS NOT NULL ORDER BY category');
         } else {
-            $rows = $this->all(
+            $rows = $this->fetchAll(
                 'SELECT DISTINCT category FROM license_titles WHERE service_type_id = ? AND category IS NOT NULL ORDER BY category',
                 [$serviceTypeId]
             );
@@ -53,18 +53,18 @@ final class PdoLicenseTitleRepository extends PdoRepository implements LicenseTi
 
     public function findById(int $id): ?array
     {
-        return $this->one('SELECT * FROM license_titles WHERE id = ? LIMIT 1', [$id]);
+        return $this->fetchOne('SELECT * FROM license_titles WHERE id = ? LIMIT 1', [$id]);
     }
 
     public function isTitleUniqueInService(string $title, ?int $serviceTypeId, ?int $exceptId = null): bool
     {
         if ($exceptId === null) {
-            $count = $this->scalar(
+            $count = $this->fetchScalar(
                 'SELECT COUNT(*) FROM license_titles WHERE title = ? AND (service_type_id = ? OR (? IS NULL AND service_type_id IS NULL))',
                 [$title, $serviceTypeId, $serviceTypeId]
             );
         } else {
-            $count = $this->scalar(
+            $count = $this->fetchScalar(
                 'SELECT COUNT(*) FROM license_titles WHERE title = ? AND (service_type_id = ? OR (? IS NULL AND service_type_id IS NULL)) AND id != ?',
                 [$title, $serviceTypeId, $serviceTypeId, $exceptId]
             );

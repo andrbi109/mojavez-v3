@@ -22,10 +22,13 @@ abstract class PdoRepository
     /**
      * Run a SELECT and return all matching rows (FETCH_ASSOC).
      *
+     * Named fetchAll (not all) so it never collides with a domain method
+     * named all() on a subclass — see docs/ISSUES.md ISSUE-001.
+     *
      * @param array<int,mixed> $params
      * @return array<int,array<string,mixed>>
      */
-    protected function all(string $sql, array $params = []): array
+    protected function fetchAll(string $sql, array $params = []): array
     {
         return $this->connection->all($sql, $params);
     }
@@ -33,10 +36,12 @@ abstract class PdoRepository
     /**
      * Run a SELECT and return the first row or null.
      *
+     * Named fetchOne (not one) — same rationale as fetchAll.
+     *
      * @param array<int,mixed> $params
      * @return array<string,mixed>|null
      */
-    protected function one(string $sql, array $params = []): ?array
+    protected function fetchOne(string $sql, array $params = []): ?array
     {
         return $this->connection->one($sql, $params);
     }
@@ -44,9 +49,11 @@ abstract class PdoRepository
     /**
      * Run a SELECT and return the first column of the first row.
      *
+     * Named fetchScalar (not scalar) — same rationale as fetchAll.
+     *
      * @param array<int,mixed> $params
      */
-    protected function scalar(string $sql, array $params = []): mixed
+    protected function fetchScalar(string $sql, array $params = []): mixed
     {
         return $this->connection->scalar($sql, $params);
     }

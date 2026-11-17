@@ -23,7 +23,7 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
 {
     public function findByTrackingCode(string $trackingCode): ?Applicant
     {
-        $row = $this->one(
+        $row = $this->fetchOne(
             'SELECT * FROM applicants WHERE tracking_code = ? AND deleted_at IS NULL LIMIT 1',
             [$trackingCode]
         );
@@ -32,7 +32,7 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
 
     public function findById(int $id): ?Applicant
     {
-        $row = $this->one(
+        $row = $this->fetchOne(
             'SELECT * FROM applicants WHERE id = ? AND deleted_at IS NULL LIMIT 1',
             [$id]
         );
@@ -41,7 +41,7 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
 
     public function findByNationalCode(string $nationalCode): array
     {
-        $rows = $this->all(
+        $rows = $this->fetchAll(
             'SELECT * FROM applicants WHERE national_code = ? AND deleted_at IS NULL ORDER BY created_at DESC',
             [$nationalCode]
         );
@@ -70,7 +70,7 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
           AND s.issue_at < DATE_SUB(NOW(), INTERVAL ? DAY)
         ORDER BY s.issue_at ASC
         SQL;
-        $rows = $this->all($sql, ['ثبت درخواست صدور', $days]);
+        $rows = $this->fetchAll($sql, ['ثبت درخواست صدور', $days]);
         $out = [];
         foreach ($rows as $row) {
             $out[] = Applicant::fromArray($row);
@@ -89,7 +89,7 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
           AND current_status IN ('ثبت درخواست صدور','بارگذاری مدارک به سازمان','تأیید اولیه','تأیید نهایی')
         ORDER BY updated_at ASC
         SQL;
-        $rows = $this->all($sql);
+        $rows = $this->fetchAll($sql);
         $out = [];
         foreach ($rows as $row) {
             $out[] = Applicant::fromArray($row);
@@ -207,8 +207,8 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
         $sql = "SELECT SQL_CALC_FOUND_ROWS a.* FROM applicants a WHERE $where AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT ? OFFSET ?";
         $params[] = $pageSize;
         $params[] = $offset;
-        $rows = $this->all($sql, $params);
-        $total = (int)$this->scalar('SELECT FOUND_ROWS()');
+        $rows = $this->fetchAll($sql, $params);
+        $total = (int)$this->fetchScalar('SELECT FOUND_ROWS()');
         return ['rows' => $rows, 'total' => $total];
     }
 
@@ -235,7 +235,7 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
             'UPDATE applicants SET version = version + 1 WHERE id = ?',
             [$id]
         );
-        $new = $this->scalar('SELECT version FROM applicants WHERE id = ?', [$id]);
+        $new = $this->fetchScalar('SELECT version FROM applicants WHERE id = ?', [$id]);
         return (int)$new;
     }
 

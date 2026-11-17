@@ -13,13 +13,13 @@ final class PdoPersonRepository extends PdoRepository implements PersonRepositor
 {
     public function findByNationalCode(string $nationalCode): ?Person
     {
-        $row = $this->one('SELECT * FROM persons WHERE national_code = ? LIMIT 1', [$nationalCode]);
+        $row = $this->fetchOne('SELECT * FROM persons WHERE national_code = ? LIMIT 1', [$nationalCode]);
         return $row === null ? null : Person::fromArray($row);
     }
 
     public function findById(int $id): ?Person
     {
-        $row = $this->one('SELECT * FROM persons WHERE id = ? LIMIT 1', [$id]);
+        $row = $this->fetchOne('SELECT * FROM persons WHERE id = ? LIMIT 1', [$id]);
         return $row === null ? null : Person::fromArray($row);
     }
 
@@ -57,7 +57,7 @@ final class PdoPersonRepository extends PdoRepository implements PersonRepositor
 
     public function applications(int $personId): array
     {
-        return $this->all(
+        return $this->fetchAll(
             'SELECT * FROM applicants WHERE person_id = ? AND deleted_at IS NULL ORDER BY created_at DESC',
             [$personId]
         );
@@ -97,7 +97,7 @@ final class PdoPersonRepository extends PdoRepository implements PersonRepositor
 
     public function recentFailedChecks(string $nationalCode, int $minutes = 10): int
     {
-        return (int)$this->scalar(
+        return (int)$this->fetchScalar(
             'SELECT COUNT(*) FROM identity_checks
              WHERE national_code = ? AND success = 0 AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)',
             [$nationalCode, $minutes]

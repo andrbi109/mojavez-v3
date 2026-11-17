@@ -184,6 +184,32 @@ national gateway) is live; Stage 2 (two-way) is deferred to v1.1+ pending
 
 ## [Unreleased]
 
+### Fixed — post-v1.1.0 hotfix (ISSUE-001)
+
+- **`PdoRepository::all()` / `one()` / `scalar()` renamed to `fetchAll()` /
+  `fetchOne()` / `fetchScalar()`.** The base class `PdoRepository` had a
+  `protected all(string $sql, array $params = []): array` helper, but the
+  subclass `PdoSettingRepository` also defines a domain method
+  `public all(): array` (from `SettingRepositoryInterface`). Under PHP 8.5+
+  this is a fatal signature-mismatch error, so the HTTP dev server (`php -S`)
+  could not boot at all — `PHP Fatal error: Declaration of
+  PdoSettingRepository::all(): array must be compatible with
+  PdoRepository::all(string $sql, array $params = []): array`. The bug has been
+  present since Phase 6 but was hidden because `smoke-test.sh` probed
+  `/health` (which 404s) and silently fell back to `--no-http` mode when the
+  server didn't respond — masking the boot failure. Renaming the base helpers
+  (which are `protected`, internal only) removes the collision. All 57 call
+  sites across 12 repository files updated. `PdoSettingRepository::all()` is
+  now the only `all()` and recursively calls `$this->fetchAll(...)` instead of
+  infinite self-recursion. See `docs/ISSUES.md` ISSUE-001.
+- **`tests/smoke-test.sh` HTTP probe hardened.** Previously the probe hit
+  `/health` (non-existent → 404) and silently fell back to `--no-http` when the
+  server didn't return 200, hiding any boot-time fatal. The probe now hits `/`
+  (home page, 200), treats ANY HTTP status code as "boot succeeded" (the
+  server returned a real response, not a connection refusal), checks the
+  server log for `Fatal error`, and **fails loudly** instead of silently
+  skipping — a boot failure is now a hard regression, not a quiet skip.
+
 ### Added — Phase 1 (Core & Architecture)
 - Repository scaffold: `README.md`, `LICENSE` (MIT), `.gitignore`,
   `.editorconfig`, `.gitattributes`, `VERSION` (`0.1.0`), `CHANGELOG.md`.

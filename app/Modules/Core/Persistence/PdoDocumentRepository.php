@@ -10,13 +10,13 @@ final class PdoDocumentRepository extends PdoRepository implements DocumentRepos
 {
     public function findById(int $id): ?Document
     {
-        $row = $this->one('SELECT * FROM documents WHERE id = ? LIMIT 1', [$id]);
+        $row = $this->fetchOne('SELECT * FROM documents WHERE id = ? LIMIT 1', [$id]);
         return $row === null ? null : Document::fromArray($row);
     }
 
     public function findByApplicantId(int $applicantId): array
     {
-        $rows = $this->all(
+        $rows = $this->fetchAll(
             'SELECT * FROM documents WHERE applicant_id = ? ORDER BY uploaded_at DESC',
             [$applicantId]
         );

@@ -10,7 +10,7 @@ final class PdoLicenseFileRepository extends PdoRepository implements LicenseFil
 {
     public function findByApplicantId(int $applicantId): ?LicenseFile
     {
-        $row = $this->one('SELECT * FROM license_files WHERE applicant_id = ? LIMIT 1', [$applicantId]);
+        $row = $this->fetchOne('SELECT * FROM license_files WHERE applicant_id = ? LIMIT 1', [$applicantId]);
         return $row === null ? null : LicenseFile::fromArray($row);
     }
 

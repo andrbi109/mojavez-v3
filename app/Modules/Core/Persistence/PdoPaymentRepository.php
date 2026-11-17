@@ -10,13 +10,13 @@ final class PdoPaymentRepository extends PdoRepository implements PaymentReposit
 {
     public function findById(int $id): ?Payment
     {
-        $row = $this->one('SELECT * FROM payments WHERE id = ? LIMIT 1', [$id]);
+        $row = $this->fetchOne('SELECT * FROM payments WHERE id = ? LIMIT 1', [$id]);
         return $row === null ? null : Payment::fromArray($row);
     }
 
     public function findByApplicantId(int $applicantId): array
     {
-        $rows = $this->all(
+        $rows = $this->fetchAll(
             'SELECT * FROM payments WHERE applicant_id = ? ORDER BY created_at DESC',
             [$applicantId]
         );
@@ -25,7 +25,7 @@ final class PdoPaymentRepository extends PdoRepository implements PaymentReposit
 
     public function findLatestByApplicant(int $applicantId, string $purpose = 'هزینهٔ ثبت‌نام'): ?Payment
     {
-        $row = $this->one(
+        $row = $this->fetchOne(
             'SELECT * FROM payments WHERE applicant_id = ? AND purpose = ? ORDER BY created_at DESC LIMIT 1',
             [$applicantId, $purpose]
         );
@@ -34,7 +34,7 @@ final class PdoPaymentRepository extends PdoRepository implements PaymentReposit
 
     public function hasApproved(int $applicantId, string $purpose = 'هزینهٔ ثبت‌نام'): bool
     {
-        $count = (int)$this->scalar(
+        $count = (int)$this->fetchScalar(
             'SELECT COUNT(*) FROM payments WHERE applicant_id = ? AND purpose = ? AND status = ?',
             [$applicantId, $purpose, 'تأیید شده']
         );
@@ -76,21 +76,21 @@ final class PdoPaymentRepository extends PdoRepository implements PaymentReposit
                 LIMIT ? OFFSET ?";
         $params[] = $pageSize;
         $params[] = $offset;
-        $rows = $this->all($sql, $params);
-        $total = (int)$this->scalar('SELECT FOUND_ROWS()');
+        $rows = $this->fetchAll($sql, $params);
+        $total = (int)$this->fetchScalar('SELECT FOUND_ROWS()');
         return ['rows' => $rows, 'total' => $total];
     }
 
     public function stats(): array
     {
-        $approvedTotal = (int)$this->scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'تأیید شده'");
-        $approvedMonth = (int)$this->scalar(
+        $approvedTotal = (int)$this->fetchScalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'تأیید شده'");
+        $approvedMonth = (int)$this->fetchScalar(
             "SELECT COALESCE(SUM(amount), 0) FROM payments
              WHERE status = 'تأیید شده' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
         );
-        $pendingCount = (int)$this->scalar("SELECT COUNT(*) FROM payments WHERE status IN ('در انتظار رسید','در انتظار بررسی')");
-        $pendingSum = (int)$this->scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status IN ('در انتظار رسید','در انتظار بررسی')");
-        $rejectedCount = (int)$this->scalar("SELECT COUNT(*) FROM payments WHERE status = 'رد شده'");
+        $pendingCount = (int)$this->fetchScalar("SELECT COUNT(*) FROM payments WHERE status IN ('در انتظار رسید','در انتظار بررسی')");
+        $pendingSum = (int)$this->fetchScalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status IN ('در انتظار رسید','در انتظار بررسی')");
+        $rejectedCount = (int)$this->fetchScalar("SELECT COUNT(*) FROM payments WHERE status = 'رد شده'");
 
         return [
             'approved_total'  => $approvedTotal,
@@ -103,7 +103,7 @@ final class PdoPaymentRepository extends PdoRepository implements PaymentReposit
 
     public function sumByChannel(): array
     {
-        return $this->all(
+        return $this->fetchAll(
             "SELECT pc.title AS channel_title, COUNT(p.id) AS count, COALESCE(SUM(p.amount), 0) AS total
              FROM payments p
              LEFT JOIN payment_channels pc ON pc.id = p.payment_channel_id

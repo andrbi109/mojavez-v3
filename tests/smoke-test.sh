@@ -73,16 +73,32 @@ if [ "$NO_HTTP" = "0" ]; then
         "$PHP" -S "127.0.0.1:$PORT" -t public public/router.php >/tmp/mojavez-smoke.log 2>&1 &
         SERVER_PID=$!
         STARTED_SERVER=1
-        for i in $(seq 1 10); do
-            if curl -sS --noproxy '*' -o /dev/null -w "%{http_code}" "$BASE_URL/health" 2>/dev/null | grep -qE '^200$'; then
+        # Probe the home page (`/`, not `/health` — /health doesn't exist).
+        # Boot success = server returned ANY HTTP status code (even 404),
+        # which means PHP loaded without a fatal. If curl gets connection-
+        # refused OR the server log shows 'Fatal error', boot failed.
+        # This matters: ISSUE-001 was a fatal at boot that /health probed
+        # but silently fell back to --no-http, hiding the bug.
+        for i in $(seq 1 15); do
+            CODE=$(curl -sS --noproxy '*' -o /dev/null -w "%{http_code}" "$BASE_URL/" 2>/dev/null)
+            if echo "$CODE" | grep -qE '^[1-5][0-9][0-9]$'; then
+                # Server responded with a real HTTP status → boot succeeded.
+                # Now verify it wasn't a 500 (server error) due to a fatal.
+                if [ "$CODE" = "500" ] && grep -qi "Fatal error" /tmp/mojavez-smoke.log 2>/dev/null; then
+                    break  # boot failed with fatal — handle below
+                fi
                 CAN_HTTP=1; break
             fi
             sleep 0.3
         done
         if [ "$CAN_HTTP" = "0" ]; then
-            yellow "HTTP server unreachable on sandbox — falling back to --no-http mode."
+            red "HTTP server boot FAILED — server did not respond. Server log:"
+            cat /tmp/mojavez-smoke.log 2>/dev/null | tail -20
             kill "$SERVER_PID" >/dev/null 2>&1 || true
             STARTED_SERVER=0
+            # Do NOT silently fall back — a boot failure is a real regression.
+            echo "FATAL: HTTP boot failed. Aborting smoke test."
+            exit 1
         fi
     fi
 fi

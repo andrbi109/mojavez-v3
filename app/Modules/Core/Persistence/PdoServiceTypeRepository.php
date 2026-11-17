@@ -9,17 +9,17 @@ final class PdoServiceTypeRepository extends PdoRepository implements ServiceTyp
 {
     public function getActive(): array
     {
-        return $this->all('SELECT * FROM service_types WHERE is_active = 1 ORDER BY sort_order, id');
+        return $this->fetchAll('SELECT * FROM service_types WHERE is_active = 1 ORDER BY sort_order, id');
     }
 
     public function getAll(): array
     {
-        return $this->all('SELECT * FROM service_types ORDER BY sort_order, id');
+        return $this->fetchAll('SELECT * FROM service_types ORDER BY sort_order, id');
     }
 
     public function findById(int $id): ?array
     {
-        return $this->one('SELECT * FROM service_types WHERE id = ? LIMIT 1', [$id]);
+        return $this->fetchOne('SELECT * FROM service_types WHERE id = ? LIMIT 1', [$id]);
     }
 
     public function create(array $data): int

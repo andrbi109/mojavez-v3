@@ -561,6 +561,7 @@
 | D-8-2 | Stage2ReadinessChecker::checkContractTests فقط وجود فایل را چک می‌کند، نه اجرای آن‌ها را. در آینده می‌تواند shell out به tests/contract.php کند. | `app/Modules/NationalGateway/Services/Stage2ReadinessChecker.php` | low | در v1.2 با shell_exec به contract.php + parse خروجی. |
 | D-8-3 | NationalSyncOrchestrator Stage 2 push بر اساس matched_at در پنجرهٔ cycle است — اگر cycle طولانی باشد، ممکن است applicant دوبار push شود (idempotency آن را handle می‌کند ولی بهتر است set از applicant_id‌های push‌شده نگه‌داری شود). | `app/Modules/NationalGateway/Services/NationalSyncOrchestrator.php` | low | در v1.2 با dedup set. |
 | D-8-4 | admin UI برای /admin/sync/readiness (نمایش گزارش Stage2ReadinessChecker) هنوز ساخته نشده — Checker آماده است ولی view/route ندارد. | `app/Modules/Core/Controllers/` | medium | در v1.2 با افزودن SyncController + view. |
+| D-8-5 | تا ۱۰ تست HTTP در smoke-test روی sandbox PHP dev server شکست می‌خورند (CSRF 419، /admin/dashboard 302، /admin/sync/status، /health، .env path traversal) — این‌ها از فاز ۶ وجود داشتند ولی تا fix ISSUE-001 پنهان بودند چون سرور اصلاً boot نمی‌شد و smoke-test به‌صورت خاموش به --no-http بازمی‌گشت. پس از fix boot، حالا قابل دیدن هستند. این‌ها regression ISSUE-001 نیستند — رفتار HTTP خاص dev server / sandbox هستند (مسیرها وجود ندارند، PHP built-in server path traversal را مثل nginx مسدود نمی‌کند). | `tests/smoke-test.sh` §7,11-14 | low | در v1.2: یا assertion ها را با env-aware skip سازگار کن، یا CI واقعی روی GitHub Actions (با PHP-FPM/nginx) که این رفتارها را درست آزمون کند. |
 
 #### Debt paid
 
@@ -586,12 +587,12 @@
 | critical | 0 | — | — |
 | high | 0 | — | — |
 | medium | 4 | 2026-11-17 | D-2-2, D-2-3, D-7-1, D-8-4 |
-| low | 25 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3 |
+| low | 26 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۸:** ۰ critical، ۰ high، ۴ medium (همگی به v1.2 موکول)، ۲۵ low.
-تغییر نسبت به فاز ۷: ۴ debt جدید اضافه شد (D-8-1/2/3/4). سه تا low + یکی medium (D-8-4 = admin UI برای readiness که هنوز ساخته نشده). فاز ۸ تمرکز روی زیرساخت Stage 2 بود نه پاکسازی debt فاز ۷.
+**وضعیت پس از فاز ۸ + fix ISSUE-001:** ۰ critical، ۰ high، ۴ medium (همگی به v1.2 موکول)، ۲۶ low.
+تغییر نسبت به فاز ۷: ۵ debt جدید اضافه شد (D-8-1/2/3/4/5). چهار تا low + یکی medium (D-8-4 = admin UI برای readiness که هنوز ساخته نشده). D-8-5 = ۸ تست HTTP که از فاز ۶ پنهان بودند و پس از fix boot حالا قابل دیدن هستند (regression نیستند).
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 

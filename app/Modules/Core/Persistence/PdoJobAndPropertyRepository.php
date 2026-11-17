@@ -11,7 +11,7 @@ final class PdoJobAndPropertyRepository extends PdoRepository implements JobAndP
 {
     public function findJobDetailByApplicantId(int $applicantId): ?JobDetail
     {
-        $row = $this->one('SELECT * FROM job_details WHERE applicant_id = ? LIMIT 1', [$applicantId]);
+        $row = $this->fetchOne('SELECT * FROM job_details WHERE applicant_id = ? LIMIT 1', [$applicantId]);
         return $row === null ? null : JobDetail::fromArray($row);
     }
 
@@ -35,7 +35,7 @@ final class PdoJobAndPropertyRepository extends PdoRepository implements JobAndP
 
     public function findPropertyDetailByApplicantId(int $applicantId): ?PropertyDetail
     {
-        $row = $this->one('SELECT * FROM property_details WHERE applicant_id = ? LIMIT 1', [$applicantId]);
+        $row = $this->fetchOne('SELECT * FROM property_details WHERE applicant_id = ? LIMIT 1', [$applicantId]);
         return $row === null ? null : PropertyDetail::fromArray($row);
     }
 

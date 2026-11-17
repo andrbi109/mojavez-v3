@@ -21,7 +21,7 @@ final class PdoSettingRepository extends PdoRepository implements SettingReposit
         if ($this->cache !== null) {
             return $this->cache;
         }
-        $rows = $this->all('SELECT setting_key, setting_value FROM settings');
+        $rows = $this->fetchAll('SELECT setting_key, setting_value FROM settings');
         $out = [];
         foreach ($rows as $r) {
             $out[$r['setting_key']] = (string)$r['setting_value'];
