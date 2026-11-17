@@ -223,6 +223,7 @@ final class Module implements ModuleInterface
             '20261117_001_national_gateway_tables.sql',
             '20261117_002_golden_link_columns.sql',
             '20261117_003_sync_audit_log_nullable_applicant.sql',
+            '20261117_004_integration_log_table.sql',
         ];
     }
 
@@ -241,6 +242,7 @@ final class Module implements ModuleInterface
             'sync_audit_log',
             'national_filters',
             'national_batches',
+            'integration_log',  // Phase 8 — two-way sync audit trail (§29.1).
         ];
     }
 }
