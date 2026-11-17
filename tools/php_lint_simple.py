@@ -80,9 +80,15 @@ def lint_file(path: pathlib.Path) -> list[str]:
         errors.append("`die()` is forbidden (use throw or Response::send())")
 
     # 6. No define() (forbidden — CODING_CONVENTIONS §2: "ثابت‌ها در config/*.php به‌صورت آرایه بازگشتی، نه define() سراسری")
-    # Allow `define('ROOT_PATH', ...)` in public/index.php (the single anchor
-    # for relative paths) and tests/TestCase.php (test bootstrap anchor).
-    if path.name not in ("index.php", "TestCase.php") and re.search(r"\bdefine\s*\(", stripped):
+    # Allow `define('ROOT_PATH', ...)` in entry-point scripts (public/index.php,
+    # scripts/migrate.php, tests/TestCase.php) — it's the single anchor for
+    # relative paths, defined exactly once per process.
+    is_entry_point = (
+        path.name == "index.php"
+        or path.name == "TestCase.php"
+        or path.parent.name == "scripts"
+    )
+    if not is_entry_point and re.search(r"\bdefine\s*\(", stripped):
         errors.append("`define()` is forbidden (use config array — CODING_CONVENTIONS §2)")
 
     return errors
