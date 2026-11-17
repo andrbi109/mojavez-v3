@@ -302,12 +302,34 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/form-fields/{id}/delete',   'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'destroy'],
 
             // ----- Phase 11 admin: fee_tariffs CRUD (replaces Phase-10 stub) -----
+            // Note: the more specific /admin/fee-tariff/settings route
+            // (Phase 20) MUST be registered BEFORE the /admin/fee-tariff/{id}
+            // catch-all — otherwise `settings` would be captured by the {id}
+            // regex ([^/]+) and dispatched to `update()` instead of
+            // `saveSettings()`. The other 4 Phase-20 routes have a different
+            // path structure (more than 3 segments or different prefix) and
+            // don't conflict with the {id} catch-all, but they're grouped
+            // here for readability.
             ['method' => 'GET',  'path' => '/admin/fee-tariff',               'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'index'],
             ['method' => 'GET',  'path' => '/admin/fee-tariff/new',            'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'create'],
             ['method' => 'POST', 'path' => '/admin/fee-tariff',                'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'store'],
             ['method' => 'GET',  'path' => '/admin/fee-tariff/{id}/edit',     'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'edit'],
-            ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}',           'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'update'],
             ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}/delete',  'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'destroy'],
+            // Phase 20 (v1.9.2) — FeeTariff extensions (5 routes) ported from v2.
+            // /settings is registered BEFORE the {id} catch-all so the
+            // `update()` action doesn't capture it.
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/settings',          'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'saveSettings'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/group/save',        'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'groupSave'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/group/{id}/delete', 'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'groupDelete'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/items/save',        'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'itemsSave'],
+            // The {id} catch-all MUST come after the /settings, /group/save,
+            // /items/save, /group/{id}/delete routes above (otherwise
+            // `update()` would steal /settings). The {id} segment matches
+            // [^/]+ so a 4-segment path like /group/save never collides
+            // with the 3-segment {id} pattern — but a 3-segment path like
+            // /settings DOES collide, hence the ordering above.
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}',           'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'update'],
+            ['method' => 'POST', 'path' => '/admin/payment/tick',                  'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'toggleTick'],
 
             // ----- Phase 11 admin: license_titles CRUD (replaces Phase-10 stub) -----
             // /by-service/{id} must be registered before any catch-all GET
@@ -333,6 +355,8 @@ final class Module implements ModuleInterface
 
             ['method' => 'GET',  'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'index'],
             ['method' => 'POST', 'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'update'],
+            // Phase 20 (v1.9.2): image upload for site_logo + header banners.
+            ['method' => 'POST', 'path' => '/admin/settings/upload-image', 'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'uploadImage'],
 
             // ----- Phase 2 public tracking routes -----
             ['method' => 'GET', 'path' => '/tracking', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'search'],

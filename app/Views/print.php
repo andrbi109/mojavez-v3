@@ -1,6 +1,8 @@
 <?php
 /** @var \App\Modules\Core\Domain\Applicant $applicant */
 /** @var array $statusLog */
+/** @var string $siteName */
+$siteName ??= 'سامانهٔ مجوز';
 ?>
 <!doctype html>
 <html lang="fa" dir="rtl">
@@ -10,60 +12,232 @@
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>نسخهٔ چاپی <?= htmlspecialchars($applicant->trackingCode, ENT_QUOTES, 'UTF-8') ?></title>
     <style>
-        body { font-family: 'Tahoma', 'Vazirmatn', sans-serif; color: #1a1a1a; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.7; }
-        .print-header { text-align: center; border-bottom: 3px solid #0f766e; padding-bottom: 1rem; margin-bottom: 1.5rem; }
-        .print-header h1 { color: #0f766e; margin-bottom: 0.25rem; }
-        .print-header .subtitle { color: #64748b; font-size: 0.9rem; }
-        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
-        .info-table th, .info-table td { padding: 0.6rem 0.75rem; border: 1px solid #cbd5e1; text-align: right; }
-        .info-table th { background: #f1f5f9; width: 35%; font-weight: 600; }
-        .tracking-code { font-family: monospace; font-weight: 700; color: #0f766e; letter-spacing: 0.05em; }
-        h2 { color: #0f766e; font-size: 1.1rem; border-bottom: 1px solid #cbd5e1; padding-bottom: 0.5rem; margin-top: 1.5rem; }
-        .status-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        .status-table th, .status-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #e2e8f0; text-align: right; }
-        .status-table th { background: #f8fafc; }
-        .print-footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #cbd5e1; text-align: center; color: #64748b; font-size: 0.85rem; }
-        @media print { body { margin: 0; max-width: none; } .no-print { display: none; } }
-        .no-print { text-align: center; margin-bottom: 1rem; }
+        /* Phase 20 (v1.9.2): ported + polished from v2 layout_print.php.
+           Kept inline (no external CSS) so the page is a single
+           self-contained printable HTML document. */
+        :root {
+            --brand: #0f766e;
+            --brand-dark: #0c5d56;
+            --brand-light: #e6f3f2;
+            --ink: #1a1a1a;
+            --muted: #64748b;
+            --card-border: #cbd5e1;
+            --cream: #faf6ee;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Vazirmatn', 'Vazir', 'Tahoma', sans-serif;
+            color: var(--ink);
+            background: var(--cream);
+            margin: 0;
+            padding: 0;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+        /* A4 sheet */
+        .print-container {
+            max-width: 210mm;
+            min-height: 297mm;
+            margin: 1.5rem auto;
+            background: #fff;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(22,40,60,.08);
+        }
+        /* Header — gradient bar with tracking-code box, like v2 */
+        .print-header {
+            background: linear-gradient(135deg, var(--brand-dark) 0%, var(--brand) 100%);
+            color: #fff;
+            padding: 18px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .print-header .brand { display: flex; align-items: center; gap: .6rem; }
+        .print-header .brand .mark {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            background: rgba(255,255,255,.12);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .print-header h1 { font-size: 1.1rem; margin: 0; font-weight: 700; }
+        .print-header .subtitle { font-size: .78rem; opacity: .85; margin: 2px 0 0; }
+        .print-header .tracking-box {
+            background: rgba(255,255,255,.1);
+            border: 1px solid rgba(255,255,255,.25);
+            border-radius: 8px;
+            padding: 6px 14px;
+            text-align: center;
+        }
+        .print-header .tracking-box .label { font-size: .65rem; opacity: .7; }
+        .print-header .tracking-box .code {
+            font-family: monospace; font-weight: 700;
+            letter-spacing: .05em; font-size: .9rem;
+        }
+        /* Body */
+        .print-body { padding: 22px 28px; }
+        /* Section titles */
+        h2 {
+            color: var(--brand-dark);
+            font-size: .9rem; font-weight: 700;
+            border-bottom: 2px solid var(--brand-light);
+            padding-bottom: 5px;
+            margin: 22px 0 10px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        h2:first-child { margin-top: 0; }
+        h2 .num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px; height: 22px;
+            background: var(--brand);
+            color: #fff;
+            border-radius: 5px;
+            font-size: .72rem;
+            font-weight: 700;
+        }
+        /* Info table */
+        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .info-table td {
+            border: 1px solid var(--card-border);
+            padding: 6px 10px;
+            font-size: .85rem;
+            vertical-align: top;
+        }
+        .info-table td:first-child {
+            width: 35%;
+            font-weight: 600;
+            color: var(--brand-dark);
+            background: var(--brand-light);
+        }
+        .tracking-code { font-family: monospace; font-weight: 700; color: var(--brand-dark); letter-spacing: .05em; }
+        /* Status log table */
+        .status-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+        .status-table thead th {
+            background: var(--brand-light);
+            color: var(--brand-dark);
+            font-weight: 700;
+            border: 1px solid var(--card-border);
+            padding: 5px 8px;
+            text-align: right;
+        }
+        .status-table tbody td {
+            border: 1px solid var(--card-border);
+            padding: 4px 8px;
+            vertical-align: top;
+        }
+        .status-table tbody tr:nth-child(even) { background: #fbfaf7; }
+        /* Footer */
+        .print-footer {
+            margin-top: 1.5rem;
+            padding: 10px 28px;
+            background: #fbfaf7;
+            border-top: 1px solid var(--card-border);
+            text-align: center;
+            color: var(--muted);
+            font-size: .72rem;
+        }
+        /* Print toolbar (no-print) */
+        .print-toolbar {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex; gap: .5rem;
+            z-index: 9999;
+            background: #fff;
+            border: 1px solid var(--card-border);
+            border-radius: 50px;
+            padding: .35rem .5rem;
+            box-shadow: 0 4px 20px rgba(22,40,60,.12);
+        }
+        .print-toolbar button {
+            border-radius: 50px;
+            padding: .35rem 1rem;
+            font-size: .82rem;
+            cursor: pointer;
+            border: 1px solid var(--card-border);
+            background: #fff;
+        }
+        .print-toolbar button.btn-primary {
+            background: var(--brand);
+            color: #fff;
+            border-color: var(--brand-dark);
+        }
+        @media print {
+            body { margin: 0; max-width: none; background: #fff; font-size: 12px; }
+            .print-container { box-shadow: none; margin: 0; border: none; border-radius: 0; max-width: none; min-height: auto; }
+            .print-toolbar { display: none !important; }
+            .print-header { border-radius: 0; }
+            .print-body { padding: 14px 0; }
+            .info-table td, .status-table tbody td { padding: 4px 7px; }
+            @page { size: A4 portrait; margin: 14mm 12mm; }
+        }
+        @media (max-width: 575.98px) {
+            .print-container { margin: .5rem; border-radius: 6px; }
+            .print-header { padding: 14px 16px; flex-direction: column; align-items: flex-start; }
+            .print-body { padding: 14px 16px; }
+        }
     </style>
 </head>
 <body>
-    <div class="no-print">
-        <button onclick="window.print()" style="padding: 0.5rem 1.5rem; cursor: pointer;">🖨 چاپ</button>
+    <div class="print-toolbar no-print">
+        <button class="btn-primary" onclick="window.print()">🖨 چاپ</button>
+        <button onclick="history.back()">↩ بازگشت</button>
     </div>
 
-    <div class="print-header">
-        <h1>سامانهٔ مجوز</h1>
-        <div class="subtitle">نسخهٔ چاپی پروندهٔ متقاضی</div>
-    </div>
+    <div class="print-container">
+        <div class="print-header">
+            <div class="brand">
+                <span class="mark">✓</span>
+                <div>
+                    <h1><?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?></h1>
+                    <div class="subtitle">نسخهٔ چاپی پروندهٔ متقاضی</div>
+                </div>
+            </div>
+            <div class="tracking-box">
+                <div class="label">کد رهگیری</div>
+                <div class="code"><?= htmlspecialchars($applicant->trackingCode, ENT_QUOTES, 'UTF-8') ?></div>
+            </div>
+        </div>
 
-    <table class="info-table">
-        <tr><th>کد رهگیری</th><td><span class="tracking-code"><?= htmlspecialchars($applicant->trackingCode, ENT_QUOTES, 'UTF-8') ?></span></td></tr>
-        <tr><th>نام و نام خانوادگی</th><td><?= htmlspecialchars($applicant->fullName(), ENT_QUOTES, 'UTF-8') ?></td></tr>
-        <tr><th>کد ملی</th><td dir="ltr"><?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?></td></tr>
-        <tr><th>شماره موبایل</th><td dir="ltr"><?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?></td></tr>
-        <tr><th>وضعیت فعلی</th><td><?= htmlspecialchars($applicant->currentStatus->titleFa(), ENT_QUOTES, 'UTF-8') ?></td></tr>
-        <tr><th>وضعیت مجوز</th><td><?= htmlspecialchars($applicant->licenseState->titleFa(), ENT_QUOTES, 'UTF-8') ?></td></tr>
-    </table>
+        <div class="print-body">
+            <h2><span class="num">۱</span> اطلاعات متقاضی</h2>
+            <table class="info-table">
+                <tr><td>نام و نام خانوادگی</td><td><?= htmlspecialchars($applicant->fullName(), ENT_QUOTES, 'UTF-8') ?></td></tr>
+                <tr><td>کد ملی</td><td dir="ltr"><?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?></td></tr>
+                <tr><td>شماره موبایل</td><td dir="ltr"><?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?></td></tr>
+                <tr><td>وضعیت فعلی</td><td><?= htmlspecialchars($applicant->currentStatus->titleFa(), ENT_QUOTES, 'UTF-8') ?></td></tr>
+                <tr><td>وضعیت مجوز</td><td><?= htmlspecialchars($applicant->licenseState->titleFa(), ENT_QUOTES, 'UTF-8') ?></td></tr>
+            </table>
 
-    <h2>تاریخچهٔ وضعیت</h2>
-    <table class="status-table">
-        <thead>
-            <tr><th>#</th><th>وضعیت</th><th>تاریخ</th></tr>
-        </thead>
-        <tbody>
-        <?php foreach ($statusLog as $i => $entry): ?>
-            <tr>
-                <td><?= $i + 1 ?></td>
-                <td><?= htmlspecialchars($entry->statusName, ENT_QUOTES, 'UTF-8') ?></td>
-                <td dir="ltr"><?= htmlspecialchars($entry->createdAt, ENT_QUOTES, 'UTF-8') ?></td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
+            <h2><span class="num">۲</span> تاریخچهٔ وضعیت</h2>
+            <table class="status-table">
+                <thead>
+                    <tr><th>#</th><th>وضعیت</th><th>تاریخ</th></tr>
+                </thead>
+                <tbody>
+                <?php foreach ($statusLog as $i => $entry): ?>
+                    <tr>
+                        <td><?= $i + 1 ?></td>
+                        <td><?= htmlspecialchars($entry->statusName, ENT_QUOTES, 'UTF-8') ?></td>
+                        <td dir="ltr"><?= htmlspecialchars($entry->createdAt, ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
 
-    <div class="print-footer">
-        این برگه توسط سامانهٔ مجوز تولید شده است. تاریخ چاپ: <?= htmlspecialchars(date('Y-m-d H:i'), ENT_QUOTES, 'UTF-8') ?>
+        <div class="print-footer">
+            این برگه توسط <?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?> تولید شده است.
+            تاریخ چاپ: <?= htmlspecialchars(date('Y-m-d H:i'), ENT_QUOTES, 'UTF-8') ?>
+        </div>
     </div>
 
     <script>window.print();</script>

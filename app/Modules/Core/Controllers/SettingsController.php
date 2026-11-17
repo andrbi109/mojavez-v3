@@ -173,6 +173,71 @@ final class SettingsController extends Controller
     }
 
     /**
+     * POST /admin/settings/upload-image — image upload for site_logo,
+     * header banner, and similar small brand assets.
+     *
+     * Phase 20 (v1.9.2) — ports v2's `/admin/settings/upload-image` to v3.
+     * The admin can upload a JPEG/PNG/WEBP image (≤ 2 MB) tied to a
+     * `setting_key` (defaults to `site_logo`). The file is saved under
+     * `storage/uploads/settings/{key}-{Ymd-His}.{ext}` and the relative
+     * path is stored in the `settings` table under that key.
+     *
+     * Defense:
+     *   - Only image/jpeg, image/png, image/webp MIME types are accepted
+     *     (verified via finfo, not the browser-supplied type).
+     *   - File size capped at 2 MB (defense + UX; the PHP upload_max_filesize
+     *     is typically higher but we don't want 50 MB photos in the header).
+     *   - The `setting_key` from the user is sanitized to `[a-zA-Z0-9_.-]`
+     *     (the same charset enforced by `validateCustomKey()`) — this is
+     *     used as the on-disk filename prefix, so path-traversal is
+     *     impossible.
+     *   - The destination directory is created with 0755 if missing.
+     *   - `move_uploaded_file()` is used (not `copy`/`rename`) so the
+     *     SAPI-provided tmp_name check is enforced.
+     *
+     * Returns JSON: `{'success': true, 'data': {'path': 'storage/...'}}`
+     * on success, or `{'success': false, 'error': '...'}` with HTTP 422
+     * (or 500 on `move_failed`).
+     */
+    public function uploadImage(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $file = $_FILES['image'] ?? null;
+        if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return Response::json(['success' => false, 'error' => 'no_file'], 422);
+        }
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            return Response::json(['success' => false, 'error' => 'upload_error'], 422);
+        }
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime = (string)$finfo->file($file['tmp_name']);
+        $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        if (!array_key_exists($mime, $allowed)) {
+            return Response::json(['success' => false, 'error' => 'invalid_mime'], 422);
+        }
+        if ($file['size'] > 2 * 1024 * 1024) {
+            return Response::json(['success' => false, 'error' => 'too_large'], 422);
+        }
+        $settingKey = (string)$request->input('setting_key', 'site_logo');
+        $safeKey = preg_replace('/[^a-zA-Z0-9_.-]/', '', $settingKey);
+        if ($safeKey === '' || $safeKey === '.' || $safeKey === '..') {
+            $safeKey = 'site_logo';
+        }
+        $filename = $safeKey . '-' . date('Ymd-His') . '.' . $allowed[$mime];
+        $dir = ROOT_PATH . '/storage/uploads/settings';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        $dest = $dir . '/' . $filename;
+        if (!move_uploaded_file($file['tmp_name'], $dest)) {
+            return Response::json(['success' => false, 'error' => 'move_failed'], 500);
+        }
+        $relativePath = 'storage/uploads/settings/' . $filename;
+        $this->upsertSetting($safeKey, $relativePath);
+        return Response::json(['success' => true, 'data' => ['path' => $relativePath]]);
+    }
+
+    /**
      * Validate a custom settings key against the per-key rules.
      *
      * Phase 14 (v1.5.0) — pays D-7-4. Rules (also exercised by

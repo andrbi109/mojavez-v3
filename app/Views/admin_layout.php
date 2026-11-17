@@ -19,6 +19,7 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
     <meta name="csrf-token" content="<?= htmlspecialchars($this->csrf->token(), ENT_QUOTES, 'UTF-8') ?>">
 
     <!-- Self-hosted vendor CSS (CSP default-src 'self', no external CDN) -->
+    <link rel="icon" type="image/svg+xml" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>assets/favicon.svg">
     <link rel="stylesheet" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>assets/vendor/bootstrap/css/bootstrap.rtl.min.css">
     <link rel="stylesheet" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>assets/vendor/bootstrap/css/bootstrap-icons.css">
     <link rel="stylesheet" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>assets/vendor/vazirmatn/css/vazirmatn.css">
@@ -95,6 +96,12 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             </a>
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/register" class="nav-link">
                 <i class="bi bi-person-plus"></i> ثبت‌نام دستی
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/license-requests" class="nav-link">
+                <i class="bi bi-patch-check"></i> درخواست‌های مجوز
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/revisions" class="nav-link">
+                <i class="bi bi-arrow-clockwise"></i> بازبینی‌ها
             </a>
 
             <h6>گزارش‌ها</h6>
