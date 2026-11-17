@@ -1,0 +1,45 @@
+/* mojavez-v3 — Vazirmatn @font-face.
+   Self-hosted (per CSP default-src 'self' — no external CDN).
+   Source: rastikerdar/vazirmatn v33.003 webfonts. */
+
+@font-face {
+    font-family: 'Vazirmatn';
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+    src: url('../fonts/Vazirmatn-Light.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Vazirmatn';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../fonts/Vazirmatn-Regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Vazirmatn';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('../fonts/Vazirmatn-Medium.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Vazirmatn';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('../fonts/Vazirmatn-Bold.woff2') format('woff2');
+}
+
+/* Override Bootstrap's default sans-serif stack with Vazirmatn for Persian. */
+:root {
+    --bs-body-font-family: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+    --bs-font-sans-serif: 'Vazirmatn', system-ui, sans-serif;
+}
+
+body {
+    font-family: var(--bs-body-font-family);
+}

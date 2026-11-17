@@ -180,7 +180,8 @@ final class Module implements ModuleInterface
                 $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
                 $container->make(\App\Events\EventBus::class),
-                $container->logger
+                $container->logger,
+                $container->make(\App\Shared\Persistence\Connection::class)
             )
         );
     }

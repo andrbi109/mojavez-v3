@@ -8,6 +8,7 @@ use App\Events\Events\ApplicantMatched;
 use App\Events\Events\SyncCycleCompleted;
 use App\Shared\Contracts\NationalLicenseRepositoryInterface;
 use App\Shared\Contracts\SyncAuditLogRepositoryInterface;
+use App\Shared\Persistence\Connection;
 use App\Shared\Support\StructuredLogger;
 
 /**
@@ -44,6 +45,7 @@ final class NationalSyncOrchestrator
         private readonly SyncAuditLogRepositoryInterface $auditRepo,
         private readonly EventBus $eventBus,
         private readonly StructuredLogger $logger,
+        private readonly Connection $conn,
     ) {}
 
     /**
@@ -62,8 +64,31 @@ final class NationalSyncOrchestrator
      */
     public function runCycle(int $licenseBatchSize = 50): array
     {
+        // §29 (Rollout Stage 1) — read the sync_direction setting from the
+        // settings table. If 'disabled', skip the entire cycle (runtime
+        // kill-switch, no deploy needed). If 'inbound' (Stage 1 default),
+        // run the cycle but the adapter only auto-transitions AutoConfirmed
+        // matches — no writes are sent to upstream. If 'two_way' (Stage 2,
+        // future), the cycle runs with two-way sync enabled (requires
+        // sync_two_way_enabled=1 AND a 3-month stabilized Stage 1).
+        $direction = $this->readSetting('sync_direction', 'inbound');
+        if ($direction === 'disabled') {
+            $this->logger->warning('Sync cycle skipped — sync_direction=disabled', []);
+            return [
+                'started_at' => date('Y-m-d H:i:s'),
+                'ended_at' => date('Y-m-d H:i:s'),
+                'licenses_processed' => 0,
+                'applicants_tried' => 0,
+                'auto_confirmed' => 0,
+                'operator_flagged' => 0,
+                'auto_rejected' => 0,
+                'skipped' => true,
+                'skip_reason' => 'sync_direction=disabled',
+            ];
+        }
+
         $startedAt = date('Y-m-d H:i:s');
-        $this->logger->info('Sync cycle started', ['at' => $startedAt]);
+        $this->logger->info('Sync cycle started', ['at' => $startedAt, 'direction' => $direction]);
 
         // §9.5 step 2: find unmatched licenses with golden-link anchors.
         $licenses = $this->licenseRepo->findUnmatched($licenseBatchSize);
@@ -176,5 +201,30 @@ final class NationalSyncOrchestrator
     public function status(): array
     {
         return $this->auditRepo->latestCycleSummary();
+    }
+
+    /**
+     * Read a setting from the settings table (key→value).
+     * Returns $default if the key is missing or the table is unreachable.
+     *
+     * Per §29 — used to read sync_direction + sync_two_way_enabled at runtime.
+     */
+    private function readSetting(string $key, string $default = ''): string
+    {
+        try {
+            $row = $this->conn->one(
+                'SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1',
+                [$key]
+            );
+            if ($row !== null && $row['setting_value'] !== null && $row['setting_value'] !== '') {
+                return (string)$row['setting_value'];
+            }
+        } catch (\Throwable $e) {
+            // Settings table might not exist yet (pre-install) — fail safe.
+            $this->logger->warning('readSetting failed, using default', [
+                'key' => $key, 'default' => $default, 'error' => $e->getMessage(),
+            ]);
+        }
+        return $default;
     }
 }

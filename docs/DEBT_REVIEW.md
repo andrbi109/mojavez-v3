@@ -486,11 +486,64 @@
 
 ### فاز ۷: نهایی‌سازی و Rollout مرحلهٔ ۱
 
-**تاریخ تکمیل:** ____________
-**Maintainer:** ____________
-**نسخهٔ منتشرشده:** ____________
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.0.0 (phase/7-finalization-rollout1 branch, tag v1.0.0)
 
-_(قالب همان فاز ۰)_
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-7-1 | کنترلرهای ادمین باقی‌مانده (form-fields, fee-tariff, license-titles, bulk-import, wizard-steps, sms, revisions) هنوز پیاده نشده‌اند — UsersController + SettingsController اضافه شد ولی بقیه به v1.1 موکول شد. | `app/Modules/Core/Controllers/` | medium | در v1.1 به‌صورت incremental. این کنترلرها فقط CRUD هستند و برای Rollout Stage 1 لازم نیست. |
+| D-7-2 | schema.sql با `scripts/generate_schema_sql.py` تولید می‌شود ولی CI هنوز drift را چک نمی‌کند (که آیا schema.sql با migrations هم‌خوان است). | `.github/workflows/ci.yml` | low | در v1.1 با اضافه‌کردن یک step در CI که generator را اجرا می‌کند و `git diff` چک می‌کند. |
+| D-7-3 | viewهای ثبت‌نام (registration/, services/, user/) هنوز به Bootstrap ارتقا نیافته‌اند — فقط 14 view اصلی ارتقا یافت. | `app/Views/{registration,services,user}/` | low | در v1.1 هنگام تکمیل ویزارد ثبت‌نام. |
+| D-7-4 | SettingsController custom settings validation ساده‌گیرانه است (طول ≤ 500، no type-check). برای production باید validation per-key اضافه شود. | `app/Modules/Core/Controllers/SettingsController.php` | low | در v1.1. |
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-2-1 | Viewها فعلاً HTML ساده هستند (Bootstrap 5 RTL + Vazirmatn هنوز پیاده نشده‌اند). | Bootstrap 5 RTL + Vazirmatn self-hosted (no CDN per CSP) + day/night theme toggle. 14 view ارتقا یافت. public/assets/vendor/ شامل bootstrap.rtl.min.css + js + icons + Vazirmatn woff2 (4 وزن). app.css با brand palette + admin sidebar + print styles. app.js با theme toggle persisted in localStorage. |
+| D-2-7 | `database/schema.sql` و `database/install.sql` هنوز ساخته نشده‌اند. | `scripts/generate_schema_sql.py` همهٔ migrationها را اعمال می‌کند و SHOW CREATE TABLE می‌گیرد. `database/schema.sql` (35KB, 41 table, idempotent CREATE TABLE IF NOT EXISTS، AUTO_INCREMENT حذف شده، ALTERها در CREATE نهایی ادغام شده). `database/install.sql` wrapper. install.php حالا fallback به schema.sql دارد. |
+| D-4-1 | SMS ارسال واقعی نشده است. | `App\Modules\Core\Services\SmsService` — Kavenegar-compatible. در production با SMS_API_KEY واقعی HTTP POST می‌زند؛ در غیر آن log-only (storage/logs/sms.log). drainQueue() در run_worker.php. SmsServiceTest (9 assertion). |
+
+#### Debt carried forward به فاز ۸ (Rollout Stage 2)
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-2-2 | AdminController فقط ۴ متد (UsersController + SettingsController اضافه شد ولی بقیه) | medium | v1.1 (D-7-1 overlap) |
+| D-2-3 | کنترلرهای License, Payment, Revision, Report, UserPanel, ... | medium | v1.1 (D-7-1 overlap) |
+| D-1-8 | static_analysis fail-on-warning | low | v1.1 (D-6-2 overlap) |
+| D-1-9 | writable storage assumptions | low | v1.1 |
+| D-2-4 | FeeCalculatorService reads income_decile directly | low | v1.1 |
+| D-2-5 | AutoCancelService::updatePriorities slow | low | v1.1 |
+| D-2-9 | seed migration پیش‌فرض | low | v1.1 |
+| D-4-4 | Worker::run(1) کند در poor man's cron | low | حل شد با systemd timers در deploy/linux/ |
+| D-4-5 | SSE تست واقعی نیاز به Apache | low | v1.1 |
+| D-4-6 | License::fromArray anchor‌ها را پر نمی‌کند | low | v1.1 |
+| D-4-7 | OperatorFlag notification به admin | low | v1.1 |
+| D-5-1 | seed_lookups sandbox fallback محدود | low | v1.1 |
+| D-5-2 | جداول جانبی v2 در migration نیستند | low | v1.1 |
+| D-5-3 | result_count در jobs migration نیست | low | حل شد — schema.sql آن را دارد |
+| D-5-4 | business_address suffix-mask محدودیت | low | v1.1 |
+| D-5-5 | county = township assumption | low | v1.1 |
+| D-5-6 | tests/setup_v2_source.php دستی | low | حل شد — CI آن را اجرا می‌کند |
+| D-6-1 | smoke-test HTTP sandbox limitation | low | حل شد — CI job `smoke` آن را اجرا می‌کند |
+| D-6-2 | static_analysis false-positive warnings | low | v1.1 |
+| D-6-3 | test_track_scraper fixture missing | low | v1.1 |
+| D-6-4 | install.php lock-file fallback | low | v1.1 |
+| D-6-5 | docker secrets manual generation | low | v1.1 |
+| D-6-6 | CI smoke job needs .env | low | v1.1 |
+| D-7-1 | کنترلرهای ادمین باقی‌مانده | medium | v1.1 |
+| D-7-2 | schema.sql drift check در CI نیست | low | v1.1 |
+| D-7-3 | viewهای ثبت‌نام به Bootstrap ارتقا نیافت | low | v1.1 |
+| D-7-4 | SettingsController validation ساده‌گیرانه | low | v1.1 |
+
+#### توصیه برای فاز ۸ (Rollout Stage 2)
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۸ (v1.1.0) پس از ۳ ماه تثبیت Stage 1 در تولید. باید D-7-1 (کنترلرهای باقی‌مانده) را پرداخت کند چون برای Stage 2 (دوطرفه) به مدیریت کامل admin نیاز است.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-7-1 (medium)، D-2-2 (medium)، D-2-3 (medium). همچنین نیازمندی‌های Stage 2: contract test برای endpointهای دوطرفه، حل تعارض last-write-wins با updated_at.
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ متوسط — فاز ۸ شامل انتظار ۳ ماهه + پیاده‌سازی Stage 2 است. حدود ۱-۲ جلسه کاری پس از پایان دوره تثبیت.
 
 ---
 
@@ -513,13 +566,13 @@ _(قالب همان فاز ۰)_
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 0 | — | — |
-| medium | 5 | 2026-11-17 | D-2-1, D-2-2, D-2-3, D-2-7, D-4-1 |
-| low | 21 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-4, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-3, D-5-4, D-5-5, D-5-6, D-6-1, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6 |
+| medium | 3 | 2026-11-17 | D-2-2, D-2-3, D-7-1 |
+| low | 22 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۶:** ۰ critical، ۰ high، 5 medium (همگی به فاز ۷ موکول)، 21 low.
-فاز ۶ ۴ debt (D-2-6 high، D-1-4، D-2-8، D-4-8) را پرداخت کرد و ۶ debt جدید (D-6-1 تا D-6-6) اضافه کرد که همه low هستند. امنیت کامل (CSRF متمرکز + security headers + IpRateLimiter دو مکانیزمی)، تست‌ها (17 PHP test 361 assertion + smoke 41 PASS + static analysis 0 FAIL + CI workflow)، استقرار (Docker + Apache + Nginx + Linux systemd + Windows + shared-hosting با install.php)، و مستندات (20 سند فارسی) همگی آماده‌اند.
+**وضعیت پس از فاز ۷:** ۰ critical، ۰ high، ۳ medium (همگی به فاز ۸/v1.1 موکول)، ۲۲ low.
+تغییر نسبت به فاز ۶: D-2-1، D-2-7، D-4-1 پرداخت شدند (medium 5→3). D-4-4، D-5-3، D-5-6، D-6-1 نیز حل شدند. ۴ debt جدید low اضافه شد (D-7-1/2/3/4).
 
 ---
 
