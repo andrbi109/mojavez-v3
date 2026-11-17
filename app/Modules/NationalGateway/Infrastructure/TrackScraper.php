@@ -70,7 +70,7 @@ final class TrackScraper
     ];
 
     public function __construct(
-        private readonly HttpClient $http,
+        private readonly HttpClientInterface $http,
         private readonly string $upstreamBase,
         private readonly StructuredLogger $logger
     ) {}
@@ -239,7 +239,16 @@ final class TrackScraper
             // to 600 chars instead of passing a non-existent 6th parameter.
             // (Regression: scripts/test_track_scraper.py mirrors this logic and
             //  verifies every field against the committed track-page HAR fixture.)
-            if (preg_match('/"children":\s*("(?:[^"\\\\]|\\\\.)*"|\d+|\[(?:[^\]]*)\])/u', $after, $mm)) {
+            //
+            // IMPORTANT: do NOT use the /u (UTF-8) modifier here. The blob
+            // contains mixed Persian + Latin + digits + symbols; under /u mode
+            // PCRE rejects certain byte sequences as invalid UTF-8 and the
+            // whole match returns false (no error, just empty result). Without
+            // /u we treat the string as bytes, which is correct here because
+            // the regex operates on ASCII structural tokens ("children":, ", [, ])
+            // and doesn't care about the Persian label bytes (they're matched
+            // by strpos above, not by this regex).
+            if (preg_match('/"children":\s*("(?:[^"\\\\]|\\\\.)*"|\d+|\[(?:[^\]]*)\])/', $after, $mm)) {
                 $raw = $mm[1];
                 $val = $this->extractCellValue($raw);
                 if ($val !== '') return $val;

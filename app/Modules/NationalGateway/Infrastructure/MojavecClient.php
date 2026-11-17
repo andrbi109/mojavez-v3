@@ -27,7 +27,7 @@ use App\Shared\Support\StructuredLogger;
 final class MojavecClient
 {
     public function __construct(
-        private readonly HttpClient $http,
+        private readonly HttpClientInterface $http,
         private readonly ResponseParserInterface $parser,
         private readonly string $upstreamBase,
         private readonly StructuredLogger $logger

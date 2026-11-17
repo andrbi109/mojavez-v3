@@ -18,7 +18,7 @@ use App\Shared\Support\StructuredLogger;
  * NO retry logic here — retry is the caller's responsibility (MojavecClient)
  * because retries interact with the rate limiter.
  */
-final class HttpClient
+final class HttpClient implements HttpClientInterface
 {
     private string $cookieJarFile;
 
