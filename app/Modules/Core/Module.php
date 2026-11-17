@@ -310,6 +310,12 @@ final class Module implements ModuleInterface
             '20261117_006_rate_limit_buckets.sql',
             '20261117_007_seed_avatar_document_type.sql',
             '20261117_008_user_accounts_email_display_name.sql',
+            // Phase 14 (v1.5.0) — pays D-2-9. Seeds the 5 default
+            // service_types + 8 license_titles so a fresh install has a
+            // non-empty wizard dropdown out of the box. Idempotent
+            // (INSERT ... ON DUPLICATE KEY UPDATE on the UNIQUE
+            // constraints).
+            '20261117_009_seed_default_service_types.sql',
         ];
     }
 

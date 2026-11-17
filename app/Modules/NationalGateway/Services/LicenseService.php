@@ -362,14 +362,23 @@ final class LicenseService
     /**
      * Hydrate a License from a DB row array (from queryCached).
      *
+     * Phase 14 (v1.5.0) — pays D-4-6: now passes the golden-link anchor
+     * fields (`masked_national_code`, `father_name`) from the DB row
+     * through to `License::fromArray`. Previously `fromArray` dropped
+     * them (the cache-snapshot path didn't include them), so `searchLocal`
+     * results always had `null` anchors even though the DB row had them.
+     * `fromArray` was updated to read them too — but we keep this method
+     * explicit so future code reading this site knows the contract:
+     * `hydrateLicense` is the DB-row path and is the only path that
+     * populates the anchors from a SELECT * row.
+     *
      * @param array<string,mixed> $row
      */
     private function hydrateLicense(array $row): License
     {
-        // Use License::fromArray for the basic fields, then we'd need to
-        // add the golden-link anchors. For now, fromArray covers the core
-        // fields; the golden-link anchors are read separately when needed
-        // (via findByRequestNumber which does full hydration).
+        // License::fromArray now reads masked_national_code + father_name
+        // (Phase 14 / D-4-6). The DB row from queryCached is SELECT *,
+        // so the columns are present — we just pass the row through.
         return License::fromArray($row);
     }
 }

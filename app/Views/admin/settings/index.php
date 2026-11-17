@@ -2,12 +2,27 @@
 /** @var array $settings  key→value map */
 /** @var array $known     KNOWN_SETTINGS metadata (key→[label,hint,type,options?]) */
 /** @var bool $saved */
+/** @var array<string,string> $errors  custom-key validation errors (Phase 14) */
 /** @var string $csrfField */
+$errors ??= [];
 ?>
 <h2 class="h5 mb-3"><i class="bi bi-gear"></i> تنظیمات سامانه</h2>
 
 <?php if (!empty($saved)): ?>
 <div class="alert alert-success"><i class="bi bi-check-circle"></i> تنظیمات با موفقیت ذخیره شد.</div>
+<?php endif; ?>
+
+<?php if (!empty($errors)): ?>
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i>
+    برخی کلیدهای سفارشی ذخیره نشدند:
+    <ul class="mb-0">
+        <?php foreach ($errors as $badKey => $msg): ?>
+            <li><code dir="ltr"><?= htmlspecialchars($badKey, ENT_QUOTES, 'UTF-8') ?></code> —
+                <?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') ?></li>
+        <?php endforeach; ?>
+    </ul>
+</div>
 <?php endif; ?>
 
 <form method="post" action="/admin/settings">

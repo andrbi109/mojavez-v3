@@ -97,6 +97,95 @@ final class NotificationService
     }
 
     /**
+     * Notify all admin users (role='admin' in the `users` table) of an
+     * operator-flagged match that needs manual review.
+     *
+     * Phase 14 (v1.5.0) — pays D-4-7. Called by NotificationSubscriber
+     * when an OperatorFlag event fires (golden-link match with confidence
+     * 50-89 — pending manual review). The notification is IN-APP ONLY:
+     * no SMS, no email (admins review via the admin panel's
+     * sync_audit_log page; the SMS/email channels are reserved for
+     * applicant-facing notifications on confirmed matches).
+     *
+     * Schema note: `user_notifications.user_account_id` is NOT NULL with
+     * a FK to `user_accounts`, but admins live in the separate `users`
+     * table. We bridge by looking up a matching `user_accounts` row by
+     * `username` — admins who ALSO have a user_account (e.g. a superuser
+     * who uses both the admin realm `/admin/login` and the user realm
+     * `/login`) see the notification in their user panel. Admins who
+     * don't have a user_account are simply skipped (logged) — the
+     * sync_audit_log row is still there for the admin panel to surface
+     * directly (which is the primary admin-facing channel).
+     *
+     * Idempotency: dedupes on (user_account_id, type, title) so a
+     * re-dispatch (e.g. re-running the sync cycle) doesn't spam admins.
+     *
+     * @param string $title  Short Persian headline.
+     * @param string $body   Short Persian body summarizing the match.
+     */
+    public function notifyAdmins(string $title, string $body): void
+    {
+        // Find admins (role='admin' in `users`).
+        try {
+            $admins = $this->conn->all("SELECT id, username FROM users WHERE role = 'admin'");
+        } catch (\Throwable $e) {
+            $this->logger->warning('notifyAdmins: cannot read users table', [
+                'error' => $e->getMessage(),
+            ]);
+            return;
+        }
+        if ($admins === []) {
+            $this->logger->info('notifyAdmins: no admin users found', []);
+            return;
+        }
+
+        $notified = 0;
+        $skipped = 0;
+        foreach ($admins as $admin) {
+            $username = (string)($admin['username'] ?? '');
+            if ($username === '') {
+                $skipped++;
+                continue;
+            }
+            // Bridge: find a matching user_account by username.
+            $account = $this->conn->one(
+                'SELECT id FROM user_accounts WHERE username = ? AND is_active = 1 LIMIT 1',
+                [$username]
+            );
+            if ($account === null) {
+                // Admin has no user_account — can't insert into
+                // user_notifications (NOT NULL FK). Skip; the
+                // sync_audit_log row is still there for the admin panel.
+                $skipped++;
+                continue;
+            }
+            $userAccountId = (int)$account['id'];
+
+            // Idempotency: dedupe on (user_account_id, type, title).
+            $existing = $this->conn->one(
+                'SELECT id FROM user_notifications WHERE user_account_id = ? AND type = ? AND title = ? LIMIT 1',
+                [$userAccountId, 'operator_flag', $title]
+            );
+            if ($existing !== null) {
+                $skipped++;
+                continue;
+            }
+
+            $this->conn->execute(
+                'INSERT INTO user_notifications (user_account_id, applicant_id, type, title, body, is_read, created_at) '
+                . 'VALUES (?, NULL, ?, ?, ?, 0, NOW())',
+                [$userAccountId, 'operator_flag', $title, $body]
+            );
+            $notified++;
+        }
+
+        $this->logger->info('notifyAdmins dispatched', [
+            'notified' => $notified,
+            'skipped' => $skipped,
+        ]);
+    }
+
+    /**
      * Find the sms_templates.id for a given target_status.
      */
     private function findTemplateId(string $targetStatus): ?int

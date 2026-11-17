@@ -70,7 +70,24 @@ final readonly class License
     }
 
     /**
-     * Build from a toArray() snapshot (e.g. restored from cache).
+     * Build from a toArray() snapshot (e.g. restored from cache) or a DB
+     * row (from NationalLicenseRepository::queryCached / findByRequestNumber).
+     *
+     * Phase 14 (v1.5.0) — pays D-4-6: `fromArray` previously only populated
+     * the basic fields (request_number, applicant_name, license_title, etc.)
+     * and silently dropped the golden-link anchors (`masked_national_code`,
+     * `father_name`). When `LicenseService::hydrateLicense()` called
+     * `fromArray` on a DB row, the resulting License had `null` anchors
+     * even though the DB row had them — so `searchLocal()` results always
+     * lost the anchors (only `findByRequestNumber`, which uses the
+     * repository's private `hydrate()`, kept them).
+     *
+     * Now `fromArray` reads `masked_national_code` and `father_name` from
+     * the input array with null-safe defaults — `null` if missing. This
+     * keeps it backward-compatible with the cache-restoration path (which
+     * calls `toArray()` first; that snapshot doesn't include the anchors,
+     * so they default to `null` there, same as before). The DB-row path
+     * (`hydrateLicense`) now passes the anchors through correctly.
      *
      * @param array<string,mixed> $row
      */
@@ -94,6 +111,13 @@ final readonly class License
             status: LicenseStatus::fromUpstream($statusSlug !== '' ? $statusSlug : null, $statusId),
             statusId: $statusId,
             statusTitle: $statusTitle,
+            // Golden-link anchors (Phase 14 / D-4-6). Read with null-safe
+            // defaults so missing keys (e.g. cache-restored snapshots that
+            // don't include them) default to null. Empty strings are
+            // normalized to null — the DB stores NULL but some code paths
+            // may pass ''.
+            maskedNationalCode: self::nullableString($row['masked_national_code'] ?? null),
+            fatherName: self::nullableString($row['father_name'] ?? null),
         );
     }
 

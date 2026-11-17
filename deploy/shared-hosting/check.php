@@ -35,22 +35,79 @@ foreach ($required as $ext) {
     ];
 }
 
-// 3. Writable storage.
+// 3. Writable storage (D-1-9, Phase 14 v1.5.0).
+//
+// Previously this check only did `is_writable()` on 4 dirs and didn't
+// cover storage/sessions or storage/exports. Now we test ALL five
+// storage subdirectories by actually writing a 1-byte test file to
+// each one. We also create the dir if missing (chmod 0755 — the web
+// user owns the dir on a typical shared host). Each dir reports
+// PASS or FAIL with the underlying PHP error message so the admin
+// can see exactly why a directory isn't writable (quota, SELinux,
+// open_basedir restriction, etc.).
 $rootPath = dirname(__DIR__);
-$writableDirs = ['storage/logs', 'storage/cache', 'storage/uploads', 'uploads'];
-foreach ($writableDirs as $rel) {
+$storageDirs = [
+    'storage/logs',
+    'storage/sessions',
+    'storage/uploads',
+    'storage/cache',
+    'storage/exports',
+];
+foreach ($storageDirs as $rel) {
     $abs = $rootPath . '/' . $rel;
     if (!is_dir($abs)) {
-        @mkdir($abs, 0775, true);
+        @mkdir($abs, 0755, true);
     }
-    $writable = is_dir($abs) && is_writable($abs);
+    // Probe: try to write a 1-byte test file then immediately unlink it.
+    // We capture the PHP error (if any) into $err so the check row can
+    // surface it (e.g. "open_basedir restriction" or "Disk quota exceeded").
+    $testFile = $abs . '/.write_test_' . substr(md5((string)uniqid('', true)), 0, 8);
+    $err = '';
+    $ok = false;
+    try {
+        $written = @file_put_contents($testFile, 'x');
+        if ($written === false || $written !== 1) {
+            $err = error_get_last()['message'] ?? 'file_put_contents returned false';
+        } else {
+            $ok = true;
+            @unlink($testFile);
+        }
+    } catch (\Throwable $e) {
+        $err = $e->getMessage();
+    }
     $checks[] = [
         'label' => "دایرکتوری قابل‌نوشتن: $rel",
-        'value' => $writable ? 'ok' : 'not writable',
-        'ok' => $writable,
-        'hint' => $writable ? '' : 'chmod 0775 ' . $rel,
+        'value' => $ok ? 'PASS' : 'FAIL',
+        'ok' => $ok,
+        'hint' => $ok ? '' : ('chmod 0755 ' . $rel . ($err !== '' ? ' — ' . $err : '')),
     ];
 }
+// Legacy top-level uploads/ dir (kept for backward compat — some v2
+// installs have it). Same write-test probe.
+$uploadsLegacy = $rootPath . '/uploads';
+if (!is_dir($uploadsLegacy)) {
+    @mkdir($uploadsLegacy, 0755, true);
+}
+$testFile = $uploadsLegacy . '/.write_test_' . substr(md5((string)uniqid('', true)), 0, 8);
+$err = '';
+$ok = false;
+try {
+    $written = @file_put_contents($testFile, 'x');
+    if ($written === false || $written !== 1) {
+        $err = error_get_last()['message'] ?? 'file_put_contents returned false';
+    } else {
+        $ok = true;
+        @unlink($testFile);
+    }
+} catch (\Throwable $e) {
+    $err = $e->getMessage();
+}
+$checks[] = [
+    'label' => "دایرکتوری قابل‌نوشتن: uploads",
+    'value' => $ok ? 'PASS' : 'FAIL',
+    'ok' => $ok,
+    'hint' => $ok ? '' : ('chmod 0755 uploads' . ($err !== '' ? ' — ' . $err : '')),
+];
 
 // 4. .env exists.
 $envExists = is_file($rootPath . '/.env');

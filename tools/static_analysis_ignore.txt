@@ -88,3 +88,30 @@ totalPages
 # user's `role` field. Not user input.
 # -----------------------------------------------------------------------------
 roleLabel
+
+# -----------------------------------------------------------------------------
+# 7. Phase 14 (v1.5.0) — registration view false positives.
+#
+# The new registration wizard views (app/Views/registration/*.php) emit
+# a handful of variables without htmlspecialchars() in the immediate
+# vicinity — but each is provably safe:
+#
+#  - `$id` in _dynamic_fields.php is `$id = 'fld_' . htmlspecialchars($key,
+#    ENT_QUOTES)` — already escaped at the assignment site a few lines
+#    above. The analyzer can't trace through the variable assignment.
+#  - `$percent` and `$s` in _progress.php are integer counters (loop
+#    index + a (int)round(...) expression). Not user input.
+#  - `$sid` in select_service.php is `(int)($st['id'] ?? 0)` — cast to
+#    int. Not user input.
+#  - `$fa` in step4.php is the result of a `match { ... }` against
+#    fixed Persian string literals. Not user input.
+#
+# Each pattern includes the file path prefix so it suppresses ONLY the
+# registration false positives (not real XSS issues elsewhere — the
+# bare variable names like `$id` or `$s` would be too broad).
+# -----------------------------------------------------------------------------
+app/Views/registration/_dynamic_fields.php:<?= $id ?>
+app/Views/registration/_progress.php:<?= $percent ?>
+app/Views/registration/_progress.php:<?= $s ?>
+app/Views/registration/select_service.php:<?= $sid ?>
+app/Views/registration/step4.php:<?= $fa ?>
