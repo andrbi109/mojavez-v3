@@ -171,6 +171,19 @@ final class Module implements ModuleInterface
             )
         );
 
+        // OutboundSyncService — pushes v3 state back to upstream (Stage 2 only).
+        // Activated when settings.sync_two_way_enabled = '1' (checked at runtime
+        // by OutboundSyncService::isEnabled()). Auto-disables on 3 consecutive
+        // 5xx failures (§29.3 kill-switch).
+        $container->bind(
+            \App\Modules\NationalGateway\Services\OutboundSyncService::class,
+            fn () => new \App\Modules\NationalGateway\Services\OutboundSyncService(
+                $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
+
         // NationalSyncOrchestrator — drives the full golden-link cycle.
         $container->bind(
             \App\Modules\NationalGateway\Services\NationalSyncOrchestrator::class,
