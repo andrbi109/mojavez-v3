@@ -55,6 +55,7 @@ final class Module implements ModuleInterface
     {
         return [
             '20261117_001_events_and_jobs_tables.sql',
+            '20261117_002_jobs_priority_and_result_count.sql',
         ];
     }
 
