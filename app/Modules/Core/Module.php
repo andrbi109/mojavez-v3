@@ -147,6 +147,18 @@ final class Module implements ModuleInterface
                 $container->logger
             )
         );
+
+        // SmsService — real SMS gateway (Kavenegar-compatible). In production
+        // + with SMS_API_KEY set, sends via HTTP. Otherwise log-only (dev mode).
+        // Drain invoked by scripts/run_worker.php on each cron tick.
+        $container->bind(
+            \App\Modules\Core\Services\SmsService::class,
+            fn () => new \App\Modules\Core\Services\SmsService(
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->make(\App\Shared\Support\Environment::class),
+                $container->logger
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void

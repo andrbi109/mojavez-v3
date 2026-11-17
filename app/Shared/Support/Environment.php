@@ -57,6 +57,9 @@ final readonly class Environment
         public int $cacheTtlSearch,
         public int $cacheTtlLookups,
         public int $cacheTtlCount,
+
+        public string $smsApiKey,
+        public string $smsSender,
     ) {}
 
     public static function load(string $envFile): self
@@ -104,7 +107,10 @@ final readonly class Environment
 
             cacheTtlSearch: (int)($vars['CACHE_TTL_SEARCH_SECONDS'] ?? 1800),
             cacheTtlLookups: (int)($vars['CACHE_TTL_LOOKUPS_SECONDS'] ?? 86400),
-            cacheTtlCount: (int)($vars['CACHE_TTL_COUNT_SECONDS'] ?? 3600),
+            cacheTtlCount: (int)($vars['CACHE_TTL_COUNT_SECONDS'] ?? 300),
+
+            smsApiKey: $vars['SMS_API_KEY'] ?? '',
+            smsSender: $vars['SMS_SENDER'] ?? '',
         );
     }
 
@@ -198,5 +204,18 @@ final readonly class Environment
         $versionFile = $dir . '/VERSION';
         $cached = is_file($versionFile) ? trim((string)file_get_contents($versionFile)) : '0.0.0-dev';
         return $cached;
+    }
+
+    /**
+     * Generic env-var accessor for values not promoted to constructor fields.
+     * Falls back to real getenv() (so systemd/Docker -e still works).
+     */
+    public function var(string $key): ?string
+    {
+        $val = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+        if ($val === false || $val === '') {
+            return null;
+        }
+        return (string)$val;
     }
 }
