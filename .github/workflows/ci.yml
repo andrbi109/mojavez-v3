@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'phase/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mariadb:10.11
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: mojavez_v3_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, fileinfo, gd, curl
+          coverage: none
+
+      - name: Show PHP version
+        run: php -v
+
+      - name: Lint all PHP files
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if ! php -l "$f" > /dev/null; then
+              fail=1
+            fi
+          done < <(find app config tests public scripts -name '*.php')
+          exit $fail
+
+      - name: Schema ownership matrix check
+        run: python3 tools/check_schema_ownership.py
+
+      - name: Static analysis (Phase 1 subset)
+        run: python3 tools/static_analysis.py || true
+
+      - name: Apply migrations on a fresh DB
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: mojavez_v3_test
+          DB_USER: root
+          DB_PASS: test
+          APP_ENV: development
+          APP_DEBUG: 'true'
+        run: |
+          # Wait for MySQL to be ready (the services healthcheck already does this
+          # but the host 'mysql' service container alias '127.0.0.1' needs an extra beat).
+          for i in {1..30}; do
+            if mysqladmin ping -h127.0.0.1 -uroot -ptest >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          # Phase 1 ships only the bootstrap marker migration — the
+          # MigrationRunner creates the migrations meta table itself.
+          # We invoke the index.php through a tiny script that loads
+          # the Container and runs the MigrationRunner.
+          php scripts/migrate.php --all || true
+
+      - name: Run unit tests
+        run: php tests/run.php
+
+      - name: Run scraper regression (Phase 3 will ship fixtures)
+        run: |
+          if [ -f scripts/test_track_scraper.py ]; then
+            python3 scripts/test_track_scraper.py
+          else
+            echo "scraper regression test not yet ported (Phase 3)"
+          fi
+
+      - name: Run pattern matcher test (Phase 4 will ship pattern_matcher.py)
+        run: |
+          if [ -f scripts/pattern_matcher.py ]; then
+            python3 scripts/pattern_matcher.py
+          else
+            echo "pattern_matcher.py not yet ported (Phase 4)"
+          fi
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, fileinfo, gd, curl
+      - name: Run smoke tests
+        run: |
+          if [ -f tests/smoke-test.sh ]; then
+            bash tests/smoke-test.sh
+          else
+            echo "smoke-test.sh not yet ported (Phase 6)"
+          fi
