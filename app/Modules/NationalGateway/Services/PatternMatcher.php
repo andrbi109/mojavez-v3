@@ -227,15 +227,17 @@ final class PatternMatcher
         );
 
         // 4. Business province — exact text match.
+        // License carries the upstream province as provinceTitle (the gateway
+        // didn't denormalize a separate businessProvince field).
         $fieldResults['business_province'] = $this->matchExactText(
             $property['province'] ?? '',
-            $license->businessProvince ?? ''
+            $license->provinceTitle ?? ''
         );
 
         // 5. Business township — exact text match.
         $fieldResults['business_township'] = $this->matchExactText(
             $property['township'] ?? '',
-            $license->businessTownship ?? ''
+            $license->townshipTitle ?? ''
         );
 
         // 6. License title — fuzzy text match.

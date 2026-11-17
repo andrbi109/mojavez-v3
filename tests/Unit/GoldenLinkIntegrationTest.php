@@ -45,6 +45,7 @@ final class GoldenLinkIntegrationTest extends TestCase
     {
         // Clean up test data.
         if ($this->applicantId > 0) {
+            $this->conn->execute('DELETE FROM property_details WHERE applicant_id = ?', [$this->applicantId]);
             $this->conn->execute('DELETE FROM status_log WHERE applicant_id = ?', [$this->applicantId]);
             $this->conn->execute('DELETE FROM applicants WHERE id = ?', [$this->applicantId]);
         }
@@ -80,7 +81,29 @@ final class GoldenLinkIntegrationTest extends TestCase
         $this->applicantId = $applicantId;
         $this->assertGreaterThan(0, $applicantId, 'test applicant created');
 
-        // 2. Create a test national_license with a matching masked national code.
+        // 1b. Create a property_details row (1:1 with applicant) so the
+        // PatternMatcher can match province + township + business_address.
+        $this->conn->execute(
+            'INSERT INTO property_details (applicant_id, ownership_status, province, county, city, '
+            . 'electricity_bill_id, address_street, address_alley, address_plaque) '
+            . 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                $applicantId,
+                'شخص',
+                'خراسان رضوی',   // matches license.provinceTitle
+                'تربت جام',       // matches license.townshipTitle
+                'تربت جام',
+                'EL-12345',
+                'خیابان مطهری',   // matches license.businessAddress suffix
+                'کوچه ۱۱',
+                '۱۱',
+            ]
+        );
+
+        // 2. Create a test national_license with golden-link anchor fields
+        //    matching the applicant + property. The masked national code,
+        //    father name, province, township, business_address (masked),
+        //    and postal_code (masked) all align → 6+ matching fields.
         $this->testRn = 'GOLDEN-' . random_int(100000, 999999);
         $licenseRepo = $this->container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class);
         $license = new \App\Modules\NationalGateway\Domain\License(
@@ -95,6 +118,8 @@ final class GoldenLinkIntegrationTest extends TestCase
             status: \App\Modules\NationalGateway\Domain\Enums\LicenseStatus::Active,
             maskedNationalCode: '072****188',
             fatherName: 'محمد',
+            businessAddress: '***** خیابان مطهری',  // suffix-masked — matches our address
+            postalCodeMasked: '9571968***',           // masked — matches our postal_code
         );
         $licenseRepo->save($license);
         $this->assertNotNull($licenseRepo->findByRequestNumber($this->testRn), 'test license saved');
@@ -106,6 +131,25 @@ final class GoldenLinkIntegrationTest extends TestCase
         // 4. Verify the match summary.
         $this->assertGreaterThanOrEqual(1, $summary['tried'], 'matchOne tried at least 1 applicant');
         $this->assertGreaterThanOrEqual(1, $summary['auto_confirmed'], 'matchOne auto_confirmed >= 1');
+
+        // 4b. Verify the quorum matched 4+ fields (national_code + full_name
+        // + father_name + business_province + business_township + business_address
+        // + postal_code = 7 potential matches). Read the audit log to count.
+        $auditRows = $this->conn->all(
+            "SELECT context FROM sync_audit_log WHERE applicant_id = ? AND action = 'match_attempted' ORDER BY id DESC LIMIT 1",
+            [$applicantId]
+        );
+        if (count($auditRows) > 0) {
+            $ctx = json_decode((string)$auditRows[0]['context'], true) ?: [];
+            $fieldsMatched = $ctx['fields_matched'] ?? [];
+            $this->assertGreaterThanOrEqual(
+                4,
+                count($fieldsMatched),
+                'quorum matched 4+ fields (got: ' . implode(',', $fieldsMatched) . ')'
+            );
+            $this->assertStringContainsString('national_code', implode(',', $fieldsMatched), 'national_code in matched fields');
+            $this->assertStringContainsString('business_province', implode(',', $fieldsMatched), 'business_province matched (from property_details)');
+        }
 
         // 5. Verify the applicant was updated.
         $applicantRepo = $this->container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class);
