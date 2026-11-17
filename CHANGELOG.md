@@ -184,6 +184,41 @@ national gateway) is live; Stage 2 (two-way) is deferred to v1.1+ pending
 
 ## [Unreleased]
 
+### Added — Phase 9: User Panel (`/panel/*`)
+
+- **`/panel/*` route surface implemented** — closes the 404 reported after
+  login (AuthController::login() redirects to `/panel` since Phase 6, but no
+  route existed to serve it). 10 routes registered:
+  `GET /panel`, `GET/POST /panel/profile`, `POST /panel/avatar`,
+  `GET /panel/requests`, `GET /panel/payments`, `GET /panel/licenses`,
+  `GET /panel/notifications`, `POST /panel/notifications/read`,
+  `GET /panel/tracking`. See `docs/PHASE_9_USER_PANEL.md`.
+- **`UserPanelController`** with 10 actions, autowired via the Container. Reads
+  from existing Phase-6 repositories (`UserAccountRepository`,
+  `PaymentRepository`, `LicenseFileRepository`, `ServiceTypeRepository`,
+  `StatusLogRepository`) — no schema changes needed.
+- **`UserNotificationRepositoryInterface` + `PdoUserNotificationRepository`** —
+  new contract for `user_notifications`: `findByUser`, `unreadCount`,
+  `markAllRead`. Registered in the Core container.
+- **`app/Views/user_layout.php`** — RTL sidebar layout (Bootstrap 5
+  self-hosted + Vazirmatn), unread-notifications badge, 7-item nav.
+- **Seven panel views** under `app/Views/user/`: `overview`, `requests`,
+  `payments`, `licenses`, `notifications`, `tracking`, `profile`.
+- **Unit test** `UserNotificationRepositoryTest` (9 assertions) — verifies
+  newest-first ordering, limit, unread count, markAllRead scope, and account
+  isolation. Total unit assertions: 382 → 391.
+
+### Notes
+
+- Inspired by the v2 surface (`mojavez.zip`, deployed on shared hosting) but
+  re-implemented on v3's modular architecture — no v2 code copied.
+- `POST /panel/profile` (updateProfile) and `POST /panel/avatar`
+  (uploadAvatar) return stub 501 responses for now; full implementation
+  needs an `AvatarService` + form validation and is tracked as DEBT_REVIEW
+  D-9-1 (v1.3).
+- All existing routes, unit tests (391), contract tests (21), and HTTP smoke
+  tests (66 pass / 8 pre-existing D-8-5) remain green.
+
 ### Fixed — post-v1.1.0 hotfix (ISSUE-001)
 
 - **`PdoRepository::all()` / `one()` / `scalar()` renamed to `fetchAll()` /

@@ -98,6 +98,12 @@ final class Module implements ModuleInterface
             )
         );
         $container->bind(
+            \App\Shared\Contracts\UserNotificationRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoUserNotificationRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
             \App\Shared\Contracts\PaymentRepositoryInterface::class,
             fn () => new \App\Modules\Core\Persistence\PdoPaymentRepository(
                 $container->make(\App\Shared\Persistence\Connection::class)
@@ -188,6 +194,20 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'loginForm'],
             ['method' => 'POST', 'path' => '/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'login'],
             ['method' => 'GET', 'path' => '/logout', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'logout'],
+
+            // ----- Phase 9 user panel routes (/panel/*) -----
+            // Closes the v2→v3 gap reported by the user (404 after login).
+            // AuthController::login() redirects to /panel — these routes serve it.
+            ['method' => 'GET',  'path' => '/panel',                     'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/panel/profile',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'profile'],
+            ['method' => 'POST', 'path' => '/panel/profile',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'updateProfile'],
+            ['method' => 'POST', 'path' => '/panel/avatar',               'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'uploadAvatar'],
+            ['method' => 'GET',  'path' => '/panel/requests',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'requests'],
+            ['method' => 'GET',  'path' => '/panel/payments',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'payments'],
+            ['method' => 'GET',  'path' => '/panel/licenses',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'licenses'],
+            ['method' => 'GET',  'path' => '/panel/notifications',        'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'notifications'],
+            ['method' => 'POST', 'path' => '/panel/notifications/read',   'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'markAllRead'],
+            ['method' => 'GET',  'path' => '/panel/tracking',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'tracking'],
 
             // ----- Phase 2 admin auth routes -----
             ['method' => 'GET', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLoginForm'],

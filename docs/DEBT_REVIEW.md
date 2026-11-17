@@ -562,6 +562,7 @@
 | D-8-3 | NationalSyncOrchestrator Stage 2 push بر اساس matched_at در پنجرهٔ cycle است — اگر cycle طولانی باشد، ممکن است applicant دوبار push شود (idempotency آن را handle می‌کند ولی بهتر است set از applicant_id‌های push‌شده نگه‌داری شود). | `app/Modules/NationalGateway/Services/NationalSyncOrchestrator.php` | low | در v1.2 با dedup set. |
 | D-8-4 | admin UI برای /admin/sync/readiness (نمایش گزارش Stage2ReadinessChecker) هنوز ساخته نشده — Checker آماده است ولی view/route ندارد. | `app/Modules/Core/Controllers/` | medium | در v1.2 با افزودن SyncController + view. |
 | D-8-5 | تا ۱۰ تست HTTP در smoke-test روی sandbox PHP dev server شکست می‌خورند (CSRF 419، /admin/dashboard 302، /admin/sync/status، /health، .env path traversal) — این‌ها از فاز ۶ وجود داشتند ولی تا fix ISSUE-001 پنهان بودند چون سرور اصلاً boot نمی‌شد و smoke-test به‌صورت خاموش به --no-http بازمی‌گشت. پس از fix boot، حالا قابل دیدن هستند. این‌ها regression ISSUE-001 نیستند — رفتار HTTP خاص dev server / sandbox هستند (مسیرها وجود ندارند، PHP built-in server path traversal را مثل nginx مسدود نمی‌کند). | `tests/smoke-test.sh` §7,11-14 | low | در v1.2: یا assertion ها را با env-aware skip سازگار کن، یا CI واقعی روی GitHub Actions (با PHP-FPM/nginx) که این رفتارها را درست آزمون کند. |
+| D-9-1 | `POST /panel/profile` (updateProfile) و `POST /panel/avatar` (uploadAvatar) در فاز ۹ به‌صورت stub با 501 برگردانده می‌شوند. فاز ۹ فقط هدف «بستن 404 پس از ورود» را داشت؛ پیاده‌سازی کامل نیاز به `AvatarService` (resize + cache + path-traversal defense) و فرم اعتبارسنجی پروفایل (نام/موبایل/ایمیل) دارد. | `app/Modules/Core/Controllers/UserPanelController.php::updateProfile/uploadAvatar` | medium | در v1.3 با افزودن `AvatarService` + `ProfileUpdateValidator`. |
 
 #### Debt paid
 
@@ -569,11 +570,25 @@
 |---|---|---|
 | D-7-1 (partial) | کنترلرهای ادمین باقی‌مانده | فاز ۸ تمرکز روی Stage 2 بود نه کنترلرها — D-7-1 همچنان به v1.2 موکول. |
 
-#### توصیه برای فاز ۹ (post-v1.1.0)
+#### توصیه برای فاز ۹ (post-v1.1.0) — **انجام شد**
 
-- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۹ (v1.2.0) باید D-8-4 (admin UI برای readiness) و D-7-1 (کنترلرهای باقی‌مانده) را پرداخت کند.
-- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-8-4 (medium)، D-7-1 (medium). همچنین وقتی upstream endpoint نوشتنی اضافه کرد، D-8-1 باید فوراً پرداخت شود.
-- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۹ فقط زمانی لازم است که upstream endpoint اضافه کند یا اپراتورها نیاز به UI برای readiness گزارش داشته باشند.
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بخشی — فاز ۹ به‌جای پاکسازی debt،
+  یک **bug-fix کاربر-محور** بود: خطای 404 پس از ورود به `/panel`. پیاده‌سازی شد.
+- [x] اگر بله، کدام debt‌ها باید پرداخت شوند؟ فاز ۹ D-9-1 را **ثبت کرد** (نه
+  پرداخت): updateProfile/uploadAvatar به v1.3 موکول شد چون فاز ۹ فقط هدف
+  «بستن 404» را داشت.
+- [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۹ scope محدود داشت و در
+  همان release کامل شد. ۹ assertion تست جدید اضافه شد.
+
+#### توصیه برای فاز ۱۰ (post-Phase 9)
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۱۰ (v1.2.0) باید
+  D-8-4 (admin UI برای readiness) و D-7-1 (کنترلرهای باقی‌مانده) را پرداخت کند.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-8-4 (medium)، D-7-1 (medium).
+  همچنین وقتی upstream endpoint نوشتنی اضافه کرد، D-8-1 باید فوراً پرداخت شود.
+- [ ] آیا D-9-1 (updateProfile/uploadAvatar) باید در v1.2 یا v1.3 پرداخت شود؟
+  v1.3 پیشنهاد می‌شود چون نیاز به `AvatarService` مستقل دارد که scope فاز ۱۰
+  را بیش از حد گسترش می‌دهد.
 
 ---
 
@@ -586,13 +601,13 @@
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 0 | — | — |
-| medium | 4 | 2026-11-17 | D-2-2, D-2-3, D-7-1, D-8-4 |
+| medium | 5 | 2026-11-17 | D-2-2, D-2-3, D-7-1, D-8-4, D-9-1 |
 | low | 26 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۸ + fix ISSUE-001:** ۰ critical، ۰ high، ۴ medium (همگی به v1.2 موکول)، ۲۶ low.
-تغییر نسبت به فاز ۷: ۵ debt جدید اضافه شد (D-8-1/2/3/4/5). چهار تا low + یکی medium (D-8-4 = admin UI برای readiness که هنوز ساخته نشده). D-8-5 = ۸ تست HTTP که از فاز ۶ پنهان بودند و پس از fix boot حالا قابل دیدن هستند (regression نیستند).
+**وضعیت پس از فاز ۹ (User Panel):** ۰ critical، ۰ high، ۵ medium (همگی به v1.2/v1.3 موکول)، ۲۶ low.
+تغییر نسبت به فاز ۸ + fix ISSUE-001: ۱ debt جدید اضافه شد (D-9-1 = updateProfile/uploadAvatar stub ها در پنل کاربری). فاز ۹ هدف اصلی‌اش (بستن 404 پس از ورود با پیاده‌سازی `/panel/*`) را به‌طور کامل انجام داد — ۱۰ مسیر، ۱۰ اکشن، ۷ ویو، ۱ layout، ۱ repo جدید، ۹ assertion تست جدید.
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
