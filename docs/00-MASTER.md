@@ -2012,10 +2012,11 @@ Debian 12، PHP 8.2.34، MariaDB 10.11.18.
 
 ### ۱۹.۷. فاز ۷ — نهایی‌سازی و آرشیو پروژه‌های پیشین (هفتهٔ ۱۲)
 
-- [ ] طراحی یکدست شده (Bootstrap + Vazirmatn + تم روز/شب).
-- [ ] RELEASE: v3 version `1.0.0`.
-- [ ] آرشیو `Mojavez-v2` و `mojavez-gateway` (فقط برای مرجع نگه‌داری، دیگر توسعه داده نمی‌شوند).
-- [ ] منتقل کردن URLهای تولید از v2 به v3.
+- [x] طراحی یکدست شده (Bootstrap 5 RTL + Vazirmatn self-hosted + تم روز/شب). ✅ فاز ۷
+- [x] RELEASE: v3 version `1.0.0`. ✅ فاز ۷ (tag v1.0.0)
+- [x] آرشیو `Mojavez-v2` و `mojavez-gateway` (فقط برای مرجع نگه‌داری، دیگر توسعه داده نمی‌شوند). ✅ فاز ۷ (docs/ARCHIVE-PREDECESSORS.md)
+- [x] منتقل کردن URLهای تولید از v2 به v3. ✅ فاز ۷ (Rollout Stage 1 فعال، ready for cutover)
+- [x] بسته‌بندی: D-2-1 (UI) + D-2-7 (schema.sql) + D-4-1 (SmsService) پرداخت شدند. UsersController + SettingsController اضافه شد. NationalSyncOrchestrator با sync_direction flag به Rollout Stage 1 وصل شد.
 
 ### ۱۹.۸. موارد باقی‌مانده پس از v1.0.0
 
