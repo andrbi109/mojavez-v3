@@ -33,9 +33,108 @@ final class Module implements ModuleInterface
 
     public function register(ModuleLoader $loader): void
     {
-        // Phase 1: no service bindings yet — the Container's boot() already
-        // registers all shared services. Phase 2 will register Core-specific
-        // services here (LicenseService, AutoCancelService, ...).
+        $container = $loader->container();
+
+        // Bind repository interfaces to their PDO implementations.
+        // All are memoized singletons (the Container caches after first make()).
+        $container->bind(
+            \App\Shared\Contracts\ApplicantRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoApplicantRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\PersonRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoPersonRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\StatusLogRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoStatusLogRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\DocumentRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoDocumentRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\SettingRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoSettingRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\ServiceTypeRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoServiceTypeRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\LicenseTitleRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoLicenseTitleRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\JobAndPropertyRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoJobAndPropertyRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\UserRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoUserRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\UserAccountRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoUserAccountRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\PaymentRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoPaymentRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\LicenseFileRepositoryInterface::class,
+            fn () => new \App\Modules\Core\Persistence\PdoLicenseFileRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+
+        // Bind Core services.
+        $container->bind(
+            \App\Modules\Core\Services\AutoCancelService::class,
+            fn () => new \App\Modules\Core\Services\AutoCancelService(
+                $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\StatusLogRepositoryInterface::class),
+                $container->logger
+            )
+        );
+        $container->bind(
+            \App\Modules\Core\Services\FileStorage::class,
+            fn () => new \App\Modules\Core\Services\FileStorage(
+                $container->logger
+            )
+        );
+        $container->bind(
+            \App\Modules\Core\Services\FeeCalculatorService::class,
+            fn () => new \App\Modules\Core\Services\FeeCalculatorService(
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\JobAndPropertyRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\PaymentRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\SettingRepositoryInterface::class)
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void
@@ -45,34 +144,44 @@ final class Module implements ModuleInterface
 
     public function routes(): array
     {
-        // Phase 1 meta routes. The front controller in public/index.php
-        // dispatches these directly (without instantiating heavy controllers)
-        // because /health must respond even when the DB is down.
+        // Meta routes (Phase 1) + public/admin/user routes (Phase 2).
+        // Order matters: specific routes before catch-all (none here yet).
         return [
-            [
-                'method'  => 'GET',
-                'path'    => '/health',
-                'handler' => \App\Modules\Core\Controllers\HealthController::class,
-                'action'  => 'health',
-            ],
-            [
-                'method'  => 'GET',
-                'path'    => '/check-cancel',
-                'handler' => \App\Modules\Core\Controllers\CronController::class,
-                'action'  => 'cancel',
-            ],
-            [
-                'method'  => 'GET',
-                'path'    => '/check-sync',
-                'handler' => \App\Modules\Core\Controllers\CronController::class,
-                'action'  => 'sync',
-            ],
-            [
-                'method'  => 'GET',
-                'path'    => '/api/v1/stream',
-                'handler' => \App\Modules\Core\Controllers\SseController::class,
-                'action'  => 'stream',
-            ],
+            // ----- Phase 1 meta routes -----
+            ['method' => 'GET', 'path' => '/health', 'handler' => \App\Modules\Core\Controllers\HealthController::class, 'action' => 'health'],
+            ['method' => 'GET', 'path' => '/check-cancel', 'handler' => \App\Modules\Core\Controllers\CronController::class, 'action' => 'cancel'],
+            ['method' => 'GET', 'path' => '/check-sync', 'handler' => \App\Modules\Core\Controllers\CronController::class, 'action' => 'sync'],
+            ['method' => 'GET', 'path' => '/api/v1/stream', 'handler' => \App\Modules\Core\Controllers\SseController::class, 'action' => 'stream'],
+
+            // ----- Phase 2 public routes -----
+            ['method' => 'GET', 'path' => '/', 'handler' => \App\Modules\Core\Controllers\HomeController::class, 'action' => 'index'],
+            ['method' => 'GET', 'path' => '/guide', 'handler' => \App\Modules\Core\Controllers\HomeController::class, 'action' => 'guide'],
+            ['method' => 'GET', 'path' => '/about', 'handler' => \App\Modules\Core\Controllers\HomeController::class, 'action' => 'about'],
+
+            // ----- Phase 2 user auth routes -----
+            ['method' => 'GET', 'path' => '/signup', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'signupForm'],
+            ['method' => 'POST', 'path' => '/signup', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'signup'],
+            ['method' => 'GET', 'path' => '/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'loginForm'],
+            ['method' => 'POST', 'path' => '/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'login'],
+            ['method' => 'GET', 'path' => '/logout', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'logout'],
+
+            // ----- Phase 2 admin auth routes -----
+            ['method' => 'GET', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLoginForm'],
+            ['method' => 'POST', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLogin'],
+            ['method' => 'GET', 'path' => '/admin/logout', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLogout'],
+
+            // ----- Phase 2 admin panel routes -----
+            ['method' => 'GET', 'path' => '/admin/dashboard', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'dashboard'],
+            ['method' => 'GET', 'path' => '/admin/applications', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'applications'],
+            ['method' => 'GET', 'path' => '/admin/view/{id}', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'viewApplication'],
+            ['method' => 'POST', 'path' => '/admin/change-status', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'changeStatus'],
+
+            // ----- Phase 2 public tracking routes -----
+            ['method' => 'GET', 'path' => '/tracking', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'search'],
+            ['method' => 'POST', 'path' => '/tracking/search', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'find'],
+            ['method' => 'GET', 'path' => '/tracking/status/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'status'],
+            ['method' => 'POST', 'path' => '/tracking/change-postal-code', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'changePostalCode'],
+            ['method' => 'GET', 'path' => '/tracking/print/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'printView'],
         ];
     }
 
