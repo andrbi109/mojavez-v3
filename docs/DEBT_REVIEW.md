@@ -160,11 +160,64 @@
 
 ### فاز ۲: دامنهٔ v2
 
-**تاریخ تکمیل:** ____________
-**Maintainer:** ____________
-**نسخهٔ منتشرشده:** ____________
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 0.1.0 (phase/2-v2-domain branch)
 
-_(قالب همان فاز ۰)_
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-2-1 | Viewها فعلاً HTML ساده هستند (Bootstrap 5 RTL + Vazirmatn هنوز پیاده نشده‌اند). | `app/Views/*.php` | medium | در فاز ۶ استایل کامل را با Bootstrap + Vazirmatn self-host پیاده کن. |
+| D-2-2 | کنترلرهای AdminController فقط ۴ متد اول پیاده شده‌اند (dashboard, applications, viewApplication, changeStatus). سایر عملیات ادمین (register manual, edit, postal requests, my-tasks, users, form-fields, wizard-steps, settings, payments, bulk-import, fee-tariff, license-titles, sms, revisions, license upload/requests) هنوز اضافه نشده‌اند. | `app/Modules/Core/Controllers/AdminController.php` | medium | در فازهای ۳-۶ به‌صورت incremental اضافه کن. |
+| D-2-3 | کنترلرهای License, Payment, Revision, Report, UserPanel, ServiceType, ServiceController, BulkImport, FeeTariff, FormField, WizardStep, Setting, Sms, LicenseTitle, DocumentController, UserController, RecordsController هنوز ساخته نشده‌اند. | `app/Modules/Core/Controllers/` | medium | در فازهای ۳-۶ اضافه کن. |
+| D-2-4 | FeeCalculatorService::calculateForApplicant از `applicants.income_decile` به‌صورت مستقیم می‌خواند (شبیه v2) به‌جای استفاده از `applicant_field_values`. هنگام پورت کامل ویزارد ثبت‌نام باید از form_fields خوانده شود. | `app/Modules/Core/Services/FeeCalculatorService.php:78` | low | در فاز ۶ هنگام تکمیل ویزارد ثبت‌نام اصلاح کن. |
+| D-2-5 | AutoCancelService::updatePriorities از paginate استفاده می‌کند و در PHP فیلتر می‌کند — برای حجم بالا کند است. | `app/Modules/Core/Services/AutoCancelService.php:75` | low | در فاز ۶ با یک کوئری مستقیم SQL بهینه کن. |
+| D-2-6 | rate_limit (session-based و IP-based) هنوز در کنترلرها اعمال نشده است. guards پیاده شده‌اند ولی rate limit نه. | `app/Modules/Core/Controllers/Controller.php` | high | در فاز ۶ هنگام تکمیل کنترلرها فعال کن. |
+| D-2-7 | `database/schema.sql` و `database/install.sql` هنوز ساخته نشده‌اند (فقط migration files موجودند). | `database/` | medium | در فاز ۶ به‌عنوان منبع واحد schema بساز. |
+| D-2-8 | `install.php` تعاملی برای shared hosting هنوز پیاده نشده است. | `deploy/shared-hosting/` | medium | در فاز ۶ بساز. |
+| D-2-9 | Migration seed برای 5 service_type + license_titles پیش‌فرض هنوز اجرا نشده است. | `app/Modules/Core/migrations/` | low | در فاز ۶ یک migration 006_seed_defaults.sql اضافه کن. |
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-1-1 | EventBus placeholder | هنوز placeholder — به فاز ۴ منتقل شد. |
+| D-1-2 | collectSubscribers() معلق | هنوز معلق — به فاز ۴. |
+| D-1-3 | Request::$trustProxy hard-coded | هنوز — به فاز ۶ منتقل شد (با config app.trust_proxy). |
+| D-1-5 | database/schema.sql و install.sql | migration files هستند اما schema.sql واحد هنوز نه — به D-2-7 منتقل شد. |
+| (پیشینیان) | `Database::getInstance()` Singleton | همه repository‌ها از Connection و Interface وابسته‌اند — پیاده‌سازی کامل شد. |
+| (پیشینیان) | نبود Repository interfaces | 12 interface در app/Shared/Contracts/ ساخته شد. |
+| (پیشینیان) | نبود ماتریس مالکیت schema | 4 migration فایل در Core که همگی از check_schema_ownership.py عبور کردند. |
+| (پیشینیان) | نبود `version`, `deleted_at`, `consent_external_share` روی applicants | در migration 002 اضافه شدند. |
+| (پیشینیان) | نبود `triggered_by` روی status_log | در migration 002 اضافه شد (admin\|user\|system\|auto_sync). |
+
+#### Debt carried forward به فاز ۳
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-1-1 | EventBus placeholder | medium | فاز ۴ |
+| D-1-2 | collectSubscribers() معلق | medium | فاز ۴ |
+| D-1-4 | install.php و check.php | medium | فاز ۶ |
+| D-1-6 | SseController::stream واقعی | low | فاز ۴ |
+| D-1-7 | اجرای محلی تست‌ها | low | محیط کاربر |
+| D-1-8 | static_analysis fail-on-warning | low | فاز ۶ |
+| D-1-9 | writable storage assumptions | low | فاز ۶ |
+| D-2-1 | Viewهای بدون Bootstrap/Vazirmatn | medium | فاز ۶ |
+| D-2-2 | AdminController فقط ۴ متد | medium | فاز ۳-۶ |
+| D-2-3 | کنترلرهای باقی‌مانده | medium | فاز ۳-۶ |
+| D-2-4 | FeeCalculatorService reads income_decile directly | low | فاز ۶ |
+| D-2-5 | AutoCancelService::updatePriorities slow | low | فاز ۶ |
+| D-2-6 | rate_limit not applied in controllers | high | فاز ۶ |
+| D-2-7 | schema.sql و install.sql واحد | medium | فاز ۶ |
+| D-2-8 | install.php تعاملی | medium | فاز ۶ |
+| D-2-9 | seed migration پیش‌فرض | low | فاز ۶ |
+
+#### توصیه برای فاز ۳
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ خیر — D-2-6 (high) را در فاز ۶ (همراه با تکمیل کنترلرها) پرداخت می‌کنیم؛ بقیه medium/low با مهلت در فازهای بعدی.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ هیچ‌کدام در فاز ۳ — فاز ۳ روی NationalGateway متمرکز است.
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۳ مستقل از debt فاز ۲ است.
 
 ---
 
@@ -236,14 +289,14 @@ _(قالب همان فاز ۰)_
 | شدت | تعداد | قدیمی‌ترین | شناسه‌ها |
 |---|---|---|---|
 | critical | 0 | — | — |
-| high | 0 | — | — |
-| medium | 4 | 2026-11-17 | D-1-1, D-1-2, D-1-4, D-1-5 |
-| low | 5 | 2026-11-17 | D-1-3, D-1-6, D-1-7, D-1-8, D-1-9 |
+| high | 1 | 2026-11-17 | D-2-6 |
+| medium | 8 | 2026-11-17 | D-1-1, D-1-2, D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8 |
+| low | 8 | 2026-11-17 | D-1-6, D-1-7, D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, (D-1-3 resolved) |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱:** ۰ critical، ۰ high، ۴ medium، ۵ low. مطمئن می‌سازد که فاز ۲
-بدون انباشت debt ادامه می‌یابد.
+**وضعیت پس از فاز ۲:** ۰ critical، ۱ high (rate limit — در فاز ۶ پرداخت می‌شود)، ۸ medium، ۸ low.
+فاز ۳ می‌تواند بدون پاکسازی debt ادامه یابد.
 
 ---
 
