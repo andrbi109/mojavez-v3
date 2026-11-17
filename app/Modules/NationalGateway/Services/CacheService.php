@@ -19,7 +19,7 @@ final class CacheService
 
     public function __construct(
         private readonly string $cacheDir,
-        private readonly StructuredStructuredLogger $logger
+        private readonly StructuredLogger $logger
     ) {
         if (!is_dir($cacheDir)) {
             @mkdir($cacheDir, 0775, true);

@@ -100,26 +100,126 @@ final class Module implements ModuleInterface
                 $container->logger
             )
         );
+
+        // PDO repositories — implement the Shared\Contracts interfaces.
+        $container->bind(
+            \App\Shared\Contracts\NationalLicenseRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalLicenseRepository(
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\NationalLookupRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalLookupRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\NationalFilterRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalFilterRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\NationalBatchRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalBatchRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\SyncAuditLogRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\SyncAuditLogRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+
+        // PatternMatcher — stateless, cheap to construct.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\PatternMatcher::class,
+            fn () => new \App\Modules\NationalGateway\Services\PatternMatcher()
+        );
+
+        // LicenseService — the orchestrator. Wires all of the above.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\LicenseService::class,
+            fn () => new \App\Modules\NationalGateway\Services\LicenseService(
+                $container->make(\App\Modules\NationalGateway\Infrastructure\MojavecClient::class),
+                $container->make(\App\Modules\NationalGateway\Infrastructure\TrackScraper::class),
+                $container->make(\App\Modules\NationalGateway\Services\CacheService::class),
+                $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\NationalLookupRepositoryInterface::class),
+                $container->make(\App\Events\EventBus::class),
+                $container->logger,
+                $container->make(\App\Modules\NationalGateway\Infrastructure\CircuitBreaker::class),
+                $container->make(\App\Modules\NationalGateway\Services\RateLimiterService::class)
+            )
+        );
+
+        // ApplicantSyncAdapter (ACL) — the golden-link bridge to Core.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\ApplicantSyncAdapter::class,
+            fn () => new \App\Modules\NationalGateway\Services\ApplicantSyncAdapter(
+                $container->make(\App\Modules\NationalGateway\Services\PatternMatcher::class),
+                $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\PersonRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
+                $container->make(\App\Events\EventBus::class),
+                $container->logger
+            )
+        );
+
+        // NationalSyncOrchestrator — drives the full golden-link cycle.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\NationalSyncOrchestrator::class,
+            fn () => new \App\Modules\NationalGateway\Services\NationalSyncOrchestrator(
+                $container->make(\App\Modules\NationalGateway\Services\LicenseService::class),
+                $container->make(\App\Modules\NationalGateway\Services\ApplicantSyncAdapter::class),
+                $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
+                $container->make(\App\Events\EventBus::class),
+                $container->logger
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void
     {
-        // No cross-module wiring in Phase 3 — Phase 4 wires the ACL
-        // ApplicantSyncAdapter + the NationalSyncOrchestrator.
+        // Register the golden-link subscribers on the EventBus.
+        // LogSubscriber (wildcard) + SyncSubscriber (LicenseIssuedOnNational)
+        // + NotificationSubscriber (ApplicantMatched → SMS + in-app notification).
+        $container = $loader->container();
+        $eventBus = $container->make(\App\Events\EventBus::class);
+        $logger = $container->logger;
+
+        $eventBus->subscribe(new \App\Events\Subscribers\LogSubscriber($logger));
+        $eventBus->subscribe(new \App\Events\Subscribers\SyncSubscriber(
+            $container->make(\App\Queue\JobQueue::class),
+            $logger
+        ));
+        $eventBus->subscribe(new \App\Events\Subscribers\NotificationSubscriber(
+            $container->make(\App\Modules\Core\Services\NotificationService::class),
+            $logger
+        ));
     }
 
     public function routes(): array
     {
-        // Phase 3: routes are deferred — the admin sync panel will be added
-        // when LicenseService (Phase 4) is in place. For now, only the
-        // health endpoint circuit-breaker check is exposed via /health.
-        return [];
+        return [
+            // Golden-link sync admin panel — poor man's cron pattern.
+            // Each /admin/sync/status poll drains one queued job.
+            ['method' => 'GET',  'path' => '/admin/sync/status',  'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'status'],
+            ['method' => 'GET',  'path' => '/admin/sync/pending',  'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'pending'],
+            ['method' => 'POST', 'path' => '/admin/sync/run',      'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'run'],
+        ];
     }
 
     public function migrations(): array
     {
         return [
             '20261117_001_national_gateway_tables.sql',
+            '20261117_002_golden_link_columns.sql',
         ];
     }
 

@@ -203,8 +203,10 @@ $metaRoutes($router);
 //     MigrationRunner is invoked here too — any new migration files
 //     are applied at boot time.
 // ============================================================
-// EventBus — real class (Phase 1 placeholder, will be fleshed out in Phase 4).
-$eventBus = new \App\Events\EventBus();
+// EventBus — wired with Logger + Connection so events persist to the events
+// table for SSE replay. Connection is built lazily on first use.
+$dbConnection = $container->make(\App\Shared\Persistence\Connection::class);
+$eventBus = new \App\Events\EventBus($logger, $dbConnection);
 
 $migrationRunner = $container->make(\App\Shared\Persistence\MigrationRunner::class);
 $moduleLoader = new ModuleLoader(

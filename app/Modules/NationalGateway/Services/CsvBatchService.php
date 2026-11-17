@@ -17,7 +17,7 @@ final class CsvBatchService
         private readonly CsvReader $csvReader,
         private readonly JobQueue $queue,
         private readonly FilterService $filterService,
-        private readonly StructuredStructuredLogger $logger,
+        private readonly StructuredLogger $logger,
         private ?BatchRepository $batchRepo = null
     ) {}
 

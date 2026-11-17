@@ -38,7 +38,13 @@ foreach ($testFiles as $file) {
     $name = method_exists($instance, 'name') ? $instance->name() : basename($file);
 
     try {
+        if (method_exists($instance, 'setUp')) {
+            $instance->setUp();
+        }
         $instance->run();
+        if (method_exists($instance, 'tearDown')) {
+            $instance->tearDown();
+        }
     } catch (\Throwable $e) {
         fwrite(STDERR, "Test $name threw exception: " . $e->getMessage() . "\n");
         $totalFailures++;

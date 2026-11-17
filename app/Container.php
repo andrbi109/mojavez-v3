@@ -48,6 +48,9 @@ use RuntimeException;
  */
 final class Container
 {
+    /** Root project path (set by boot()) — used to find app/Modules/. */
+    private string $rootPath = '';
+
     /** @var array<string, Closure|object> */
     private array $factories = [];
 
@@ -74,6 +77,7 @@ final class Container
      */
     public function boot(string $rootPath): void
     {
+        $this->rootPath = $rootPath;
         $this->registerPaths($rootPath);
         $this->registerSupport();
         $this->registerPersistence();
@@ -114,6 +118,26 @@ final class Container
             $this->make(Connection::class),
             $this->logger
         );
+
+        // EventBus — persisted to the events table for SSE replay.
+        $this->factories[\App\Events\EventBus::class] = fn(): \App\Events\EventBus => new \App\Events\EventBus(
+            $this->logger,
+            $this->make(Connection::class)
+        );
+
+        // Queue — JobRepository + JobQueue + Worker.
+        $this->factories[\App\Queue\JobRepository::class] = fn(): \App\Queue\JobRepository => new \App\Queue\JobRepository(
+            $this->make(Connection::class),
+            $this->logger
+        );
+        $this->factories[\App\Queue\JobQueue::class] = fn(): \App\Queue\JobQueue => new \App\Queue\JobQueue(
+            $this->make(\App\Queue\JobRepository::class),
+            $this->logger
+        );
+        $this->factories[\App\Queue\Worker::class] = fn(): \App\Queue\Worker => new \App\Queue\Worker(
+            $this->make(\App\Queue\JobQueue::class),
+            $this->logger
+        );
     }
 
     private function registerHttp(): void
@@ -136,14 +160,31 @@ final class Container
 
     private function registerModules(): void
     {
-        // ModuleLoader depends on Container (this), Router, EventBus (Phase 4),
-        // MigrationRunner, Logger. EventBus placeholder is created here for
-        // Phase 1; Phase 4 will replace with a real EventBus.
-        // For Phase 1 (no EventBus yet), we pass a null coalesced cast —
-        // Phase 4 will refactor this when EventBus is implemented.
-        // To keep this build green and testable, we delay ModuleLoader creation
-        // to a factory.
-        // (Phase 4 will introduce EventBus — see commit log.)
+        // Build the ModuleLoader and let each module register its bindings.
+        // Modules are discovered from app/Modules/<Name>/Module.php (PascalCase
+        // directories) in the fixed boot order declared in ModuleLoader.
+        $router = $this->make(Router::class);
+        $eventBus = $this->make(\App\Events\EventBus::class);
+        $migrationRunner = $this->make(MigrationRunner::class);
+
+        $moduleLoader = new ModuleLoader(
+            $this,
+            $router,
+            $eventBus,
+            $migrationRunner,
+            $this->logger
+        );
+        $modulesRoot = $this->rootPath . '/app/Modules';
+        $moduleLoader->discover($modulesRoot);
+
+        // register() each module — this binds factories into the Container.
+        $moduleLoader->registerAll();
+
+        // boot() each module — cross-module wiring (e.g. subscribers on EventBus).
+        $moduleLoader->bootAll();
+
+        // Keep the loader accessible for index.php to collect routes/subscribers.
+        $this->singletons[ModuleLoader::class] = $moduleLoader;
     }
 
     /**
