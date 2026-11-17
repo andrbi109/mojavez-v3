@@ -1129,6 +1129,51 @@ document serving، revision requests، license image access، و ~۳۵
 
 ---
 
+### فاز ۱۹: License + Document + Revision کامل (v1.9.1)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.1 (phase/19-license-document-revision branch, tag v1.9.1)
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-2-3 (partial) | ۳ کنترلر جدید کامل شد: LicenseController (۷ متد)، DocumentController (۶ متد)، RevisionController (۶ متد). همه stubهای فاز ۱۵ با پیاده‌سازی واقعی جایگزین شد. |
+
+#### Debt introduced
+
+هیچ.
+
+#### Debt carried forward به فاز ۲۰
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-2-3 (partial) | TrackingController::submitPayment + submitSms هنوز stub هستند | low | فاز ۲۰ |
+| D-4-5 | SSE تست واقعی نیاز به Apache | low | v1.9+ |
+| D-5-1 | seed_lookups sandbox fallback محدود | low | v1.9+ |
+| D-5-4 | business_address suffix-mask محدودیت | low | v1.9+ |
+| D-5-5 | county = township assumption | low | v1.9+ |
+| D-6-2 | static_analysis false-positive warnings | low | v1.9+ |
+| D-6-3 | test_track_scraper fixture missing | low | v1.9+ |
+| D-6-4 | install.php lock-file fallback | low | v1.9+ |
+| D-6-5 | docker secrets manual generation | low | v1.9+ |
+| D-6-6 | CI smoke job needs .env | low | v1.9+ |
+| D-8-1 | OutboundSyncService stub | low | v2.0+ |
+| D-8-2 | Stage2ReadinessChecker::checkContractTests | low | v1.9+ |
+| D-8-3 | NationalSyncOrchestrator dedup set | low | v1.9+ |
+| D-8-5 | smoke-test sandbox variance | low | v1.9+ |
+| D-14-1 | notifyAdmins username-bridge gap | low | v1.9+ |
+| D-16-1 | document_types فاقد is_required column | low | v1.9+ |
+
+#### توصیه برای فاز ۲۰
+
+- [ ] فاز ۲۰ (v1.9.2): TrackingController::submitPayment + submitSms + پولیش
+- [ ] فاز ۲۱ (v1.9.3): تست کامل + آماده‌سازی v2.0.0
+- [ ] پس از تأیید کاربر → v2.0.0
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -1143,16 +1188,17 @@ document serving، revision requests، license image access، و ~۳۵
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱۶ (seed document_types + admin default + real document upload):**
-۰ critical، ۰ high، **۰ medium**، ~۱۳ low. تغییر نسبت به فاز ۱۵:
-D-7-3 (partial) پرداخت شد (ویزارد step 4 حالا ۵ ورودی فایل واقعی نشان می‌دهد).
-D-16-1 جدید وارد شد (`document_types.is_required` ستون واقعی نیست — در
-controller از `doc_type_key` محاسبه می‌شود). خالص: ۱ مورد افزایش (۱۲ → ۱۳).
+**وضعیت پس از فاز ۱۹ (License + Document + Revision کامل):**
+۰ critical، ۰ high، **۰ medium**، ~۱۳ low (بدون تغییر). فاز ۱۹
+۳ کنترلر stub را کامل کرد: LicenseController (۷ متد)، DocumentController
+(۶ متد)، RevisionController (۶ متد). همه مسیرهای stub فاز ۱۵ حالا
+کاربردی هستند. تنها کار باقی‌مانده D-2-3: TrackingController::submitPayment
++ submitSms (در فاز ۲۰).
 
-پس از فاز ۱۶، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر»
-است — ~۱۳ مورد low-priority باقی‌مانده. مهم‌ترین دستاورد فاز ۱۶:
-حلقهٔ فاز ۱۵.۱ بسته شد — ویزارد حالا ۵ ورودی فایل واقعی با ۲ اجباری
-نشان می‌دهد (به‌جای hard-code ۳ ردیف)، و نصب تازه با admin پیش‌فرض
+پس از فاز ۱۹، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر»
+است — ~۱۳ مورد low-priority باقی‌مانده. مهم‌ترین دستاورد فاز ۱۹:
+همه مسیرهای stub فاز ۱۵ حالا کاربردی هستند — license image با توکن،
+document serving با thumbnail، revision workflow با admin approval.
 بلافاصله قابل استفاده است.
 
 اگر critical > 0 یا high > 3، هشدار در CI.
