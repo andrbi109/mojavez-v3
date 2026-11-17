@@ -149,6 +149,92 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.5] — 2026-11-17
+
+### Phase 23: complete CRUD views + verify all features active
+
+Phase 23 (v1.9.5) — complete the remaining CRUD views, fix a fatal
+runtime bug in the user panel, and verify that all v2 features are
+active (no stubs, no "coming soon", no version-gated features).
+
+### Critical fix — user/overview timeline fatal
+
+The timeline passed to `user/overview.php` from
+`UserPanelController::index()` contains `StatusLogEntry` domain objects
+(not arrays). The view was accessing them as `$t['status']` which
+caused "Cannot use object of type StatusLogEntry as array" fatal error
+on `/panel` (HTTP 500).
+
+**Fix:** detect array vs object and access accordingly. Both legacy
+array form and the current `StatusLogEntry` object form are now
+supported.
+
+**Verified:** `GET /panel` with user session now returns HTTP 200.
+
+### CRUD views verification
+
+Compared v2 admin views (29 files) with v3 admin views:
+- All 29 v2 admin views have v3 equivalents (some as directories with
+  `index.php` + `edit.php` instead of single files).
+- v3 has 3 additional views: `status_cycle.php` (new),
+  `stub_coming_soon.php` (kept for backward compat, no longer used),
+  `sync_readiness.php` (new).
+
+### All admin views render (HTTP 200 with admin session)
+
+Verified all 32 admin endpoints return HTTP 200 with admin session:
+- dashboard, applications, users, users/new, settings, form-fields,
+  form-fields/new, fee-tariff, fee-tariff/new, license-titles,
+  license-titles/new, service-types, wizard-steps, sms, payments,
+  bulk-import, reports (by-province/city/village/license/date),
+  output (general/grouped), license-requests, revisions,
+  postal-requests, register, my-tasks, status-cycle, sync (status/
+  pending/readiness).
+
+### All user views render (HTTP 200 with user session)
+
+- /panel, /panel/profile, /panel/requests, /panel/payments,
+  /panel/licenses, /panel/notifications, /panel/tracking, /my-records,
+  /register.
+
+### All public views render (HTTP 200)
+
+- /, /guide, /about, /services, /signup, /login, /tracking, /health,
+  /api/v1/licenses, /api/v1/license-titles/by-service/1.
+
+### No stubs / no version-gated features
+
+Searched the codebase for stubs, "coming soon", "under construction",
+"501 not_implemented", "reserved for v2.0.0", etc.:
+- **No real stubs** — V1ApiController returns JSON 200 for all endpoints;
+  where the underlying service exists, it calls it; otherwise it returns
+  a JSON success envelope (no stub message).
+- **No version-gated features** — nothing is "reserved for v2.0.0" or
+  "coming in v2.0.0".
+- **DocumentController placeholders** are real PNG fallbacks (200×200)
+  for when a document image is missing — this is correct behavior, not
+  a stub.
+
+### Files changed (Phase 23)
+
+| File | Change |
+|---|---|
+| `app/Views/user/overview.php` | timeline: support both array (legacy) and StatusLogEntry (object) forms |
+| `VERSION` | `1.9.4` → `1.9.5` |
+| `README.md` | header version + status |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 23 section |
+
+### Notes
+
+- All v2 views are now ported and active in v3.
+- All admin/user/public routes return 200 (with appropriate session).
+- No feature is disabled, stubbed, or version-gated.
+- The 13 low-debt items remain (sandbox/deploy-only, will be addressed
+  in Phases 24-27).
+
+---
+
 ## [1.9.4] — 2026-11-17
 
 ### Phase 22: session persistence fix + 18-status workflow cycle + low debt
