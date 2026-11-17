@@ -1,0 +1,97 @@
+# ===========================================================================
+# mojavez-v3 — public/.htaccess (Apache)
+# ===========================================================================
+# Inherited from v2's three-layer .htaccess philosophy. This is the public/
+# layer: rewrite + security headers + CSP + bot blocking + cache + ErrorDocument.
+#
+# Compatible with shared hosting (cPanel/DirectAdmin/Nginx+Apache):
+#  - all rules wrapped in <IfModule> so unknown modules don't 500
+#  - no <LimitExcept> (incompatible on some hosts)
+#  - no ServerTokens (Apache 2.4+)
+#  - no mod_php directives
+# ===========================================================================
+
+# ---- Character set --------------------------------------------------------
+AddDefaultCharset UTF-8
+
+# ---- Rewrite engine ------------------------------------------------------
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ---- Bot blocking (defense in depth — see public/robots.txt) --------
+    # Layer 1: search engines
+    RewriteCond %{HTTP_USER_AGENT} (?i:Googlebot|Bingbot|Slurp|DuckDuckBot|Baiduspider|YandexBot|Sogou|Exabot|facebot|ia_archiver|Applebot|Twitterbot|LinkedInBot|TelegramBot|Discordbot) [NC]
+    RewriteRule ^ - [R=410,L]
+
+    # Layer 2: AI crawlers
+    RewriteCond %{HTTP_USER_AGENT} (?i:GPTBot|ChatGPT-User|CCBot|anthropic-ai|Claude-Web|cohere-ai|Google-Extended|PerplexityBot|Amazonbot|Bytespider|Diffbot|Meta-ExternalAgent|OAI-SearchBot|Applebot-Extended) [NC]
+    RewriteRule ^ - [R=410,L]
+
+    # Layer 3: SEO scrapers
+    RewriteCond %{HTTP_USER_AGENT} (?i:SemrushBot|AhrefsBot|MJ12bot|DotBot|BLEXBot|SeznamBot|PetalBot) [NC]
+    RewriteRule ^ - [R=410,L]
+
+    # ---- Routing -------------------------------------------------------
+    # Send everything that's not a real file/dir to the front controller.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# ---- Security headers (Apache's Header module) ---------------------------
+# These are belt-and-braces; PHP also emits them via Response::SECURITY_HEADERS.
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=(), interest-cohort=()"
+    Header always set X-Robots-Tag "noindex, nofollow, noarchive, nosnippet, noimageindex"
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Resource-Policy "same-site"
+    Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header always set Pragma "no-cache"
+    Header always set Expires "0"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'self'; frame-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+
+    # HSTS only on HTTPS — Apache sets X-Forwarded-Proto or HTTPS=on
+    <If "%{HTTPS} == 'on'">
+        Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    </If>
+
+    # Strip server signature
+    Header always unset Server
+    Header always unset X-Powered-By
+</IfModule>
+
+# ---- Disable directory listing -------------------------------------------
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# ---- Disable ETag (info leak) --------------------------------------------
+<IfModule mod_headers.c>
+    Header unset ETag
+</IfModule>
+FileETag None
+
+# ---- Limit HTTP methods to those we support -------------------------------
+<IfModule mod_rewrite.c>
+    RewriteCond %{REQUEST_METHOD} ^(TRACE|TRACK|OPTIONS) [NC]
+    RewriteRule ^ - [R=405,L]
+</IfModule>
+
+# ---- ErrorDocument (with UTF-8 charset to avoid mojibake) ----------------
+# Persian text in ErrorDocument must be UTF-8 encoded.
+<IfModule mod_rewrite.c>
+    ErrorDocument 404 "<html><head><meta charset='UTF-8'><title>404</title></head><body dir='rtl'><h1>صفحه یافت نشد</h1></body></html>"
+    ErrorDocument 403 "<html><head><meta charset='UTF-8'><title>403</title></head><body dir='rtl'><h1>دسترسی ممنوع</h1></body></html>"
+    ErrorDocument 419 "<html><head><meta charset='UTF-8'><title>CSRF</title></head><body dir='rtl'><h1>توکن CSRF نامعتبر</h1></body></html>"
+    ErrorDocument 500 "<html><head><meta charset='UTF-8'><title>500</title></head><body dir='rtl'><h1>خطای داخلی سرور</h1></body></html>"
+    ErrorDocument 503 "<html><head><meta charset='UTF-8'><title>503</title></head><body dir='rtl'><h1>سرویس موقتاً در دسترس نیست</h1></body></html>"
+</IfModule>
+
+# ---- Default charset for Apache-served text files ------------------------
+<IfModule mod_mime.c>
+    AddType text/html .html
+    AddCharset UTF-8 .html .css .js .json .xml .svg
+</IfModule>

@@ -1,0 +1,42 @@
+# ===========================================================================
+# mojavez-v3 — root .htaccess (project root, above public/)
+# ===========================================================================
+# Three-layer .htaccess philosophy (inherited from v2):
+#   - root: redirect to public/ + block direct access to private dirs
+#   - public/: rewrite rules + security headers + CSP + bot blocking
+#   - uploads/: deny all + disable PHP execution
+#
+# This file is placed in the project root (above public/). It either:
+#   - redirects all traffic to public/ (when the host points DocumentRoot
+#     at the project root), OR
+#   - is unused (when DocumentRoot points at public/ directly).
+#
+# Compatible with shared hosting: all rules in <IfModule>.
+# ===========================================================================
+
+# ---- Block direct access to sensitive directories ------------------------
+# These directories must NEVER be web-accessible.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(app|config|database|deploy|docs|scripts|tools|storage|tests|src_repos)/.*$ - [F,L]
+    # Hide dotfiles.
+    RewriteRule (^|/)\. - [F,L]
+    # Block install.sql / schema.sql / seed-*.sql from being served.
+    RewriteRule \.(sql|env|md|log|sh)$ - [F,L]
+</IfModule>
+
+# ---- If DocumentRoot is the project root, redirect to public/ -----------
+<IfModule mod_rewrite.c>
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ /public/$1 [L,R=301]
+</IfModule>
+
+# ---- Disable directory listing -------------------------------------------
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# ---- Default charset -----------------------------------------------------
+AddDefaultCharset UTF-8
