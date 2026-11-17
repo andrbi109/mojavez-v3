@@ -56,6 +56,7 @@ final readonly class Applicant
         public ?int $userAccountId = null,
         public bool $paymentRequired = false,
         public ?string $paymentRequestedAt = null,
+        public ?string $postalCode = null,  // applicants.postal_code (CHAR(10))
     ) {}
 
     /**
@@ -95,6 +96,7 @@ final readonly class Applicant
             userAccountId: isset($row['user_account_id']) ? (int)$row['user_account_id'] : null,
             paymentRequired: (bool)($row['payment_required'] ?? false),
             paymentRequestedAt: isset($row['payment_requested_at']) ? (string)$row['payment_requested_at'] : null,
+            postalCode: isset($row['postal_code']) && $row['postal_code'] !== '' ? (string)$row['postal_code'] : null,
         );
     }
 

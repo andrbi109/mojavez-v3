@@ -13,6 +13,7 @@ use App\Modules\NationalGateway\Domain\License;
 use App\Modules\NationalGateway\Services\PatternMatcher;
 use App\Modules\NationalGateway\Services\MatchResult;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
+use App\Shared\Contracts\JobAndPropertyRepositoryInterface;
 use App\Shared\Contracts\NationalLicenseRepositoryInterface;
 use App\Shared\Contracts\PersonRepositoryInterface;
 use App\Shared\Contracts\SyncAuditLogRepositoryInterface;
@@ -55,6 +56,7 @@ final class ApplicantSyncAdapter
         private readonly PatternMatcher $matcher,
         private readonly ApplicantRepositoryInterface $applicantRepo,
         private readonly PersonRepositoryInterface $personRepo,
+        private readonly JobAndPropertyRepositoryInterface $propertyRepo,
         private readonly NationalLicenseRepositoryInterface $licenseRepo,
         private readonly SyncAuditLogRepositoryInterface $auditRepo,
         private readonly EventBus $eventBus,
@@ -123,10 +125,29 @@ final class ApplicantSyncAdapter
         );
 
         // Property details (province/township/business_address/postal_code)
-        // come from property_details — for now we pass an empty array; Phase 5
-        // (data migration) will wire the real property lookup. The matcher
-        // handles missing property fields gracefully (they just don't match).
+        // come from the property_details table (1:1 with applicants). This
+        // was D-4-2 — previously the matcher got an empty array, so only
+        // national_code + name + father_name could match. Now the full
+        // 9-field quorum can fire (AutoConfirmed requires national code +
+        // ≥2 OTHER fields — province + township + address are 3 more).
         $property = [];
+        $propertyDetail = $this->propertyRepo->findPropertyDetailByApplicantId($applicant->id);
+        if ($propertyDetail !== null) {
+            // Build the full business address from the components (street +
+            // alley + plaque) — the upstream business_address is a single
+            // string, so we concatenate for the matcher.
+            $addressParts = array_filter([
+                $propertyDetail->addressStreet,
+                $propertyDetail->addressAlley,
+                $propertyDetail->addressPlaque ? 'پلاک ' . $propertyDetail->addressPlaque : null,
+            ]);
+            $property = [
+                'province' => $propertyDetail->province,
+                'township' => $propertyDetail->county,  // county = township in v2/v3
+                'business_address' => implode('، ', $addressParts),
+                'postal_code' => $applicant->postalCode,  // postal_code lives on applicant, not property
+            ];
+        }
 
         $result = $this->matcher->matchQuorum($license, $personVo, $property);
 

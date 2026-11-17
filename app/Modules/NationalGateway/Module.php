@@ -163,6 +163,7 @@ final class Module implements ModuleInterface
                 $container->make(\App\Modules\NationalGateway\Services\PatternMatcher::class),
                 $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\PersonRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\JobAndPropertyRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
                 $container->make(\App\Events\EventBus::class),
