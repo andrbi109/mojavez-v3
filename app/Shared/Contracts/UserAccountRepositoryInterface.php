@@ -17,12 +17,38 @@ interface UserAccountRepositoryInterface
 
     public function findByMobile(string $mobile): ?array;
 
+    /**
+     * Look up an account by username (case-sensitive — usernames are
+     * normalised to lower-case by ProfileUpdateValidator, so callers
+     * should pass an already-lowercased value).
+     *
+     * @return array<string,mixed>|null
+     */
+    public function findByUsername(string $username): ?array;
+
     public function findByPersonId(int $personId): ?array;
 
     /**
      * @param array<string,mixed> $data
      */
     public function create(array $data): int;
+
+    /**
+     * Update a subset of the safe-to-edit profile fields on the account.
+     *
+     * The $fields array is a map of column-name => value. Only the
+     * following columns are accepted (whitelist-enforced in the PDO
+     * implementation):
+     *   - username (string|null)
+     *   - mobile   (string)
+     *
+     * (email and display_name are validated by ProfileUpdateValidator
+     * for forward compatibility but are NOT persisted because the
+     * `user_accounts` table has no such columns — see D-12-1.)
+     *
+     * @param array<string,mixed> $fields
+     */
+    public function update(int $id, array $fields): void;
 
     public function verifyPassword(int $accountId, string $password): bool;
 

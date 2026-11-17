@@ -8,6 +8,8 @@ use App\Http\Csrf;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\Session;
+use App\Modules\Core\Services\AvatarService;
+use App\Modules\Core\Support\ProfileUpdateValidator;
 use App\Shared\Contracts\LicenseFileRepositoryInterface;
 use App\Shared\Contracts\PaymentRepositoryInterface;
 use App\Shared\Contracts\ServiceTypeRepositoryInterface;
@@ -44,6 +46,14 @@ use App\Shared\Support\StructuredLogger;
  * only markAllRead is implemented here; the others are acknowledged in
  * DEBT_REVIEW D-9-1 for v1.3 (they need an AvatarService + validation work
  * that is out of scope for closing the 404).
+ *
+ * Phase 12 (v1.3.0) — D-9-1 paid: updateProfile() and uploadAvatar() are
+ * now live (no longer 501 stubs). updateProfile() delegates to
+ * ProfileUpdateValidator (static) + UserAccountRepositoryInterface::update()
+ * (new in Phase 12). uploadAvatar() delegates to AvatarService (new in
+ * Phase 12, bound in Core/Module.php). profile() GET now renders an
+ * editable form (POST /panel/profile + multipart POST /panel/avatar),
+ * with AJAX submit + inline feedback.
  */
 final class UserPanelController extends Controller
 {
@@ -60,6 +70,7 @@ final class UserPanelController extends Controller
         private readonly LicenseFileRepositoryInterface $licenseFiles,
         private readonly ServiceTypeRepositoryInterface $serviceTypes,
         private readonly StatusLogRepositoryInterface $statusLog,
+        private readonly AvatarService $avatars,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -124,42 +135,107 @@ final class UserPanelController extends Controller
     }
 
     /**
-     * GET /panel/profile — read-only profile view.
+     * GET /panel/profile — editable profile form.
      *
-     * POST /panel/profile (updateProfile) and POST /panel/avatar
-     * (uploadAvatar) are routed but return a 501 with a TODO marker for
-     * v1.3 (see DEBT_REVIEW D-9-1). Phase 9's contract is only to stop the
-     * 404s — full profile editing is a deliberate later scope.
+     * Phase 12 (v1.3.0): the form POSTs to /panel/profile (updateProfile)
+     * via fetch() and the avatar form POSTs to /panel/avatar (uploadAvatar)
+     * via fetch() with FormData. The view (`user/profile.php`) renders
+     * both forms + a `<div id="profile-feedback">` for inline AJAX
+     * messages + a `<script>` block that wires up the submits.
+     *
+     * Only `username` and `mobile` are actually persisted — the form
+     * also offers `email` and `display_name` fields (validated by
+     * ProfileUpdateValidator for forward compatibility, but the
+     * `user_accounts` schema has no such columns — see D-12-1).
      */
     public function profile(Request $request, array $params = []): Response
     {
         $this->requireUserLogin();
         $account = $this->currentAccount();
         return $this->render('user/profile', [
-            'title'      => 'پروفایل',
-            'activeMenu' => 'profile',
-            'account'    => $account,
-            'unreadCount' => $this->notifications->unreadCount((int)$account['id']),
+            'title'        => 'پروفایل',
+            'activeMenu'   => 'profile',
+            'account'      => $account,
+            'avatarUrl'    => $this->avatarUrlFor($account),
+            'unreadCount'  => $this->notifications->unreadCount((int)$account['id']),
         ], 'user_layout');
     }
 
-    /** POST /panel/profile — stub (v1.3, D-9-1). */
+    /**
+     * POST /panel/profile — validate + persist profile edits.
+     *
+     * Delegates to ProfileUpdateValidator (static). On validation
+     * failure: 422 with Persian `errors[]`. On success: 200 with
+     * `success:true` and the persisted `clean` fields (so the client
+     * can refresh the form values).
+     *
+     * Only `username` and `mobile` are actually persisted — `email`
+     * and `display_name` are validated for forward compatibility but
+     * the `user_accounts` table has no such columns (D-12-1).
+     */
     public function updateProfile(Request $request, array $params = []): Response
     {
         $this->requireUserLogin();
-        return Response::html(
-            '<div class="container py-5"><div class="alert alert-warning">'
-            . 'ویرایش پروفایل در نسخهٔ ۱.۳ فعال خواهد شد (DEBT_REVIEW D-9-1).'
-            . '</div><a href="/panel/profile" class="btn btn-secondary">بازگشت</a></div>',
-            501
+        $account = $this->currentAccount();
+        $result = ProfileUpdateValidator::validate(
+            $request->body(),
+            $this->userAccounts,
+            (int)$account['id']
         );
+        if (!$result['valid']) {
+            return Response::json(
+                ['success' => false, 'errors' => $result['errors']],
+                422
+            );
+        }
+        // Persist only the safe-to-update columns. ProfileUpdateValidator
+        // may also return email/display_name in clean[] — they're silently
+        // dropped by update()'s whitelist.
+        $this->userAccounts->update((int)$account['id'], $result['clean']);
+        $this->logger->info('User updated profile', [
+            '_module'    => 'core',
+            'account_id' => $account['id'],
+            'fields'     => array_keys($result['clean']),
+        ]);
+        return Response::json([
+            'success' => true,
+            'clean'   => $result['clean'],
+        ]);
     }
 
-    /** POST /panel/avatar — stub (v1.3, D-9-1). */
+    /**
+     * POST /panel/avatar — accept a multipart avatar upload, resize +
+     * store via AvatarService. Returns JSON success/error.
+     */
     public function uploadAvatar(Request $request, array $params = []): Response
     {
         $this->requireUserLogin();
-        return Response::json(['status' => 'not_implemented', 'message' => 'avatar upload in v1.3 (D-9-1)'], 501);
+        $account = $this->currentAccount();
+        $file = $_FILES['avatar'] ?? null;
+        if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return Response::json(
+                ['success' => false, 'error' => 'no_file'],
+                422
+            );
+        }
+        try {
+            $result = $this->avatars->upload((int)$account['id'], $file);
+            return Response::json(['success' => true, 'data' => $result]);
+        } catch (\InvalidArgumentException $e) {
+            return Response::json(
+                ['success' => false, 'error' => $e->getMessage()],
+                422
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('Avatar upload failed', [
+                '_module' => 'core',
+                'error'   => $e->getMessage(),
+            ]);
+            return Response::json(
+                ['success' => false, 'error' => 'server_error'],
+                500
+            );
+        }
     }
 
     /**
@@ -314,5 +390,45 @@ final class UserPanelController extends Controller
             }
         }
         return $map;
+    }
+
+    /**
+     * Resolve the avatar URL for an account, or null if no avatar is set.
+     *
+     * Phase 12 (v1.3.0): the avatar document id lives on
+     * `user_accounts.avatar_document_id` (FK→documents.id, set by
+     * AvatarService::upload). There is currently NO public route that
+     * serves the avatar file from disk — that's tracked as a known
+     * limitation (the file is served by the front controller through
+     * a future `/panel/avatar/file` route, or by reading
+     * `documents.file_path` directly when the admin/user views the
+     * profile). For now we return null and the view falls back to the
+     * initial-letter avatar circle.
+     *
+     * @param array<string,mixed> $account
+     */
+    private function avatarUrlFor(array $account): ?string
+    {
+        $docId = (int)($account['avatar_document_id'] ?? 0);
+        if ($docId <= 0) {
+            return null;
+        }
+        // Best-effort: if AvatarService can resolve a real on-disk path,
+        // we surface a relative URL to it (the file lives under
+        // storage/uploads/avatars/account-{id}.jpg — which is outside
+        // the web root for security). The future `/panel/avatar/file`
+        // route will serve it through the front controller; for now
+        // return null and let the view fall back to the letter avatar.
+        try {
+            $path = $this->avatars->getPath($docId);
+            if ($path !== null && is_file($path)) {
+                // Return a cache-busting URL once the serving route exists.
+                // For now this stays null — the view shows the letter avatar.
+                return null;
+            }
+        } catch (\Throwable) {
+            // best-effort — never break the profile page over a missing file.
+        }
+        return null;
     }
 }

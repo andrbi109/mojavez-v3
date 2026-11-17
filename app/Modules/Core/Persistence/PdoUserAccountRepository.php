@@ -17,6 +17,11 @@ final class PdoUserAccountRepository extends PdoRepository implements UserAccoun
         return $this->fetchOne('SELECT * FROM user_accounts WHERE mobile = ? LIMIT 1', [$mobile]);
     }
 
+    public function findByUsername(string $username): ?array
+    {
+        return $this->fetchOne('SELECT * FROM user_accounts WHERE username = ? LIMIT 1', [$username]);
+    }
+
     public function findByPersonId(int $personId): ?array
     {
         return $this->fetchOne('SELECT * FROM user_accounts WHERE person_id = ? LIMIT 1', [$personId]);
@@ -34,6 +39,41 @@ final class PdoUserAccountRepository extends PdoRepository implements UserAccoun
                 $data['is_active'] ?? 1,
             ]
         );
+    }
+
+    /**
+     * Update a subset of profile fields on the account. Whitelist-
+     * enforced: only `username` and `mobile` are accepted (the only
+     * columns on `user_accounts` that are user-editable). Any other
+     * keys in $fields are silently dropped.
+     *
+     * Builds the SET clause dynamically from the keys present, with
+     * positional `?` placeholders. The build is deterministic: keys
+     * are sorted so the generated SQL is identical for the same input
+     * (helps statement cache hits on MariaDB).
+     *
+     * @param array<string,mixed> $fields
+     */
+    public function update(int $id, array $fields): void
+    {
+        $allowed = ['username', 'mobile'];
+        // Filter to whitelisted keys that are actually present.
+        $updates = [];
+        $params = [];
+        foreach ($allowed as $col) {
+            if (array_key_exists($col, $fields)) {
+                $updates[] = "{$col} = ?";
+                $params[] = $fields[$col];
+            }
+        }
+        if ($updates === []) {
+            // Nothing to update — short-circuit (avoid sending an
+            // `UPDATE ... SET  WHERE id = ?` SQL syntax error).
+            return;
+        }
+        $params[] = $id;
+        $sql = 'UPDATE user_accounts SET ' . implode(', ', $updates) . ' WHERE id = ?';
+        $this->execute($sql, $params);
     }
 
     public function verifyPassword(int $accountId, string $password): bool
