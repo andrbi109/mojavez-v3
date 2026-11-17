@@ -149,6 +149,118 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.1] — 2026-11-17
+
+### Added — Phase 19: complete License + Document + Revision controllers
+
+Phase 19 completes the three controllers that were stubbed in Phase 15
+(v1.6.0). They are now fully functional — license image access by 72h
+token, document serving with thumbnails, and revision requests with
+admin approval workflow.
+
+**LicenseController (7 methods):**
+
+- `firstAccess` (`POST /tracking/license/first-access`) — verify
+  ownership (tracking_code + mobile), insert a `license_access_requests`
+  row, generate a 72h token, return JSON.
+- `requestAccess` (`POST /tracking/license/request-access`) — same as
+  firstAccess but rate-limited to 2 per week per applicant.
+- `submitReissuePayment` (`POST /tracking/license/pay`) — accept
+  receipt file, insert a `payments` row with `purpose='reissue_license'`.
+- `viewByToken` (`GET /license/view/{token}`) — **public** route. Look
+  up the access request by token, check 72h expiry + status='تأیید',
+  render the license image.
+- `upload` (`POST /admin/license/upload`, admin) — accept image/PDF
+  ≤ 10MB, save under `storage/uploads/licenses/{applicant_id}/`,
+  insert a `license_files` row, set pending requests to 'تأیید'.
+- `requests` (`GET /admin/license-requests`, admin) — list access
+  requests with status badges.
+- `reviewRequest` (`POST /admin/license-requests/review`, admin) —
+  approve/reject.
+
+**DocumentController (6 methods):**
+
+- `view` (`POST /document/view`) — AJAX modal content for a document.
+- `avatar` (`GET /document/avatar`) — stream the user's avatar file.
+- `thumb` (`GET /document/thumb/{id}`) — generate a 200×200 GD
+  thumbnail on the fly.
+- `inline` (`GET /document/inline/{id}`) — serve with
+  `Content-Disposition: inline` (browser native viewer for PDFs).
+- `pdfViewer` (`GET /document/pdf-viewer`) — iframe wrapper.
+- `raw` (`GET /document/raw/{id}`) — serve with
+  `Content-Disposition: attachment`.
+
+All document-serving methods verify ownership (the document's
+`applicant_id` belongs to the current user OR the session is admin).
+
+**RevisionController (6 methods):**
+
+- `form` (`GET /tracking/revision/{trackingCode}`, user) — render the
+  revision request form.
+- `submit` (`POST /tracking/revision/submit`, user) — insert an
+  `applicant_revisions` row with payload JSON + note.
+- `index` (`GET /admin/revisions`, admin) — list revisions with
+  status badges.
+- `detail` (`GET /admin/revisions/view/{id}`, admin) — side-by-side
+  comparison of current vs. proposed values.
+- `approve` (`POST /admin/revisions/approve/{id}`, admin) — apply the
+  payload to the applicant row, set status='تأیید', insert status_log.
+- `reject` (`POST /admin/revisions/reject/{id}`, admin) — set
+  status='رد' + reject_reason.
+
+**New views (6):**
+
+- `app/Views/admin/license_requests.php` — list of license access
+  requests with review buttons.
+- `app/Views/admin/revisions.php` — list of applicant revisions.
+- `app/Views/admin/revision_detail.php` — side-by-side comparison +
+  approve/reject form.
+- `app/Views/tracking/revision.php` — user-facing revision request form.
+- `app/Views/license/view.php` — public license view by token.
+- `app/Views/document/modal.php` — AJAX modal content.
+
+**`admin_layout.php` sidebar extended** — added `/admin/license-requests`
+(درخواست‌های مجوز, icon: bi-patch-check) and `/admin/revisions`
+(بازبینی‌ها, icon: bi-arrow-clockwise) under the "درخواست‌ها" block.
+
+### Files changed (Phase 19)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/Controllers/LicenseController.php` | 7 methods fully implemented (was stubs) |
+| `app/Modules/Core/Controllers/DocumentController.php` | 6 methods fully implemented (was stubs) |
+| `app/Modules/Core/Controllers/RevisionController.php` | 6 methods fully implemented (was stubs) |
+| `app/Views/admin/license_requests.php` | new — list of access requests |
+| `app/Views/admin/revisions.php` | new — list of revisions |
+| `app/Views/admin/revision_detail.php` | new — side-by-side + approve/reject |
+| `app/Views/tracking/revision.php` | new — user revision form |
+| `app/Views/license/view.php` | new — public license view by token |
+| `app/Views/document/modal.php` | new — AJAX modal content |
+| `app/Views/admin_layout.php` | +2 sidebar links (license-requests, revisions) |
+| `tools/static_analysis_ignore.txt` | +1 false-positive pattern (`$requestId` in license_requests.php) |
+| `VERSION` | `1.9.0` → `1.9.1` |
+| `README.md` | header version `1.9.0`/فاز ۱۸ → `1.9.1`/فاز ۱۹ |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 19 section + live-debt summary update |
+| `docs/PHASE_19_LICENSE_DOC_REVISION.md` | new — Phase 19 documentation |
+
+### Notes
+
+- LicenseController::viewByToken is the only public route (no auth) —
+  the 72h token is the auth. All other routes require either user login
+  + ownership check or admin role.
+- DocumentController::thumb uses GD `imagecreatetruecolor(200, 200)` +
+  `imagecopyresampled()` for crop-center resize, same pattern as
+  `AvatarService::upload()`.
+- RevisionController::approve applies the payload JSON to the applicant
+  row field-by-field via `applicants->update()` (the whitelist from
+  Phase 15.1 is in effect).
+- The 6 new views follow the Bootstrap 5 RTL + Vazirmatn style of the
+  existing admin views.
+- Static-analysis strict mode passes (0 surviving warnings).
+
+---
+
 ## [1.9.0] — 2026-11-17
 
 ### Added — Phase 18: payment + bulk-import + report controllers
