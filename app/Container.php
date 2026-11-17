@@ -9,14 +9,14 @@ use App\Http\Csrf;
 use App\Modules\ModuleLoader;
 use App\Shared\Persistence\Connection;
 use App\Shared\Persistence\MigrationRunner;
-use App\Support\Config;
-use App\Support\Environment;
-use App\Support\Hash;
-use App\Support\Normalizer;
-use App\Support\PersianDate;
-use App\Support\StructuredLogger;
-use App\Support\Validator;
-use App\Support\CsvReader;
+use App\Shared\Support\Config;
+use App\Shared\Support\Environment;
+use App\Shared\Support\Hash;
+use App\Shared\Support\Normalizer;
+use App\Shared\Support\PersianDate;
+use App\Shared\Support\StructuredLogger;
+use App\Shared\Support\Validator;
+use App\Shared\Support\CsvReader;
 use Closure;
 use ReflectionClass;
 use ReflectionNamedType;
@@ -149,9 +149,14 @@ final class Container
     /**
      * Bind a factory closure or pre-built instance to a class name.
      *
+     * Accepts either a Closure (factory) or a pre-built object instance.
+     * Closure is a subtype of object, so PHP 8.2 rejects the explicit
+     * union `Closure|object` as redundant — we accept a plain object
+     * parameter and check for Closure at runtime.
+     *
      * @param Closure|object $factory
      */
-    public function bind(string $class, Closure|object $factory): void
+    public function bind(string $class, object $factory): void
     {
         $this->factories[$class] = $factory;
     }

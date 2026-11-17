@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Shared\Persistence;
 
-use App\Support\StructuredLogger;
+use App\Shared\Support\StructuredLogger;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -94,6 +94,11 @@ final class Connection
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
             PDO::ATTR_PERSISTENT         => false,
+            // Buffer queries client-side so multi-statement scripts (like
+            // migration files split on ; into many exec() calls) don't trip
+            // the "unbuffered queries active" error when the next query starts
+            // before the previous result set is fully consumed.
+            PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
         ];
 
         $maxAttempts = 3;

@@ -5,7 +5,7 @@ namespace App\Modules\Core\Controllers;
 
 use App\Http\Request;
 use App\Http\Response;
-use App\Support\Environment;
+use App\Shared\Support\Environment;
 
 /**
  * Cron-triggered endpoints — protected by hash_equals(SECRET, provided).

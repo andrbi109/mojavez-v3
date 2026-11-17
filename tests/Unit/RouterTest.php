@@ -4,7 +4,7 @@ declare(strict_types=1);
 use App\Http\Exceptions\MethodNotAllowedException;
 use App\Http\Exceptions\RouteNotFoundException;
 use App\Http\Router;
-use App\Support\StructuredLogger;
+use App\Shared\Support\StructuredLogger;
 
 require_once __DIR__ . '/../TestCase.php';
 
@@ -60,11 +60,14 @@ final class RouterTest extends TestCase
         $this->assertSame('CatchAllController', $matched['handler'], 'catch-all matches unknown paths');
 
         // 6. Method-not-allowed when path matches but method doesn't.
-        $router->post('/login', 'AuthController', 'login');
+        // Use a fresh router so the catch-all /{id} from the previous test
+        // doesn't swallow /login before the MethodNotAllowed check can fire.
+        $router2 = new Router($logger);
+        $router2->post('/login', 'AuthController', 'login');
         $threw = false;
         $allowed = [];
         try {
-            $router->match('GET', '/login');
+            $router2->match('GET', '/login');
         } catch (MethodNotAllowedException $e) {
             $threw = true;
             $allowed = $e->allowedMethods();
@@ -86,13 +89,6 @@ final class RouterTest extends TestCase
         $this->assertNotNull($router->routes(), 'routes() returns the array');
     }
 
-    /**
-     * @param array<int,string> $haystack
-     */
-    private function assertContains(string $needle, array $haystack, string $message = ''): void
-    {
-        $this->assertTrue(in_array($needle, $haystack, true), $message ?: "$needle not found in array");
-    }
 }
 
 return new RouterTest();

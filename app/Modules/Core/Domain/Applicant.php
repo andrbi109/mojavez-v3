@@ -6,7 +6,7 @@ namespace App\Modules\Core\Domain;
 use App\Modules\Core\Domain\Enums\ApplicantStatus;
 use App\Modules\Core\Domain\Enums\LicenseState;
 use App\Modules\Core\Domain\Enums\PersonType;
-use App\Support\Normalizer;
+use App\Shared\Support\Normalizer;
 
 /**
  * Applicant — the heart of the local v3 system (the case file).

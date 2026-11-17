@@ -3,12 +3,12 @@ declare(strict_types=1);
 
 namespace App\Shared\Persistence;
 
-use App\Support\StructuredLogger;
+use App\Shared\Support\StructuredLogger;
 use PDO;
 use RuntimeException;
 
 /**
- * Migration runner — scans app/Modules/*/migrations/*.sql, runs any not
+ * Migration runner — scans app/Modules/<Name>/migrations/*.sql, runs any not
  * yet applied, and records each application in the `migrations` table.
  *
  * Design (per docs/00-MASTER.md §24.5 & docs/SCHEMA_OWNERSHIP.md §4):
@@ -123,10 +123,24 @@ final class MigrationRunner
             return false;
         }
 
-        // Run the migration inside a transaction.
+        // Run the migration's SQL script, then record the application in
+        // the migrations table.
+        //
+        // NOTE on transactions: MySQL/MariaDB perform an IMPLICIT COMMIT
+        // around DDL statements (CREATE/ALTER/DROP TABLE). That means a
+        // BEGIN...COMMIT wrapping a script full of CREATE TABLE statements
+        // does NOT give us a single atomic transaction — the first CREATE
+        // auto-commits and our final commit() finds no active transaction
+        // (raising "There is no active transaction").
+        //
+        // We therefore run the migration script OUTSIDE a transaction (each
+        // statement is atomic on its own), and only wrap the INSERT into
+        // migrations in a transaction so the recording never leaves a
+        // half-applied state. This is the standard pattern used by
+        // Laravel's Migration system for the same reason.
         try {
-            $this->connection->transactional(function () use ($content, $filename, $module, $checksum): void {
-                $this->executeSqlScript($content);
+            $this->executeSqlScript($content);
+            $this->connection->transactional(function () use ($filename, $module, $checksum): void {
                 $this->connection->execute(
                     'INSERT INTO migrations (filename, module, checksum) VALUES (?, ?, ?)',
                     [$filename, $module, $checksum]
@@ -159,8 +173,11 @@ final class MigrationRunner
      * our hand-written migration files — none of them use `;` inside
      * string literals or stored procedures).
      *
-     * Each statement is executed via PDO::exec (no prepare needed; the
-     * migration files contain only DDL/DML with no user-supplied params).
+     * Each statement is run via prepare()+execute()+closeCursor() rather
+     * than PDO::exec() so that SELECT-style statements (e.g. the bootstrap
+     * marker's `SELECT 1`) don't leave an unbuffered result set open when
+     * the next statement runs. closeCursor() releases the server-side
+     * cursor for each statement before the next one starts.
      */
     private function executeSqlScript(string $content): void
     {
@@ -173,11 +190,26 @@ final class MigrationRunner
             static fn (string $s): bool => $s !== ''
         );
 
-        foreach ($statements as $stmt) {
-            if ($stmt === '') {
-                continue;
+        $pdo = $this->connection->pdo();
+        // Disable FK checks for the duration of this script so circular FK
+        // relationships (e.g. license_access_requests ↔ payments in
+        // migration 003) can be created in any order. Mirrors v2's
+        // schema.sql which wraps the whole script in
+        // SET FOREIGN_KEY_CHECKS=0 ... =1.
+        $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+        try {
+            foreach ($statements as $stmt) {
+                if ($stmt === '') {
+                    continue;
+                }
+                $stmtObj = $pdo->prepare($stmt);
+                $stmtObj->execute();
+                // Drain any result set rows + close the server-side cursor so the
+                // next statement doesn't trip the "unbuffered queries active" error.
+                $stmtObj->closeCursor();
             }
-            $this->connection->pdo()->exec($stmt);
+        } finally {
+            $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
         }
     }
 

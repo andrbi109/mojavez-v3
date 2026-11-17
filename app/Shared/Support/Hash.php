@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Support;
+namespace App\Shared\Support;
 
 /**
  * Hash utilities — SHA-256, short cache keys, secure random tokens,

@@ -10,10 +10,10 @@ use App\Http\Response;
 use App\Http\Session;
 use App\Shared\Contracts\UserAccountRepositoryInterface;
 use App\Shared\Contracts\UserRepositoryInterface;
-use App\Support\Environment;
-use App\Support\Hash;
-use App\Support\StructuredLogger;
-use App\Support\Validator;
+use App\Shared\Support\Environment;
+use App\Shared\Support\Hash;
+use App\Shared\Support\StructuredLogger;
+use App\Shared\Support\Validator;
 
 /**
  * AuthController — handles both admin and user authentication.

@@ -21,9 +21,9 @@ final class HomeController extends Controller
         \App\Container $container,
         \App\Http\Session $session,
         \App\Http\Csrf $csrf,
-        \App\Support\Environment $environment,
-        \App\Support\Hash $hash,
-        \App\Support\StructuredLogger $logger,
+        \App\Shared\Support\Environment $environment,
+        \App\Shared\Support\Hash $hash,
+        \App\Shared\Support\StructuredLogger $logger,
         private readonly SettingRepositoryInterface $settings
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);

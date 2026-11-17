@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Support;
+namespace App\Shared\Support;
 
 /**
  * Environment loader — reads a simple .env file (KEY=VALUE per line)

@@ -34,11 +34,12 @@ spl_autoload_register(static function (string $class): void {
 });
 
 use App\Container;
+use App\Events\EventBus;
 use App\Http\Router;
 use App\Modules\ModuleLoader;
 use App\Shared\Persistence\MigrationRunner;
-use App\Support\Environment;
-use App\Support\StructuredLogger;
+use App\Shared\Support\Environment;
+use App\Shared\Support\StructuredLogger;
 
 $environment = Environment::load(ROOT_PATH . '/.env');
 $logger = new StructuredLogger(
@@ -52,11 +53,8 @@ $container->boot(ROOT_PATH);
 $router = $container->make(Router::class);
 $migrationRunner = $container->make(MigrationRunner::class);
 
-// Anonymous placeholder EventBus (Phase 4 introduces the real one).
-$eventBus = new class {
-    public function subscribe(string $e, callable|array $h): void {}
-    public function publish(string $e, array $p = []): void {}
-};
+// EventBus — real class (Phase 1 placeholder, will be fleshed out in Phase 4).
+$eventBus = new EventBus();
 
 $moduleLoader = new ModuleLoader(
     $container,

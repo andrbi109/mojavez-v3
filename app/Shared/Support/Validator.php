@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Support;
+namespace App\Shared\Support;
 
 /**
  * Input validation utilities — whitelist-first, no regex-only for
@@ -85,15 +85,20 @@ final class Validator
 
     /**
      * Sanitize a string for safe display — strip control chars,
-     * normalize whitespace, truncate to max length.
+     * normalize whitespace (collapse runs to single space), truncate.
      */
     public static function sanitizeText(mixed $value, int $max = 1000): string
     {
         if (!is_string($value)) {
             return '';
         }
-        $value = trim($value);
+        // Strip control chars except \t \n \r.
         $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value) ?? $value;
+        // Collapse runs of whitespace into a single space (mimics
+        // Normalizer::persianText but without the ZWNJ-preservation nuance —
+        // suitable for short display strings like descriptions and notes).
+        $value = preg_replace('/[ \t\r\n]+/u', ' ', $value) ?? $value;
+        $value = trim($value);
         if (mb_strlen($value) > $max) {
             $value = mb_substr($value, 0, $max);
         }

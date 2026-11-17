@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Core\Services;
 
-use App\Support\Config;
-use App\Support\StructuredLogger;
+use App\Shared\Support\Config;
+use App\Shared\Support\StructuredLogger;
 use RuntimeException;
 
 /**

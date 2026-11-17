@@ -7,7 +7,7 @@ use App\Container;
 use App\Http\Request;
 use App\Http\Response;
 use App\Shared\Persistence\Connection;
-use App\Support\Environment;
+use App\Shared\Support\Environment;
 use PDOException;
 
 /**

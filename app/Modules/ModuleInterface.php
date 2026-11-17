@@ -12,7 +12,7 @@ namespace App\Modules;
  *  - its own routes (appended to the global router at boot)
  *  - its own event subscribers (attached to the EventBus at boot)
  *
- * ModuleLoader discovers modules by scanning app/Modules/*/Module.php and
+ * ModuleLoader discovers modules by scanning app/Modules/<Name>/Module.php and
  * invoking them in dependency order:
  *   1. register()  — declare services & interfaces into the Container.
  *   2. boot()       — perform any cross-module wiring (after all modules registered).

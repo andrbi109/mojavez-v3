@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use App\Support\Normalizer;
+use App\Shared\Support\Normalizer;
 
 require_once __DIR__ . '/../TestCase.php';
 
@@ -23,8 +23,8 @@ final class NormalizerTest extends TestCase
         // Empty string.
         $this->assertSame('', Normalizer::digits(''), 'Empty digits');
 
-        // National code normalization — 9-digit input padded to 10.
-        $this->assertSame('0720593107', Normalizer::nationalCode('721593107'), 'National code padding');
+        // National code normalization — 9-digit input padded to 10 (leading 0).
+        $this->assertSame('0721593107', Normalizer::nationalCode('721593107'), 'National code padding');
         // National code with separators stripped.
         $this->assertSame('0720593107', Normalizer::nationalCode('072-059-3107'), 'National code with dashes');
         // Persian digits in national code.

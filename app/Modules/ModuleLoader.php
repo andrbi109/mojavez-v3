@@ -14,7 +14,7 @@ use RuntimeException;
  * Discovers and boots modules under app/Modules/<Name>/Module.php.
  *
  * Boot order:
- *   1. discover()       — scan app/Modules/*/Module.php for ModuleInterface
+ *   1. discover()       — scan app/Modules/<Name>/Module.php for ModuleInterface
  *                         instances, instantiate them (no constructor args
  *                         by contract).
  *   2. registerAll()    — call register() on each (declare services).
@@ -61,7 +61,7 @@ final class ModuleLoader
     ) {}
 
     /**
-     * Scan app/Modules/*/Module.php and instantiate each module.
+     * Scan app/Modules/<Name>/Module.php and instantiate each module.
      */
     public function discover(string $modulesRoot): void
     {

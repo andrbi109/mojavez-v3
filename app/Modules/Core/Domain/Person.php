@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace App\Modules\Core\Domain;
 
 use App\Modules\Core\Domain\Enums\PersonType;
-use App\Support\Normalizer;
+use App\Shared\Support\Normalizer;
 
 /**
  * Person — the identity anchor (one person → many applications).

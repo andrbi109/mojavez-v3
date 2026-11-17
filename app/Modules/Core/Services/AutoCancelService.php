@@ -6,8 +6,8 @@ namespace App\Modules\Core\Services;
 use App\Modules\Core\Domain\Enums\ApplicantStatus;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
-use App\Support\Config;
-use App\Support\StructuredLogger;
+use App\Shared\Support\Config;
+use App\Shared\Support\StructuredLogger;
 
 /**
  * AutoCancelService — auto-cancels expired applications + recomputes priority

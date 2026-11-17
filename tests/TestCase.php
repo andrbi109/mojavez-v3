@@ -26,7 +26,7 @@ spl_autoload_register(static function (string $class): void {
 require_once ROOT_PATH . '/app/Shared/Support/Environment.php';
 require_once ROOT_PATH . '/app/Shared/Support/StructuredLogger.php';
 
-final class TestCase
+class TestCase
 {
     private int $assertions = 0;
     private int $failures = 0;
@@ -95,6 +95,30 @@ final class TestCase
         }
     }
 
+    public function assertInstanceOf(string $expected, mixed $actual, string $message = ''): void
+    {
+        $this->assertions++;
+        if (!is_object($actual) || !($actual instanceof $expected)) {
+            $actual_class = is_object($actual) ? get_class($actual) : gettype($actual);
+            $this->recordFailure($message ?: sprintf(
+                'expected instance of %s, got %s',
+                $expected,
+                $actual_class
+            ));
+        }
+    }
+
+    public function assertContains(mixed $needle, array $haystack, string $message = ''): void
+    {
+        $this->assertions++;
+        if (!in_array($needle, $haystack, true)) {
+            $this->recordFailure($message ?: sprintf(
+                '%s not found in array',
+                var_export($needle, true)
+            ));
+        }
+    }
+
     public function assertions(): int
     {
         return $this->assertions;
@@ -122,9 +146,9 @@ final class TestCase
     /**
      * Helper: create a StructuredLogger that writes to a temp path.
      */
-    protected function makeLogger(string $level = 'debug'): \App\Support\StructuredLogger
+    protected function makeLogger(string $level = 'debug'): \App\Shared\Support\StructuredLogger
     {
         $path = sys_get_temp_dir() . '/mojavez-v3-test-' . uniqid() . '.log';
-        return new \App\Support\StructuredLogger($path, $level);
+        return new \App\Shared\Support\StructuredLogger($path, $level);
     }
 }

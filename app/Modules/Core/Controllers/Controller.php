@@ -10,9 +10,9 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\Session;
 use App\Modules\Core\Domain\Enums\ApplicantStatus;
-use App\Support\Environment;
-use App\Support\Hash;
-use App\Support\StructuredLogger;
+use App\Shared\Support\Environment;
+use App\Shared\Support\Hash;
+use App\Shared\Support\StructuredLogger;
 
 /**
  * Base controller with guards + view rendering.
@@ -107,7 +107,7 @@ abstract class Controller
         if ($role === 'admin') {
             return;
         }
-        $workflow = \App\Support\Config::get('workflow.transitions', []);
+        $workflow = \App\Shared\Support\Config::get('workflow.transitions', []);
         $roleRules = $workflow[$role] ?? ['from' => [], 'to' => []];
         $from = $roleRules['from'] ?? [];
         $to = $roleRules['to'] ?? [];

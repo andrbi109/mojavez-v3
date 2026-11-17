@@ -5,7 +5,7 @@ namespace App\Http;
 
 use App\Http\Exceptions\MethodNotAllowedException;
 use App\Http\Exceptions\RouteNotFoundException;
-use App\Support\StructuredLogger;
+use App\Shared\Support\StructuredLogger;
 use Closure;
 
 /**

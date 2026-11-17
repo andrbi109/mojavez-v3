@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Support;
+namespace App\Shared\Support;
 
 /**
  * Input normalization utilities.
@@ -29,9 +29,14 @@ final class Normalizer
      */
     public static function digits(string $value): string
     {
+        // Build a 1:1 search/replace map: both arrays must have the same
+        // length for str_replace to map element-by-element. Persian and
+        // Arabic-Indic digit sets each have 10 chars; we duplicate the
+        // '0'..'9' replacement set so both maps line up.
+        $latinDigits = range('0', '9');
         return str_replace(
             array_merge(self::PERSIAN_DIGITS, self::ARABIC_DIGITS),
-            range('0', '9'),
+            array_merge($latinDigits, $latinDigits),
             $value
         );
     }
@@ -63,6 +68,14 @@ final class Normalizer
     /**
      * Normalize a mobile number to the canonical `09XXXXXXXXX` form
      * (11 digits, starts with 09). Returns null if invalid.
+     *
+     * Accepts inputs like:
+     *   '09152345678'   → '09152345678' (canonical)
+     *   '989152345678'  → '09152345678' (strip leading 98, prepend 0)
+     *   '+989152345678' → '09152345678' (+ stripped before digit extraction)
+     *   '0098...'       → '09152345678' (strip leading 0098)
+     *   '0915-234-5678' → '09152345678' (dashes stripped)
+     *   '۰۹۱۵۲۳۴۵۶۷۸'   → '09152345678' (Persian digits)
      */
     public static function mobile(string $raw): ?string
     {
@@ -71,12 +84,12 @@ final class Normalizer
         if ($digits === '') {
             return null;
         }
-        // Strip leading Iran country code 98 or +98.
-        if (str_starts_with($digits, '98')) {
-            $digits = substr($digits, 2);
-        }
+        // Strip leading Iran country code 0098 first (longer prefix first).
         if (str_starts_with($digits, '0098')) {
             $digits = substr($digits, 4);
+        } elseif (str_starts_with($digits, '98')) {
+            // Strip leading 98, then prepend 0 to get canonical 09XXXXXXXXX.
+            $digits = '0' . substr($digits, 2);
         }
         // Mobile must start with 09 and be 11 digits.
         if (strlen($digits) !== 11) {

@@ -52,8 +52,8 @@ use App\Http\Response;
 use App\Http\Router;
 use App\Http\Session;
 use App\Modules\ModuleLoader;
-use App\Support\Environment;
-use App\Support\StructuredLogger;
+use App\Shared\Support\Environment;
+use App\Shared\Support\StructuredLogger;
 
 $environment = Environment::load(ROOT_PATH . '/.env');
 
@@ -203,21 +203,8 @@ $metaRoutes($router);
 //     MigrationRunner is invoked here too — any new migration files
 //     are applied at boot time.
 // ============================================================
-// EventBus is introduced in Phase 4 — use a lightweight placeholder for now
-// so ModuleLoader can be constructed without it.
-// (When Phase 4 lands, this will be replaced with $container->make(EventBus::class).)
-$eventBus = new class {
-    /** @var array<string, array<int, callable>> */
-    private array $subscribers = [];
-    public function subscribe(string $event, callable|array $handler): void
-    {
-        $this->subscribers[$event][] = $handler;
-    }
-    public function publish(string $event, array $payload = []): void
-    {
-        // No-op in Phase 1 — Phase 4 wires a real EventBus.
-    }
-};
+// EventBus — real class (Phase 1 placeholder, will be fleshed out in Phase 4).
+$eventBus = new \App\Events\EventBus();
 
 $migrationRunner = $container->make(\App\Shared\Persistence\MigrationRunner::class);
 $moduleLoader = new ModuleLoader(

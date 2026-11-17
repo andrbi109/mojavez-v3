@@ -2,8 +2,8 @@
 declare(strict_types=1);
 
 use App\Container;
-use App\Support\Environment;
-use App\Support\StructuredLogger;
+use App\Shared\Support\Environment;
+use App\Shared\Support\StructuredLogger;
 
 require_once __DIR__ . '/../TestCase.php';
 
@@ -54,10 +54,10 @@ final class ContainerTest extends TestCase
         $this->assertSame($obj, $container->make('SingletonService'), 'singleton returned');
 
         // 5. Autowire — instantiate a class with no constructor.
-        $autowired = $container->make(\App\Support\Hash::class);
-        $this->assertInstanceOf(\App\Support\Hash::class, $autowired, 'autowired Hash::class');
+        $autowired = $container->make(\App\Shared\Support\Hash::class);
+        $this->assertInstanceOf(\App\Shared\Support\Hash::class, $autowired, 'autowired Hash::class');
         // Memoized on subsequent calls.
-        $this->assertSame($autowired, $container->make(\App\Support\Hash::class), 'autowire memoized');
+        $this->assertSame($autowired, $container->make(\App\Shared\Support\Hash::class), 'autowire memoized');
 
         // 6. Cycle detection.
         // Use anonymous classes that depend on each other via constructor
@@ -98,9 +98,18 @@ final class ContainerTest extends TestCase
         }
         $this->assertTrue($threw, 'callSetter throws on missing method');
 
-        // 9. flush() clears all bindings.
+        // 9. flush() clears all bindings — after flush, a previously-bound
+        // service is no longer memoized (a fresh make() returns a new instance).
+        $marker = new \stdClass();
+        $marker->id = 'before-flush';
+        $container->bind('stdClass', $marker);
+        $before = $container->make('stdClass');
+        $this->assertSame($marker, $before, 'pre-flush make returns bound instance');
         $container->flush();
-        $this->assertFalse(isset($container->environment), 'flush clears singletons');
+        // After flush, the binding is gone — make() autowires stdClass
+        // (no constructor) and returns a new instance each call.
+        $after = $container->make('stdClass');
+        $this->assertFalse($after === $before, 'flush clears singletons — make returns new instance');
     }
 }
 
