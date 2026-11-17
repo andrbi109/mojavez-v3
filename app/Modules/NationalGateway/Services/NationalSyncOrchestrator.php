@@ -155,6 +155,15 @@ final class NationalSyncOrchestrator
             }
         }
 
+        // Idempotency: if the license is already matched, skip (no re-matching).
+        if ($license->matchedApplicantId !== null) {
+            $this->logger->info('matchOne: license already matched, skipping', [
+                'rn' => $requestNumber,
+                'matched_applicant_id' => $license->matchedApplicantId,
+            ]);
+            return ['tried' => 0, 'auto_confirmed' => 0, 'operator_flagged' => 0, 'auto_rejected' => 0];
+        }
+
         return $this->adapter->matchLicenseAgainstApplicants($license);
     }
 

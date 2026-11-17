@@ -37,7 +37,7 @@ final class GoldenLinkIntegrationTest extends TestCase
         $this->conn->execute("DELETE FROM national_licenses WHERE request_number LIKE 'GOLDEN-%'");
         $this->conn->execute("DELETE FROM status_log WHERE applicant_id IN (SELECT id FROM applicants WHERE tracking_code LIKE 'TEST-%')");
         $this->conn->execute("DELETE FROM applicants WHERE tracking_code LIKE 'TEST-%'");
-        $this->conn->execute("DELETE FROM persons WHERE national_code = '0720593107' AND first_name = 'عبدالکریم'");
+        $this->conn->execute("DELETE FROM persons WHERE national_code = '0720593188'");
         $this->conn->execute("DELETE FROM events WHERE type IN ('applicant_matched','sync_cycle_completed','license_saved','license_issued_on_national')");
     }
 
@@ -67,7 +67,7 @@ final class GoldenLinkIntegrationTest extends TestCase
         $personId = (int)$this->conn->insert(
             'INSERT INTO persons (national_code, first_name, last_name, mobile, person_type, father_name, postal_code, created_at) '
             . 'VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
-            ['0720593107', 'عبدالکریم', 'محمدی', '09150000000', 'حقیقی', 'محمد', '9571968123']
+            ['0720593188', 'عبدالکریم', 'محمدی', '09150000000', 'حقیقی', 'محمد', '9571968123']
         );
         $this->testPersonId = $personId;
 
@@ -75,7 +75,7 @@ final class GoldenLinkIntegrationTest extends TestCase
             'INSERT INTO applicants (person_id, tracking_code, national_code, current_status, license_state, '
             . 'first_name, last_name, mobile, postal_code, priority, registration_started_at, version, created_at) '
             . 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, DATE_SUB(NOW(), INTERVAL 5 DAY), 1, NOW())',
-            [$personId, 'TEST-' . random_int(100000, 999999), '0720593107', 'ثبت درخواست صدور', 'جاری', 'عبدالکریم', 'محمدی', '09150000000', '9571968123']
+            [$personId, 'TEST-' . random_int(100000, 999999), '0720593188', 'ثبت درخواست صدور', 'جاری', 'عبدالکریم', 'محمدی', '09150000000', '9571968123']
         );
         $this->applicantId = $applicantId;
         $this->assertGreaterThan(0, $applicantId, 'test applicant created');
@@ -93,7 +93,7 @@ final class GoldenLinkIntegrationTest extends TestCase
             townshipTitle: 'تربت جام',
             respondedAt: date('Y-m-d H:i:s'),
             status: \App\Modules\NationalGateway\Domain\Enums\LicenseStatus::Active,
-            maskedNationalCode: '072****107',
+            maskedNationalCode: '072****188',
             fatherName: 'محمد',
         );
         $licenseRepo->save($license);
