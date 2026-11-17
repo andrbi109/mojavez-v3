@@ -174,3 +174,25 @@ app/Views/admin/wizard_steps.php:<?= $fieldCount ?>
 app/Views/admin/sms.php:<?= $tid ?>
 app/Views/admin/sms.php:<?= $entryId ?>
 app/Views/admin/sms.php:<?= $badge ?>
+
+# -----------------------------------------------------------------------------
+# 10. Phase 18 (v1.9.0) — payment + bulk-import + report views false positives.
+#
+# The Phase 18 admin views emit a handful of integer counters without
+# htmlspecialchars() in the immediate vicinity — each is provably safe:
+#
+#  - `$cnt` in admin/output_general.php is `(int)$r['cnt']` — a count
+#    returned by the DB, cast to int. Not user input. Appears 3 times
+#    (once per stats card: byStatus, byLicenseState, byServiceType).
+#  - `$count` in admin/output_grouped_form.php is `(int)($row['count'] ?? 0)`
+#    — a count returned by the controller's buildReport() helper, cast to
+#    int. Not user input.
+#  - `$count` in admin/report_stats.php is `(int)($row['count'] ?? 0)` —
+#    same pattern as output_grouped_form.php. Not user input.
+#
+# Each pattern is scoped to a specific file:variable-name combo so it
+# suppresses ONLY these Phase 18 false positives.
+# -----------------------------------------------------------------------------
+app/Views/admin/output_general.php:<?= $cnt ?>
+app/Views/admin/output_grouped_form.php:<?= $count ?>
+app/Views/admin/report_stats.php:<?= $count ?>

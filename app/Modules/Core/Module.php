@@ -401,6 +401,43 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/license/upload',              'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'upload'],
             ['method' => 'GET',  'path' => '/admin/license-requests',             'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'requests'],
             ['method' => 'POST', 'path' => '/admin/license-requests/review',     'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'reviewRequest'],
+
+            // ----- Phase 18 — Payment management (5 routes) -----
+            // Auth: requireRole(['admin']) on every action. The catch-all
+            // /admin/view/{id} above doesn't conflict (different path prefix).
+            ['method' => 'GET',  'path' => '/admin/payments',                  'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/payments/review',           'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'review'],
+            ['method' => 'GET',  'path' => '/admin/payments/csv',               'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'csv'],
+            ['method' => 'POST', 'path' => '/admin/payment-channels/save',     'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'saveChannel'],
+            ['method' => 'POST', 'path' => '/admin/payment-channels/delete',   'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'deleteChannel'],
+
+            // ----- Phase 18 — Bulk import (8 routes) -----
+            // Specific routes (upload, preview, execute, result, missing-docs,
+            // documents/{code}) come in path-disjoint prefixes — no first-match
+            // ordering issue with any catch-all.
+            ['method' => 'GET',  'path' => '/admin/bulk-import',                          'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/bulk-import/upload',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'upload'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/preview',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'preview'],
+            ['method' => 'POST', 'path' => '/admin/bulk-import/execute',                  'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'execute'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/result',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'result'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/missing-docs',             'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'missingDocs'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/documents/{code}',         'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'uploadDocs'],
+            ['method' => 'POST', 'path' => '/admin/bulk-import/documents/{code}/save',    'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'saveDocs'],
+
+            // ----- Phase 18 — Reports + exports (11 routes) -----
+            // All admin-only. csv/pdf are GET (download). grouped is GET (form)
+            // + POST (result). single/{trackingCode} uses a path param.
+            ['method' => 'GET',  'path' => '/admin/reports/by-province',              'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byProvince'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-city',                  'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byCity'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-village',               'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byVillage'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-license',               'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byLicense'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-date',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byDate'],
+            ['method' => 'GET',  'path' => '/admin/output/general',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'generalReport'],
+            ['method' => 'GET',  'path' => '/admin/output/single/{trackingCode}',     'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'singleApplicantReport'],
+            ['method' => 'GET',  'path' => '/admin/output/grouped',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'groupedReportForm'],
+            ['method' => 'POST', 'path' => '/admin/output/grouped',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'groupedReportResult'],
+            ['method' => 'GET',  'path' => '/admin/report/csv',                        'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'csvReport'],
+            ['method' => 'GET',  'path' => '/admin/report/pdf',                       'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'pdfReport'],
         ];
     }
 
