@@ -184,6 +184,16 @@ final class Module implements ModuleInterface
             )
         );
 
+        // Stage2ReadinessChecker — evaluates the 4 §29.2 conditions before
+        // enabling Stage 2. Never auto-enables — only reports readiness.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\Stage2ReadinessChecker::class,
+            fn () => new \App\Modules\NationalGateway\Services\Stage2ReadinessChecker(
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
+
         // NationalSyncOrchestrator — drives the full golden-link cycle.
         $container->bind(
             \App\Modules\NationalGateway\Services\NationalSyncOrchestrator::class,
