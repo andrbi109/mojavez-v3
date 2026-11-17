@@ -43,11 +43,55 @@ final class OutboundSyncService
     /** @var int Number of consecutive 5xx failures before auto-disable. */
     private const FAILURE_THRESHOLD = 3;
 
+    /**
+     * Optional real push implementation injected via setPushCallable().
+     *
+     * When null, pushToUpstream() runs the stub (logs + returns 'skipped').
+     * When set (a real HTTP callable), pushToUpstream() delegates to it.
+     *
+     * Per §19.8 — upstream (qr.mojavez.ir) does NOT yet expose a writable
+     * endpoint. When upstream adds one, the production wiring sets a
+     * callable (e.g. via a Container setter or a bootstrap hook) that POSTs
+     * the payload to the new endpoint; this class's other logic
+     * (idempotency, conflict detection, kill-switch) is unchanged.
+     *
+     * @var callable(string, string, array<string,mixed>): array{
+     *     outcome:string, http_status:?int, response:?array, error:?string, latency_ms:int
+     * }|null
+     */
+    private mixed $pushCallable = null;
+
     public function __construct(
         private readonly ApplicantRepositoryInterface $applicantRepo,
         private readonly Connection $conn,
         private readonly StructuredLogger $logger,
     ) {}
+
+    /**
+     * Inject a real push implementation.
+     *
+     * The callable receives ($operation, $requestNumber, $payload) and MUST
+     * return the same array shape as pushToUpstream() (see its docblock).
+     * After this is set, isStubActive() returns false and pushToUpstream()
+     * delegates to the callable.
+     *
+     * Passing null resets to the stub behavior (useful for tests).
+     */
+    public function setPushCallable(?callable $fn): void
+    {
+        $this->pushCallable = $fn;
+    }
+
+    /**
+     * True when no real push callable is set — pushToUpstream() will use
+     * the stub (log + 'skipped'). The NationalSyncOrchestrator reads this
+     * to emit a warning when it pushes via the stub, so production logs
+     * clearly show "outbound push is stubbed" (per D-8-1).
+     */
+    public function isStubActive(): bool
+    {
+        return $this->pushCallable === null;
+    }
 
     /**
      * Push an applicant status change to the upstream national gateway.
@@ -236,9 +280,40 @@ final class OutboundSyncService
     {
         $started = microtime(true);
 
-        // STUB: no upstream endpoint yet. Log as 'skipped' so the audit trail
-        // records that v3 attempted a push but upstream can't receive it.
-        // When upstream adds an endpoint, replace this body with an HTTP POST.
+        // STUB: upstream has no writable endpoint yet (§19.8).
+        // When upstream adds one (e.g. POST /api/v3/status-update), inject a
+        // real push implementation via setPushCallable() — this method will
+        // delegate to it. The rest of the class (idempotency, conflict
+        // detection, kill-switch) is unchanged. Until then, log as 'skipped'
+        // so the audit trail records that v3 attempted a push but upstream
+        // can't receive it.
+        if ($this->pushCallable !== null) {
+            $result = call_user_func(
+                $this->pushCallable,
+                $operation,
+                $requestNumber,
+                $payload
+            );
+            // Defensive: normalize the callable's return shape.
+            if (!is_array($result)) {
+                $result = [];
+            }
+            $outcome = isset($result['outcome']) && is_string($result['outcome'])
+                ? $result['outcome']
+                : 'skipped';
+            return [
+                'outcome' => $outcome,
+                'http_status' => isset($result['http_status']) ? (int)$result['http_status'] : null,
+                'response' => isset($result['response']) && is_array($result['response'])
+                    ? $result['response']
+                    : null,
+                'error' => isset($result['error']) && is_string($result['error'])
+                    ? $result['error']
+                    : null,
+                'latency_ms' => (int)((microtime(true) - $started) * 1000),
+            ];
+        }
+
         $this->logger->info('Outbound push logged (upstream endpoint not yet available)', [
             'operation' => $operation,
             'request_number' => $requestNumber,
