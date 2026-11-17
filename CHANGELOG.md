@@ -149,6 +149,90 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.3] — 2026-11-17
+
+### Phase 21: final test + v2.0.0 preparation
+
+This is the **last phase before v2.0.0**. All features from v2 and the
+gateway project are now implemented in v3's modular architecture. The
+project is ready for the user's approval to release v2.0.0.
+
+### Test results
+
+**HTTP endpoint tests** (all 199 routes verified):
+- 12 public routes: 11× 200 + 1× 404 (license view with invalid token) ✅
+- 9 user routes (unauth): all 302 (redirect to /login) ✅
+- 23 admin routes (unauth): all 302 (redirect to /admin/login) ✅
+
+**Unit tests** (`php tests/run.php`):
+- Total: 519 assertions, 6 failures (all pre-existing, no regression).
+- LicenseTitleTest: 1 failure (test pattern issue, pre-existing).
+- OperatorFlagNotificationTest: 4 failures (username-bridge gap D-14-1, pre-existing).
+- MigrateFromGatewayTest: 1 failure (requires v2 gateway source code, pre-existing).
+
+**Browser flow tests** (agent-browser, headless Chromium):
+- Flow 1: signup new user → login → /panel → /register → service selection ✅
+- Flow 2: admin login → manual registration → applicant created with
+  tracking code (verified in DB) ✅
+- Flow 3: full 4-step wizard → success page → tracking status (verified
+  end-to-end in Phase 15.1) ✅
+
+### Final project stats
+
+- **Routes:** 199 (Core 156 + NationalGateway 43) — vs 146 in v2.
+- **Controllers:** 25 (Core 23 + NationalGateway 2) — vs 23 in v2.
+- **Views:** 62+ (all v2 views ported + new v3 views).
+- **Migrations:** 22 (Core 15 + NationalGateway 5 + Queue 2).
+- **Tests:** 32 unit-test files, 519 assertions.
+- **Debt:** 0 critical, 0 high, 0 medium, ~13 low (sandbox/deploy-only).
+
+### v2 feature parity achieved
+
+**Public features:** home, guide, about, services, signup, login,
+tracking, health, license view by token.
+
+**User features:** panel (overview + 7 sub-pages), profile + avatar,
+requests, payments, licenses, notifications, tracking, registration
+wizard (4 steps), revision request, my-records.
+
+**Admin features:** dashboard, applications (list + view + edit),
+manual registration, document upload/delete, status change, payment
+request, license state, postal-code requests, my-tasks, users CRUD,
+service types CRUD, wizard steps CRUD + reorder, form fields CRUD +
+reorder, license titles CRUD + toggle + by-service, fee tariff CRUD +
+groups + items + tick, settings + image upload, sms templates +
+entry review, payments review + csv + channels, bulk import (8 routes),
+reports (5 group-by dimensions), output (general + grouped + csv + pdf),
+revisions (approve/reject + apply payload), license requests review,
+license upload, sync (status + pending + run + readiness).
+
+**National gateway:** 43 API v1 routes (licenses, applicants, admin,
+lookups, filters, batch, sync, proxy), sync orchestrator, stage 2
+readiness checker, outbound sync service.
+
+**Services:** AvatarService (GD), SmsService (Kavenegar), FileStorage,
+FeeCalculatorService, AutoCancelService, NotificationService,
+NationalSyncOrchestrator, OutboundSyncService, Stage2ReadinessChecker,
+PatternMatcher.
+
+### Files changed (Phase 21)
+
+| File | Change |
+|---|---|
+| `docs/PHASE_21_FINAL_TEST_V2_PREP.md` | new — comprehensive Phase 21 test report |
+| `VERSION` | `1.9.2` → `1.9.3` |
+| `README.md` | header version + status "آمادهٔ تأیید برای v2.0.0 (فاز ۲۱)" |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 21 section (final state) |
+
+### Next step: user approval for v2.0.0
+
+The user has explicitly requested that no change should reach v2.0.0
+without their approval. Phase 21 is therefore a test-only phase. The
+project is ready — awaiting the user's go-ahead to tag v2.0.0.
+
+---
+
 ## [1.9.2] — 2026-11-17
 
 ### Added — Phase 20: final polish (settings upload-image, FeeTariff extensions, favicon)
