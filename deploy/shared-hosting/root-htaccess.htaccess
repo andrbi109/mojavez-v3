@@ -1,0 +1,17 @@
+# mojavez-v3 — root .htaccess (place in public_html/).
+# Per docs/00-MASTER.md §16.5 — redirects all traffic to /public/
+# (so /public/index.php is the front controller, and .env stays outside web root).
+#
+# This fixes v0.6.3's BASE_URL=/public/ issue from v2: the redirect makes
+# the app reachable at https://example.com/ while the actual files live in
+# https://example.com/public/.
+#
+# Install: upload this as public_html/.htaccess (rename from root-htaccess.htaccess).
+# Note: shared hosts using nginx+apache or nginx-only may need the host admin
+# to set this up. For nginx-only hosts, use the nginx server block instead.
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^$ public/ [L]
+    RewriteRule (.*) public/$1 [L]
+</IfModule>
