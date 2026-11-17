@@ -291,11 +291,70 @@
 
 ### فاز ۴: زیرساخت async و اتصال طلایی
 
-**تاریخ تکمیل:** ____________
-**Maintainer:** ____________
-**نسخهٔ منتشرشده:** ____________
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 0.1.0 (phase/4-async-golden-link branch)
 
-_(قالب همان فاز ۰)_
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-4-1 | SMS ارسال واقعی نشده — فقط در user_sms_entries با status='در انتظار' persist می‌شود. ارسال واقعی نیاز به ادغام با دروازهٔ SMS (Kavenegar/Farapayamak) دارد. | `app/Modules/Core/Services/NotificationService.php::queueSms()` | medium | در فاز ۶ با SmsService واقعی. |
+| D-4-2 | property_details در PatternMatcher هنوز wire نشده — ACL یک آرایهٔ خالی به matchQuorum می‌فرستاد. در نتیجه فیلدهای business_province، business_township، postal_code، business_address همیشه mismatch می‌شوند. تست golden-link با national_code + full_name + father_name کار می‌کند ولی quorum کامل نه. | `app/Modules/NationalGateway/Services/ApplicantSyncAdapter::matchAndAct()` | medium | در فاز ۵ (مهاجرت داده) هنگام wire کردن JobAndPropertyRepository. |
+| D-4-3 | LicenseService::refreshLookups() هنوز فراخوانی نشده — جداول national_lookups خالی‌اند. نیاز به اجرای دستی یا cron دارد. | `scripts/seed_lookups.php` (هنوز نساخته‌شده) | low | در فاز ۵ با scripts/seed_lookups.php. |
+| D-4-4 | Worker::run(1) در poor man's cron فقط یک job در هر poll اجرا می‌کند — اگر صف شلوغ باشد، سرعت تخلیه کند است. در production با cron واقعی (هر دقیقه Worker::drain) حل می‌شود. | `app/Modules/NationalGateway/Controllers/SyncAdminController::status()` | low | در فاز ۶ با cron واقعی. |
+| D-4-5 | SseController::stream در dev فقط JSON polling برمی‌گرداند — تست واقعی SSE streaming نیاز به محیط Apache/PHP-FPM دارد. | `app/Modules/Core/Controllers/SseController.php` | low | در فاز ۶ با deploy Apache. |
+| D-4-6 | LicenseService از License::fromArray برای hydrate در searchLocal استفاده می‌کند که فیلدهای golden-link anchor را پر نمی‌کند (masked_national_code، father_name). برای دسترسی به anchor‌ها باید از findByRequestNumber استفاده کرد. | `app/Modules/NationalGateway/Services/LicenseService::hydrateLicense()` | low | در فاز ۶ هنگام refactor. |
+| D-4-7 | NotificationSubscriber فقط برای AutoConfirmed (confidence >= 90) فعال است — OperatorFlag به اپراتور notification نمی‌رسد. باید یک admin notification برای OperatorFlag اضافه شود. | `app/Events/Subscribers/NotificationSubscriber.php` | low | در فاز ۶. |
+| D-4-8 | SyncAdminController هنوز requireRole guard ندارد — باید با requireRole(['admin','sync_operator']) محافظت شود. در حال حاضر routes ثبت شده‌اند ولی guard فعال نیست. | `app/Modules/NationalGateway/Controllers/SyncAdminController.php` | medium | در فاز ۶ با Controller::requireRole. |
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-1-1 | EventBus placeholder | EventBus واقعی با persistence به جدول events، dispatch به subscribers، eventsSince/lastEventId برای SSE replay ساخته شد. |
+| D-1-2 | collectSubscribers() معلق | ModuleLoader::collectSubscribers پیاده شد ولی در v3 از subscribe(SubscriberInterface) استفاده می‌کنیم. Module::boot حالا 3 subscriber را ثبت می‌کند. |
+| D-1-6 | SseController::stream واقعی | SseController::stream با text/event-stream loop پیاده شد (production) + JSON polling fallback (dev). |
+| D-3-1 | LicenseService پورت نشده | LicenseService با searchHybrid، searchLocal، fetchAndCacheByTrackNumber، refreshLookups، stats، analytics ساخته شد. |
+| D-3-2 | PatternMatcher پورت نشده | PatternMatcher با matchNumeric، matchText، matchExactText، matchFuzzyText، matchQuorum + 37 تست ساخته شد. |
+| D-3-3 | ApplicantSyncAdapter پورت نشده | ApplicantSyncAdapter (ACL) با matchAndAct، actAutoConfirmed، actOperatorFlagged ساخته شد. |
+| D-3-4 | 5 PDO repository implementation | NationalLicenseRepository، NationalLookupRepository، NationalFilterRepository، NationalBatchRepository، SyncAuditLogRepository همه ساخته شدند. |
+| D-3-5 | NationalGateway routes خالی | 3 route اضافه شد: GET /admin/sync/status، GET /admin/sync/pending، POST /admin/sync/run. |
+| D-3-6 | 3 service به repository‌های وابسته | LicenseService به NationalLicenseRepositoryInterface و NationalLookupRepositoryInterface wire شد. |
+| D-3-7 | RateLimiterService::wait() wire نشده | LicenseService::searchHybrid + fetchAndCacheByTrackNumber + refreshLookups همگی rateLimiter.wait() را صدا می‌زنند. |
+| D-3-8 | CircuitBreaker wire نشده | LicenseService::searchHybrid + fetchAndCacheByTrackNumber همگی circuitBreaker.canProceed() را چک می‌کنند و recordSuccess/recordFailure صدا می‌زنند. |
+| D-3-9 | national_lookups seed | هنوز اجرا نشده (D-4-3) ولی LicenseService::refreshLookups() آماده است. |
+
+#### Debt carried forward به فاز ۵
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-1-4 | install.php و check.php | medium | فاز ۶ |
+| D-1-8 | static_analysis fail-on-warning | low | فاز ۶ |
+| D-1-9 | writable storage assumptions | low | فاز ۶ |
+| D-2-1 | Viewهای بدون Bootstrap/Vazirmatn | medium | فاز ۶ |
+| D-2-2 | AdminController فقط ۴ متد | medium | فاز ۶ |
+| D-2-3 | کنترلرهای باقی‌مانده | medium | فاز ۶ |
+| D-2-4 | FeeCalculatorService reads income_decile directly | low | فاز ۶ |
+| D-2-5 | AutoCancelService::updatePriorities slow | low | فاز ۶ |
+| D-2-6 | rate_limit not applied in controllers | high | فاز ۶ |
+| D-2-7 | schema.sql و install.sql واحد | medium | فاز ۶ |
+| D-2-8 | install.php تعاملی | medium | فاز ۶ |
+| D-2-9 | seed migration پیش‌فرض | low | فاز ۶ |
+| D-4-1 | SMS ارسال واقعی نشده | medium | فاز ۶ |
+| D-4-2 | property_details در PatternMatcher wire نشده | medium | فاز ۵ |
+| D-4-3 | national_lookups seed هنوز اجرا نشده | low | فاز ۵ |
+| D-4-4 | Worker::run(1) کند در poor man's cron | low | فاز ۶ |
+| D-4-5 | SSE تست واقعی نیاز به Apache | low | فاز ۶ |
+| D-4-6 | License::fromArray anchor‌ها را پر نمی‌کند | low | فاز ۶ |
+| D-4-7 | OperatorFlag notification به admin | low | فاز ۶ |
+| D-4-8 | SyncAdminController requireRole guard | medium | فاز ۶ |
+
+#### توصیه برای فاز ۵
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — D-4-2 (property_details در PatternMatcher) و D-4-3 (national_lookups seed) در فاز ۵ پرداخت می‌شوند چون به مهاجرت داده وابسته‌اند.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-4-2 و D-4-3. بقیه به فاز ۶ موکول می‌شوند.
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ متوسط — فاز ۵ تمرکز روی مهاجرت داده از v2 و gateway دارد، و wire کردن property_details یک کار اضافی کوچک است.
 
 ---
 
@@ -348,13 +407,13 @@ _(قالب همان فاز ۰)_
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 1 | 2026-11-17 | D-2-6 |
-| medium | 16 | 2026-11-17 | D-1-1, D-1-2, D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8, D-3-1, D-3-2, D-3-3, D-3-4, D-3-6, D-3-7, D-3-8 |
-| low | 8 | 2026-11-17 | D-1-6, D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-3-5, D-3-9 |
+| medium | 9 | 2026-11-17 | D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8, D-4-1, D-4-2, D-4-8 |
+| low | 11 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-3, D-4-4, D-4-5, D-4-6, D-4-7 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۳:** ۰ critical، ۱ high (rate limit — فاز ۶)، 16 medium (بیشتری در فاز ۴ پرداخت می‌شوند)، ۸ low.
-فاز ۴ بزرگ‌ترین فاز است و ۸ از 16 medium debt را پرداخت خواهد کرد.
+**وضعیت پس از فاز ۴:** ۰ critical، ۱ high (rate limit — فاز ۶)، 9 medium (D-4-2 و D-4-3 در فاز ۵ پرداخت می‌شوند، بقیه در فاز ۶)، 11 low.
+فاز ۴ بزرگ‌ترین فاز بود و 9 debt از فاز ۳ را پرداخت کرد. اتصال طلایی کامل کار می‌کند (تست integration 18 assertion).
 
 ---
 
