@@ -10,7 +10,7 @@
 #   - Lines starting with '#' are comments (ignored).
 #   - Blank lines are ignored.
 #   - Patterns are matched as substrings (case-sensitive) on the full
-#     warning text (e.g. "app/Views/user/profile.php:<?= $csrfField ?>
+#     warning text (e.g. "app/Views/user/profile.php:<?= $roleLabel ?>
 #     without htmlspecialchars (XSS risk)").
 #   - A warning is suppressed if its text contains ANY of the listed
 #     patterns as a substring.
@@ -18,62 +18,38 @@
 # When adding a new pattern:
 #   - Make it specific enough to suppress ONLY the false-positive class
 #     you intend (don't over-broaden — that hides real warnings).
-#   - Add a comment above explaining why the warning is a false positive
-#     and where it appears.
+#   - Prefer adding the suppression to static_analysis.py itself (an
+#     exclude-list constant, an implicit-safe variable, a per-file
+#     exclusion) rather than this file. Patterns here are a LAST RESORT —
+#     the tool's heuristic improvements (D-6-2, Phase 25) are the
+#     preferred path because they apply to everyone, not just the ignore
+#     file.
 
 # -----------------------------------------------------------------------------
-# 1. CSRF field in view forms.
+# Phase 25 (v1.9.7, D-6-2) — heuristic improvements moved to the tool.
 #
-# `Csrf::field()` (app/Http/Csrf.php) returns an HTML `<input type="hidden">`
-# whose value is generated server-side and escaped via htmlspecialchars
-# internally. The `<?= $csrfField ?>` short-echo in views is therefore
-# safe — the analyzer can't see through the method call.
-# Applies to: app/Views/**/*.php (login, signup, profile, all admin CRUD
-# forms).
-# -----------------------------------------------------------------------------
-csrfField
-
-# -----------------------------------------------------------------------------
-# 2. $content in layout files.
+# The following BROAD patterns were previously in this file but are now
+# handled by smarter heuristics in tools/static_analysis.py:
 #
-# `app/Views/{admin_layout,layout,user_layout}.php` re-emit the captured
-# inner-view output (`$content`) as-is — it's the rendered HTML of the
-# inner view, not user input. htmlspecialchars would double-escape the
-# already-rendered HTML. The layout-rendering contract is that inner
-# views are responsible for escaping their own user input.
-# -----------------------------------------------------------------------------
-$content ?> without htmlspecialchars
-
-# -----------------------------------------------------------------------------
-# 3. "controller not in app/Modules/<X>/Controllers/" false positives.
+#   - `csrfField` — now in the IMPLICIT_SAFE_VIEW_VARS frozenset.
+#   - `$content ?> without htmlspecialchars` — same (the layout's
+#     $content variable).
+#   - `controller not in app/Modules` — now handled by
+#     check_controller_location, which extracts the actual class name
+#     and only flags if it ends with "Controller".
+#   - `SQL string-concat with variable` — now a per-file exclusion
+#     (SQL_CONCAT_EXCLUDED_FILES) for Connection.php's allowlist-validated
+#     SET NAMES / SET time_zone (the only place the pattern ever fires
+#     in this codebase). Removing the broad pattern lets a real SQL
+#     injection elsewhere be flagged.
 #
-# The analyzer's heuristic ("file contains 'class ' + 'Controller' +
-# 'final class'") flags false positives where a file MENTIONS a
-# Controller class name without DEFINING one:
-#   - app/Modules/<X>/Module.php — route registrations mention
-#     Controllers::class as the handler.
-#   - app/Modules/<X>/Services/*.php — docblocks mention AdminController.
-#   - app/Events/EventBus.php — docblock mentions SseController.
-#   - app/Queue/Worker.php — references a controller.
-#   - tests/Unit/*Test.php — RouterTest etc. reference
-#     HealthController/ApplicantController as test fixtures.
-# Real controllers ARE under app/Modules/<X>/Controllers/ — check_schema
-# ownership + the route registration in Module.php guarantee that.
+# The narrow patterns below remain because they're file:variable scoped
+# (too specific to generalize in the tool's heuristic without risking
+# false negatives if a user-input variable happened to share the name).
 # -----------------------------------------------------------------------------
-controller not in app/Modules
 
 # -----------------------------------------------------------------------------
-# 4. SQL string-concat in app/Shared/Persistence/Connection.php.
-#
-# `SET NAMES {$charset}` and `SET time_zone = '{$tz}'` use allowlist-
-# validated values (charsets: utf8mb4/utf8/latin1; timezone: regex-validated
-# fixed offset). Prepared statements can't be used here because MariaDB
-# does not accept placeholders in SET NAMES / SET time_zone.
-# -----------------------------------------------------------------------------
-SQL string-concat with variable
-
-# -----------------------------------------------------------------------------
-# 5. $totalPages in app/Views/admin/applications.php.
+# 1. $totalPages in app/Views/admin/applications.php.
 #
 # `$totalPages = max(1, (int)ceil($total / max(1, $pageSize)));` — already
 # cast to int via (int)ceil(...). Cannot contain user input.
@@ -81,7 +57,7 @@ SQL string-concat with variable
 totalPages
 
 # -----------------------------------------------------------------------------
-# 6. $roleLabel in app/Views/admin/users/index.php.
+# 2. $roleLabel in app/Views/admin/users/index.php.
 #
 # A Persian string literal chosen from a fixed three-value lookup
 # ('مدیر کل' / 'اپراتور همگام‌سازی' / 'کارشناس'), assigned based on the
@@ -90,7 +66,7 @@ totalPages
 roleLabel
 
 # -----------------------------------------------------------------------------
-# 7. Phase 14 (v1.5.0) — registration view false positives.
+# 3. Phase 14 (v1.5.0) — registration view false positives.
 #
 # The new registration wizard views (app/Views/registration/*.php) emit
 # a handful of variables without htmlspecialchars() in the immediate
@@ -117,7 +93,7 @@ app/Views/registration/select_service.php:<?= $sid ?>
 app/Views/registration/step4.php:<?= $fa ?>
 
 # -----------------------------------------------------------------------------
-# 8. Phase 15 (v1.6.0) — admin views + document/pdf_viewer false positives.
+# 4. Phase 15 (v1.6.0) — admin views + document/pdf_viewer false positives.
 #
 # The new admin views (admin/revisions.php, admin/license_requests.php)
 # emit a `$badge` variable in a Bootstrap class attribute. `$badge` is
@@ -139,7 +115,7 @@ app/Views/admin/license_requests.php:<?= $badge ?>
 app/Views/document/pdf_viewer.php:<?= $src ?>
 
 # -----------------------------------------------------------------------------
-# 9. Phase 17 (v1.8.0) — new admin panel views false positives.
+# 5. Phase 17 (v1.8.0) — new admin panel views false positives.
 #
 # The Phase 17 admin views (admin/register.php, admin/edit_application.php,
 # admin/postal_requests.php, admin/service_types.php, admin/wizard_steps.php,
@@ -176,7 +152,7 @@ app/Views/admin/sms.php:<?= $entryId ?>
 app/Views/admin/sms.php:<?= $badge ?>
 
 # -----------------------------------------------------------------------------
-# 10. Phase 18 (v1.9.0) — payment + bulk-import + report views false positives.
+# 6. Phase 18 (v1.9.0) — payment + bulk-import + report views false positives.
 #
 # The Phase 18 admin views emit a handful of integer counters without
 # htmlspecialchars() in the immediate vicinity — each is provably safe:
@@ -197,7 +173,8 @@ app/Views/admin/output_general.php:<?= $cnt ?>
 app/Views/admin/output_grouped_form.php:<?= $count ?>
 app/Views/admin/report_stats.php:<?= $count ?>
 
-# 11. Phase 19 (v1.9.1) — license_requests view integer IDs.
+# -----------------------------------------------------------------------------
+# 7. Phase 19 (v1.9.1) — license_requests view integer IDs.
 #
 # $requestId in admin/license_requests.php is `(int)$r['id']` — a DB row
 # id cast to int. Not user input. Appears 6 times (in the table cell,

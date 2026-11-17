@@ -11,21 +11,89 @@ declare(strict_types=1);
  *                  run migrations, create the admin user, then self-delete.
  *
  * Security:
- *   - Only runs if .env does NOT exist (idempotent — once installed, locked out).
+ *   - Only runs if .env does NOT exist AND storage/.installed lock is absent
+ *     (idempotent — once installed, locked out by BOTH guards).
+ *   - The storage/.installed lock file is the PRIMARY guard: even if
+ *     unlink(__FILE__) fails (file-system permissions on shared hosting),
+ *     the marker file blocks re-install. The self-delete is still attempted
+ *     as a convenience but is no longer load-bearing.
+ *   - ?force=1&CRON_SECRET=<env CRON_SECRET> bypasses the lock for re-install
+ *     (e.g. after a manual DB reset). Requires the secret so an attacker
+ *     who can read .env to get the secret could already wipe the DB anyway.
  *   - Generates secrets with random_bytes(32) = 64 hex chars.
- *   - Self-deletes after success (the user can also delete manually).
  *   - No CSRF (one-time installer, not reachable in normal operation).
  *
  * This file lives in public/ (web-accessible). Delete after install.
  */
 
 $rootPath = dirname(__DIR__);
+$lockFile = $rootPath . '/storage/.installed';
 
-// Lock-out: if .env already exists, refuse to run.
-if (is_file($rootPath . '/.env')) {
+// Phase 25 (v1.9.7) — D-6-4: lock-file guard. The .env check below is
+// kept for backward compat (existing installs that pre-date the lock
+// file), but the storage/.installed marker is the PRIMARY guard. It
+// survives even if install.php's self-delete (unlink) silently fails
+// on a permission-restricted shared host. The marker file carries the
+// install timestamp so the admin can see when the install happened.
+//
+// ?force=1&CRON_SECRET=<secret> bypasses the lock — useful for re-install
+// after a manual DB wipe. We require the CRON_SECRET (read from .env if
+// present) so a random visitor can't trigger a re-install just by
+// appending ?force=1.
+function is_force_unlock(string $rootPath): bool
+{
+    if (($_GET['force'] ?? '') !== '1') {
+        return false;
+    }
+    // Read CRON_SECRET from .env if it exists. If .env is absent, no
+    // secret to compare against → block.
+    $envPath = $rootPath . '/.env';
+    if (!is_file($envPath)) {
+        return false;
+    }
+    $env = file_get_contents($envPath);
+    if ($env === false) {
+        return false;
+    }
+    $secret = '';
+    foreach (explode("\n", $env) as $line) {
+        if (preg_match('/^CRON_SECRET\s*=\s*(\S+)/', $line, $m)) {
+            $secret = $m[1];
+            break;
+        }
+    }
+    if ($secret === '') {
+        return false;
+    }
+    return hash_equals($secret, (string)($_GET['CRON_SECRET'] ?? ''));
+}
+
+$lockExists = is_file($lockFile);
+if ($lockExists && !is_force_unlock($rootPath)) {
     http_response_code(403);
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><meta charset="utf-8"><h1>۴۰۳</h1><p>نصب قبلاً انجام شده است. فایل .env موجود است. اگر می‌خواهید دوباره نصب کنید، ابتدا .env را پاک کنید.</p>';
+    $installedAt = '';
+    if (is_file($lockFile)) {
+        $installedAt = trim((string)file_get_contents($lockFile));
+    }
+    echo '<!doctype html><meta charset="utf-8"><h1>۴۰۳ — نصب قبلاً انجام شده است.</h1>';
+    echo '<p>این نصاب قفل شده است (marker file: <code>storage/.installed</code>)';
+    if ($installedAt !== '') {
+        echo ' — نصب در ' . htmlspecialchars($installedAt);
+    }
+    echo '.</p>';
+    echo '<p>اگر می‌خواهید دوباره نصب کنید، ابتدا فایل <code>storage/.installed</code> را پاک کنید</p>';
+    echo '<p>(یا با ?force=1&CRON_SECRET=&lt;secret&gt; باز گذر کنید — CRON_SECRET از .env خوانده می‌شود).</p>';
+    exit;
+}
+
+// Lock-out: if .env already exists AND force not requested, refuse to run.
+// (The lock file above is the PRIMARY guard; this is a fallback for the
+// Phase 6 era when the lock file didn't exist yet.)
+if (is_file($rootPath . '/.env') && !is_force_unlock($rootPath)) {
+    http_response_code(403);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><meta charset="utf-8"><h1>۴۰۳</h1><p>نصب قبلاً انجام شده است. فایل .env موجود است. اگر می‌خواهید دوباره نصب کنید، ابتدا .env را پاک کنید (یا ?force=1&CRON_SECRET=&lt;secret&gt;).</p>';
     exit;
 }
 
@@ -148,10 +216,14 @@ if ($step === 2) {
         }
     }
 
-    // --- Self-delete on success ---
+    // --- Self-delete on success + write the install lock marker ---
+    // Phase 25 (v1.9.7) / D-6-4: storage/.installed is the PRIMARY guard.
+    // unlink() is best-effort — on permission-restricted shared hosting it
+    // may fail silently; the marker file blocks re-install regardless.
     if ($errors === []) {
         @unlink(__FILE__);
         @unlink($rootPath . '/public/check.php');
+        @file_put_contents($lockFile, date('Y-m-d H:i:s') . ' UTC');
     }
 }
 
