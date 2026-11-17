@@ -3017,6 +3017,15 @@ public function handle(Request $request, array $requiredScopes): ApiKey
 - مکانیزم حل تعارض: last-write-wins با `updated_at` timestamp + source-of-truth برای هر فیلد.
 - audit کامل در `integration_log` با `direction='inbound'` و `'outbound'`.
 
+> **✅ فاز ۸ (v1.1.0، 2026-11-17):** زیرساخت مرحلهٔ ۲ پیاده‌سازی شد:
+> - جدول `integration_log` با ۱۶ ستون + ۶ ایندکس + FK.
+> - `OutboundSyncService` — pushStatusChange + pushDocument با idempotency + conflict detection (last-write-wins) + kill-switch خودکار (۳ 5xx متوالی → revert به Stage 1).
+> - `Stage2ReadinessChecker` — ۴ شرط §29.2 (آمادگی را گزارش می‌دهد، هرگز auto-enable نمی‌کند).
+> - Contract tests در `tests/Contract/` (۲۱ assertion).
+> - `NationalSyncOrchestrator` Stage 2 path: وقتی `sync_two_way_enabled=1` + `sync_direction='two_way'`، بعد از inbound matching، status change‌های متقاضیان match‌شده به upstream push می‌شود.
+>
+> **نکته:** `OutboundSyncService::pushToUpstream()` فعلاً stub است چون upstream هنوز endpoint نوشتنی ندارد (§19.8). وقتی اضافه کرد، فقط همان یک متد باید ویرایش شود.
+
 ### ۲۹.۲. آستانهٔ گذار از مرحلهٔ ۱ به ۲
 
 پیش از فعال‌سازی مرحلهٔ ۲، چهار شرط باید برقرار باشد:

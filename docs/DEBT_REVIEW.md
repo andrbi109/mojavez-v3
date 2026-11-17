@@ -549,11 +549,30 @@
 
 ### فاز ۸: Rollout مرحلهٔ ۲ (دوطرفه)
 
-**تاریخ تکمیل:** ____________
-**Maintainer:** ____________
-**نسخهٔ منتشرشده:** ____________
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.1.0 (phase/8-rollout-stage2 branch, tag v1.1.0)
 
-_(قالب همان فاز ۰)_
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-8-1 | OutboundSyncService::pushToUpstream() یک stub است — upstream (qr.mojavez.ir) هنوز endpoint نوشتنی ندارد (§19.8). وقتی upstream اضافه کرد، فقط این متد باید ویرایش شود. | `app/Modules/NationalGateway/Services/OutboundSyncService.php` | low | وقتی upstream endpoint اضافه کرد، stub را با HTTP POST واقعی جایگزین کن. |
+| D-8-2 | Stage2ReadinessChecker::checkContractTests فقط وجود فایل را چک می‌کند، نه اجرای آن‌ها را. در آینده می‌تواند shell out به tests/contract.php کند. | `app/Modules/NationalGateway/Services/Stage2ReadinessChecker.php` | low | در v1.2 با shell_exec به contract.php + parse خروجی. |
+| D-8-3 | NationalSyncOrchestrator Stage 2 push بر اساس matched_at در پنجرهٔ cycle است — اگر cycle طولانی باشد، ممکن است applicant دوبار push شود (idempotency آن را handle می‌کند ولی بهتر است set از applicant_id‌های push‌شده نگه‌داری شود). | `app/Modules/NationalGateway/Services/NationalSyncOrchestrator.php` | low | در v1.2 با dedup set. |
+| D-8-4 | admin UI برای /admin/sync/readiness (نمایش گزارش Stage2ReadinessChecker) هنوز ساخته نشده — Checker آماده است ولی view/route ندارد. | `app/Modules/Core/Controllers/` | medium | در v1.2 با افزودن SyncController + view. |
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-7-1 (partial) | کنترلرهای ادمین باقی‌مانده | فاز ۸ تمرکز روی Stage 2 بود نه کنترلرها — D-7-1 همچنان به v1.2 موکول. |
+
+#### توصیه برای فاز ۹ (post-v1.1.0)
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۹ (v1.2.0) باید D-8-4 (admin UI برای readiness) و D-7-1 (کنترلرهای باقی‌مانده) را پرداخت کند.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-8-4 (medium)، D-7-1 (medium). همچنین وقتی upstream endpoint نوشتنی اضافه کرد، D-8-1 باید فوراً پرداخت شود.
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۹ فقط زمانی لازم است که upstream endpoint اضافه کند یا اپراتورها نیاز به UI برای readiness گزارش داشته باشند.
 
 ---
 
@@ -566,13 +585,15 @@ _(قالب همان فاز ۰)_
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 0 | — | — |
-| medium | 3 | 2026-11-17 | D-2-2, D-2-3, D-7-1 |
-| low | 22 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4 |
+| medium | 4 | 2026-11-17 | D-2-2, D-2-3, D-7-1, D-8-4 |
+| low | 25 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۷:** ۰ critical، ۰ high، ۳ medium (همگی به فاز ۸/v1.1 موکول)، ۲۲ low.
-تغییر نسبت به فاز ۶: D-2-1، D-2-7، D-4-1 پرداخت شدند (medium 5→3). D-4-4، D-5-3، D-5-6، D-6-1 نیز حل شدند. ۴ debt جدید low اضافه شد (D-7-1/2/3/4).
+**وضعیت پس از فاز ۸:** ۰ critical، ۰ high، ۴ medium (همگی به v1.2 موکول)، ۲۵ low.
+تغییر نسبت به فاز ۷: ۴ debt جدید اضافه شد (D-8-1/2/3/4). سه تا low + یکی medium (D-8-4 = admin UI برای readiness که هنوز ساخته نشده). فاز ۸ تمرکز روی زیرساخت Stage 2 بود نه پاکسازی debt فاز ۷.
+
+اگر critical > 0 یا high > 3، هشدار در CI.
 
 ---
 

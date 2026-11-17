@@ -13,7 +13,7 @@
 -- It is idempotent: every statement uses CREATE TABLE IF NOT EXISTS, so
 -- running it against a DB that already has the schema is a no-op.
 --
--- Tables: 41
+-- Tables: 42
 -- Generated from migrations in: app/Modules/{Core,NationalGateway,Queue}/migrations/
 -- ============================================================================
 
@@ -237,6 +237,34 @@ CREATE TABLE IF NOT EXISTS `identity_checks` (
   `created_at` datetime DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `idx_identity_checks_national` (`national_code`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `integration_log` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `direction` enum('inbound','outbound') NOT NULL,
+  `operation` varchar(64) NOT NULL COMMENT 'fetch_license|push_status|push_document|request_match|fetch_lookup',
+  `applicant_id` int(11) DEFAULT NULL,
+  `national_request_number` varchar(64) DEFAULT NULL,
+  `idempotency_key` varchar(128) NOT NULL,
+  `request_payload_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`request_payload_json`)),
+  `response_payload_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`response_payload_json`)),
+  `http_status` smallint(6) DEFAULT NULL COMMENT 'HTTP status code from upstream (2xx/4xx/5xx) or NULL if no HTTP (e.g. local-only)',
+  `outcome` varchar(32) NOT NULL DEFAULT 'success' COMMENT 'success|client_error|server_error|timeout|conflict|skipped',
+  `source_of_truth` enum('v3','upstream') DEFAULT NULL COMMENT 'per §29.1: which side won when a field conflict occurred',
+  `conflict_resolution` varchar(32) DEFAULT NULL COMMENT 'last_write_wins|v3_wins|upstream_wins|manual_review',
+  `upstream_updated_at` datetime DEFAULT NULL COMMENT 'upstream record updated_at (for last-write-wins comparison)',
+  `latency_ms` int(11) DEFAULT NULL COMMENT 'round-trip latency in milliseconds',
+  `error_message` varchar(500) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_integration_idempotency` (`idempotency_key`),
+  KEY `idx_integration_direction` (`direction`,`created_at`),
+  KEY `idx_integration_operation` (`operation`,`created_at`),
+  KEY `idx_integration_applicant` (`applicant_id`),
+  KEY `idx_integration_request_num` (`national_request_number`),
+  KEY `idx_integration_outcome` (`outcome`,`created_at`),
+  KEY `idx_integration_conflict` (`conflict_resolution`),
+  CONSTRAINT `integration_log_ibfk_1` FOREIGN KEY (`applicant_id`) REFERENCES `applicants` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `job_details` (

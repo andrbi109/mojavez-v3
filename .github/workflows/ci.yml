@@ -107,6 +107,9 @@ jobs:
       - name: Unit tests (0 failures required)
         run: php tests/run.php
 
+      - name: Contract tests (two-way sync contract, §29.1)
+        run: php tests/contract.php
+
       - name: Pattern matcher test
         run: python3 scripts/pattern_matcher.py
 

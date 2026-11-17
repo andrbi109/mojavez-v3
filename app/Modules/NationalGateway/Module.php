@@ -171,6 +171,29 @@ final class Module implements ModuleInterface
             )
         );
 
+        // OutboundSyncService — pushes v3 state back to upstream (Stage 2 only).
+        // Activated when settings.sync_two_way_enabled = '1' (checked at runtime
+        // by OutboundSyncService::isEnabled()). Auto-disables on 3 consecutive
+        // 5xx failures (§29.3 kill-switch).
+        $container->bind(
+            \App\Modules\NationalGateway\Services\OutboundSyncService::class,
+            fn () => new \App\Modules\NationalGateway\Services\OutboundSyncService(
+                $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
+
+        // Stage2ReadinessChecker — evaluates the 4 §29.2 conditions before
+        // enabling Stage 2. Never auto-enables — only reports readiness.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\Stage2ReadinessChecker::class,
+            fn () => new \App\Modules\NationalGateway\Services\Stage2ReadinessChecker(
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
+
         // NationalSyncOrchestrator — drives the full golden-link cycle.
         $container->bind(
             \App\Modules\NationalGateway\Services\NationalSyncOrchestrator::class,
@@ -181,7 +204,8 @@ final class Module implements ModuleInterface
                 $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
                 $container->make(\App\Events\EventBus::class),
                 $container->logger,
-                $container->make(\App\Shared\Persistence\Connection::class)
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->make(\App\Modules\NationalGateway\Services\OutboundSyncService::class)
             )
         );
     }
@@ -223,6 +247,7 @@ final class Module implements ModuleInterface
             '20261117_001_national_gateway_tables.sql',
             '20261117_002_golden_link_columns.sql',
             '20261117_003_sync_audit_log_nullable_applicant.sql',
+            '20261117_004_integration_log_table.sql',
         ];
     }
 
@@ -241,6 +266,7 @@ final class Module implements ModuleInterface
             'sync_audit_log',
             'national_filters',
             'national_batches',
+            'integration_log',  // Phase 8 — two-way sync audit trail (§29.1).
         ];
     }
 }

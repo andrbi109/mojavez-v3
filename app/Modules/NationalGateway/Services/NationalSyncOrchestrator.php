@@ -46,6 +46,7 @@ final class NationalSyncOrchestrator
         private readonly EventBus $eventBus,
         private readonly StructuredLogger $logger,
         private readonly Connection $conn,
+        private readonly ?OutboundSyncService $outboundService = null,
     ) {}
 
     /**
@@ -129,6 +130,49 @@ final class NationalSyncOrchestrator
 
         $endedAt = date('Y-m-d H:i:s');
 
+        // §29.1 Stage 2 — if two-way sync is enabled, push status changes for
+        // applicants matched during THIS cycle back to upstream. We identify
+        // them by matched_at falling within the cycle window [startedAt, endedAt].
+        // The OutboundSyncService handles idempotency + conflict detection
+        // + the auto-disable kill-switch (§29.3) internally.
+        $outboundPushed = 0;
+        $outboundConflicts = 0;
+        $outboundSkipped = 0;
+        $twoWayEnabled = $this->readSetting('sync_two_way_enabled', '0') === '1'
+                         && $direction === 'two_way';
+        if ($twoWayEnabled && $this->outboundService !== null && $autoConfirmed > 0) {
+            $recentlyMatched = $this->conn->all(
+                'SELECT id, current_status FROM applicants
+                 WHERE matched_at IS NOT NULL
+                   AND matched_at BETWEEN ? AND ?
+                   AND national_license_request_number IS NOT NULL',
+                [$startedAt, $endedAt]
+            );
+            foreach ($recentlyMatched as $row) {
+                $status = \App\Modules\Core\Domain\Enums\ApplicantStatus::fromSlug((string)$row['current_status']);
+                if ($status === null) {
+                    continue;
+                }
+                $result = $this->outboundService->pushStatusChange(
+                    (int)$row['id'],
+                    $status,
+                    'auto_sync'
+                );
+                if ($result['outcome'] === 'conflict') {
+                    $outboundConflicts++;
+                } elseif ($result['outcome'] === 'skipped') {
+                    $outboundSkipped++;
+                } else {
+                    $outboundPushed++;
+                }
+            }
+            $this->logger->info('Stage 2 outbound pushes completed', [
+                'pushed' => $outboundPushed,
+                'conflicts' => $outboundConflicts,
+                'skipped' => $outboundSkipped,
+            ]);
+        }
+
         // §9.5 step 5: dispatch SyncCycleCompleted.
         $this->eventBus->dispatch(new SyncCycleCompleted([
             'started_at' => $startedAt,
@@ -138,6 +182,10 @@ final class NationalSyncOrchestrator
             'auto_confirmed' => $autoConfirmed,
             'operator_flagged' => $operatorFlagged,
             'auto_rejected' => $autoRejected,
+            'outbound_pushed' => $outboundPushed,
+            'outbound_conflicts' => $outboundConflicts,
+            'outbound_skipped' => $outboundSkipped,
+            'two_way_enabled' => $twoWayEnabled,
         ]));
 
         $this->logger->info('Sync cycle completed', [
@@ -148,6 +196,9 @@ final class NationalSyncOrchestrator
             'auto_confirmed' => $autoConfirmed,
             'operator_flagged' => $operatorFlagged,
             'auto_rejected' => $autoRejected,
+            'outbound_pushed' => $outboundPushed,
+            'outbound_conflicts' => $outboundConflicts,
+            'two_way_enabled' => $twoWayEnabled,
         ]);
 
         return [
@@ -158,6 +209,10 @@ final class NationalSyncOrchestrator
             'auto_confirmed' => $autoConfirmed,
             'operator_flagged' => $operatorFlagged,
             'auto_rejected' => $autoRejected,
+            'outbound_pushed' => $outboundPushed,
+            'outbound_conflicts' => $outboundConflicts,
+            'outbound_skipped' => $outboundSkipped,
+            'two_way_enabled' => $twoWayEnabled,
         ];
     }
 
