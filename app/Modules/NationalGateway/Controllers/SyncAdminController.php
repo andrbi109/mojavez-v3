@@ -91,4 +91,25 @@ final class SyncAdminController extends Controller
         $summary = $this->orchestrator->runCycle($batchSize);
         return Response::json($summary);
     }
+
+    /**
+     * GET /admin/sync/readiness — Stage2ReadinessChecker report (HTML view).
+     *
+     * Renders the 4 §29.2 readiness conditions as Bootstrap cards with
+     * pass/fail badges + the overall `ready` flag + a hint about how to
+     * enable Stage 2 via SettingsController.
+     *
+     * Phase 11 (v1.2.0): pays D-8-4 (DEBT_REVIEW).
+     */
+    public function readiness(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin', 'sync_operator']);
+        /** @var \App\Modules\NationalGateway\Services\Stage2ReadinessChecker $checker */
+        $checker = $this->container->make(\App\Modules\NationalGateway\Services\Stage2ReadinessChecker::class);
+        $report = $checker->check();
+        return $this->render('admin/sync_readiness', [
+            'title'  => 'آمادگی مرحلهٔ ۲',
+            'report' => $report,
+        ]);
+    }
 }

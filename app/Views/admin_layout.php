@@ -79,6 +79,9 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/pending" class="nav-link">
                 <i class="bi bi-hourglass-split"></i> در انتظار بررسی
             </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/readiness" class="nav-link">
+                <i class="bi bi-clipboard2-check"></i> آمادگی مرحلهٔ ۲
+            </a>
             <?php endif; ?>
 
             <h6>حساب</h6>
