@@ -3,10 +3,17 @@ declare(strict_types=1);
 
 namespace App\Modules\NationalGateway\Controllers;
 
+use App\Container;
+use App\Http\Csrf;
 use App\Http\Request;
 use App\Http\Response;
+use App\Http\Session;
+use App\Modules\Core\Controllers\Controller;
 use App\Modules\NationalGateway\Services\NationalSyncOrchestrator;
 use App\Queue\Worker;
+use App\Shared\Support\Environment;
+use App\Shared\Support\Hash;
+use App\Shared\Support\StructuredLogger;
 
 /**
  * SyncAdminController — the /admin/sync/* endpoints.
@@ -20,17 +27,31 @@ use App\Queue\Worker;
  *   GET  /admin/sync/status         — latest cycle summary + poor man's cron tick.
  *   GET  /admin/sync/pending        — operator-flagged matches pending review.
  *   POST /admin/sync/run            — manually trigger a full cycle (admin only).
- *   POST /admin/sync/resolve/{id}   — operator resolves a flagged match.
  *
- * All endpoints require requireRole(['admin','sync_operator']) — enforced by
- * the Controller base class guard (Phase 6 hardens this with requireApiKey).
+ * Auth: requireRole(['admin', 'sync_operator']) — both realms accepted.
+ *
+ * Phase 10 fix: this controller previously did NOT extend the base Controller
+ * class and therefore bypassed requireLogin()/requireRole() entirely — meaning
+ * /admin/sync/* was reachable by unauthenticated users (the docblock claimed
+ * the base class enforced auth, but the class didn't extend it). Now extends
+ * Controller and calls requireRole() at the top of every action. This is both
+ * a security fix and a 404-adjacent fix (unauthenticated users now get a 302
+ * to /admin/login instead of raw JSON, which is the expected admin-area UX).
  */
-final class SyncAdminController
+final class SyncAdminController extends Controller
 {
     public function __construct(
+        Container $container,
+        Session $session,
+        Csrf $csrf,
+        Environment $environment,
+        Hash $hash,
+        StructuredLogger $logger,
         private readonly NationalSyncOrchestrator $orchestrator,
         private readonly Worker $worker,
-    ) {}
+    ) {
+        parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
+    }
 
     /**
      * GET /admin/sync/status — latest cycle summary.
@@ -38,6 +59,8 @@ final class SyncAdminController
      */
     public function status(Request $request, array $params = []): Response
     {
+        $this->requireRole(['admin', 'sync_operator']);
+
         // Poor man's cron — process one queued job before returning status.
         $jobsRun = $this->worker->run(1, 'sync-status-poll');
 
@@ -52,6 +75,7 @@ final class SyncAdminController
      */
     public function pending(Request $request, array $params = []): Response
     {
+        $this->requireRole(['admin', 'sync_operator']);
         $limit = (int)($request->queryParam('limit', 50) ?? 50);
         $pending = $this->orchestrator->status();
         return Response::json($pending);
@@ -62,6 +86,7 @@ final class SyncAdminController
      */
     public function run(Request $request, array $params = []): Response
     {
+        $this->requireRole(['admin']);
         $batchSize = (int)($request->queryParam('batch_size', 50) ?? 50);
         $summary = $this->orchestrator->runCycle($batchSize);
         return Response::json($summary);

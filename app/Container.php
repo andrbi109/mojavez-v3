@@ -68,6 +68,14 @@ final class Container
         // The constructor params are themselves singletons.
         $this->singletons[Environment::class]     = $environment;
         $this->singletons[StructuredLogger::class] = $logger;
+        // Self-register so autowired controllers (and any other class that
+        // asks the Container for a Container) get THIS instance — with all
+        // its module bindings — instead of a fresh empty one. Without this,
+        // a controller's `$this->container->make(Connection::class)` (and
+        // similar late-bound lookups) would throw "Cannot autowire
+        // Connection: parameter $host has no type" because the new
+        // Container has no factory for Connection. Phase 10 fix.
+        $this->singletons[self::class] = $this;
     }
 
     /**

@@ -141,10 +141,18 @@ final class AuthController extends Controller
 
     /**
      * GET /admin/login — admin login form.
+     *
+     * Phase 10 fix: render with layout='none' because admin/login.php is a
+     * complete HTML document (its own <html>/<head>/<body>). Without this,
+     * the render() method auto-detects the admin/ prefix and wraps the page
+     * in admin_layout.php — producing invalid nested HTML (a full <html>
+     * inside <body>). The login page is also shown to unauthenticated
+     * users, so wrapping it in the admin sidebar (which expects a logged-in
+     * admin_display_name) is conceptually wrong too.
      */
     public function adminLoginForm(Request $request, array $params = []): Response
     {
-        return $this->render('admin/login', []);
+        return $this->render('admin/login', [], 'none');
     }
 
     /**

@@ -121,6 +121,12 @@ final class TrackingController extends Controller
 
     /**
      * GET /tracking/print/{trackingCode} — printable case view (A4).
+     *
+     * Phase 10 fix: render with layout='none' because print.php is a complete
+     * HTML document (its own <html>/<head>/<body> + print-specific CSS).
+     * Without this, the page gets wrapped in layout.php — producing invalid
+     * nested HTML and pulling in the site nav/footer (which should NOT
+     * appear on a printable A4 page).
      */
     public function printView(Request $request, array $params = []): Response
     {
@@ -130,7 +136,7 @@ final class TrackingController extends Controller
             return Response::html('<!doctype html><meta charset="utf-8"><h1>۴۰۴</h1><p>پرونده یافت نشد.</p>', 404);
         }
         $statusLog = $this->statusLog->findByApplicantId($applicant->id);
-        return $this->render('print', ['applicant' => $applicant, 'statusLog' => $statusLog]);
+        return $this->render('print', ['applicant' => $applicant, 'statusLog' => $statusLog], 'none');
     }
 
     /**

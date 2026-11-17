@@ -3,9 +3,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Core\Controllers;
 
+use App\Container;
+use App\Http\Csrf;
 use App\Http\Request;
 use App\Http\Response;
+use App\Http\Session;
 use App\Shared\Persistence\Connection;
+use App\Shared\Support\Environment;
+use App\Shared\Support\Hash;
+use App\Shared\Support\StructuredLogger;
 
 /**
  * SettingsController — admin system settings (key/value store).
@@ -28,6 +34,14 @@ use App\Shared\Persistence\Connection;
  *   - site_name               = display name (footer + header)
  *   - site_description        = tagline
  *   - default_service_type_id = 1 (handicraft) | 2 (household business)
+ *
+ * Phase 10 fix: same constructor + render() bugs as UsersController — the
+ * parent::__construct() call was missing Hash + StructuredLogger (4 args vs
+ * 6 required → fatal on every /admin/settings GET/POST), and render() was
+ * being called with a Persian title string as the third argument (the
+ * layout name slot), so the page was rendered without admin_layout. Both
+ * fixed: the title is now passed via the $data array ('title' => ...) and
+ * the render() call relies on the auto-detect of admin/* views.
  */
 final class SettingsController extends Controller
 {
@@ -64,13 +78,15 @@ final class SettingsController extends Controller
     ];
 
     public function __construct(
-        \App\Container $container,
-        \App\Http\Session $session,
-        \App\Http\Csrf $csrf,
-        \App\Shared\Support\Environment $environment,
+        Container $container,
+        Session $session,
+        Csrf $csrf,
+        Environment $environment,
+        Hash $hash,
+        StructuredLogger $logger,
         private readonly Connection $conn,
     ) {
-        parent::__construct($container, $session, $csrf, $environment);
+        parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
 
     public function index(Request $request, array $params = []): Response
@@ -78,10 +94,11 @@ final class SettingsController extends Controller
         $this->requireRole(['admin']);
         $settings = $this->loadSettings();
         return $this->render('admin/settings/index', [
+            'title'    => 'تنظیمات سامانه',
             'settings' => $settings,
-            'known' => self::KNOWN_SETTINGS,
-            'saved' => false,
-        ], 'تنظیمات سامانه');
+            'known'    => self::KNOWN_SETTINGS,
+            'saved'    => false,
+        ]);
     }
 
     public function update(Request $request, array $params = []): Response
@@ -125,10 +142,11 @@ final class SettingsController extends Controller
 
         $settings = $this->loadSettings();
         return $this->render('admin/settings/index', [
+            'title'    => 'تنظیمات سامانه',
             'settings' => $settings,
-            'known' => self::KNOWN_SETTINGS,
-            'saved' => true,
-        ], 'تنظیمات سامانه');
+            'known'    => self::KNOWN_SETTINGS,
+            'saved'    => true,
+        ]);
     }
 
     /**

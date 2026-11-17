@@ -155,7 +155,18 @@ abstract class Controller
      * is rendered with $content available.
      *
      * For admin views (paths starting with `admin/`), the admin_layout.php
-     * is used instead. (Phase 6 will port the full Bootstrap-based layouts.)
+     * is used by default. (Phase 6 ports the full Bootstrap-based layouts.)
+     *
+     * Special layout values:
+     *   - 'none'  → render the view as-is with NO layout wrapping. Use this
+     *               for views that are already complete HTML documents
+     *               (e.g. admin/login.php, print.php). Without this, such
+     *               views would be nested inside a layout, producing invalid
+     *               HTML (a <html> inside a <body>).
+     *
+     * Phase 10: 'none' was added to fix the broken nested-HTML output on
+     * /admin/login (full HTML doc wrapped by admin_layout) and on
+     * /tracking/print/{code} (full HTML doc wrapped by layout.php).
      */
     protected function render(string $view, array $data = [], string $layout = 'layout'): Response
     {
@@ -174,6 +185,13 @@ abstract class Controller
         ob_start();
         require $viewPath;
         $content = (string)ob_get_clean();
+
+        // 'none' = render the view as-is (already a complete HTML document).
+        // Used by print.php and admin/login.php — both of which ship their
+        // own <html>/<head>/<body> and would otherwise be nested in a layout.
+        if ($layout === 'none') {
+            return Response::html($content);
+        }
 
         // Pick layout: admin/* views use admin_layout.php.
         if ($layout === 'layout' && str_starts_with($view, 'admin/')) {

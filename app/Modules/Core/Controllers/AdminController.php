@@ -160,6 +160,57 @@ final class AdminController extends Controller
         return $this->jsonSuccess(['changed' => true, 'new_status' => $newStatus->value]);
     }
 
+    /**
+     * GET /admin/form-fields  — stub (D-7-1, deferred to v1.2).
+     * GET /admin/fee-tariff   — stub (D-7-1, deferred to v1.2).
+     * GET /admin/license-titles — stub (D-7-1, deferred to v1.2).
+     *
+     * Phase 10 fix: these three admin pages are linked from admin_layout.php's
+     * sidebar but had NO matching routes — so clicking any of them produced a
+     * 404. Rather than silently removing the sidebar links (which loses the
+     * discoverability of these planned sections), we wire them to a stub
+     * "coming-soon" view that:
+     *   - returns HTTP 200 (not 404, not 501),
+     *   - explains the feature is deferred to v1.2 per DEBT_REVIEW D-7-1,
+     *   - provides a back-link to /admin/dashboard.
+     *
+     * The three sections share one view (`admin/stub_coming_soon.php`)
+     * parameterised by `$title`, `$icon`, and `$description` so each stub
+     * feels contextual rather than identical.
+     */
+    public function formFields(Request $request, array $params = []): Response
+    {
+        $this->requireLogin();
+        return $this->render('admin/stub_coming_soon', [
+            'title'       => 'فیلدهای فرم',
+            'icon'        => 'bi-input-cursor-text',
+            'description' => 'مدیریت فیلدهای پویای فرم ثبت‌نام (ترتیب، اعتبارسنجی، نوع ورودی). '
+                . 'این بخش در نسخهٔ ۱.۲ به‌صورت کامل فعال خواهد شد.',
+        ]);
+    }
+
+    public function feeTariff(Request $request, array $params = []): Response
+    {
+        $this->requireLogin();
+        return $this->render('admin/stub_coming_soon', [
+            'title'       => 'تعرفهٔ هزینه',
+            'icon'        => 'bi-cash-stack',
+            'description' => 'مدیریت نرخ‌نامهٔ چندگانه (دهک درآمدی + نوع خدمت). '
+                . 'این بخش در نسخهٔ ۱.۲ به‌صورت کامل فعال خواهد شد.',
+        ]);
+    }
+
+    public function licenseTitles(Request $request, array $params = []): Response
+    {
+        $this->requireLogin();
+        return $this->render('admin/stub_coming_soon', [
+            'title'       => 'عناوین مجوز',
+            'icon'        => 'bi-award',
+            'description' => 'مدیریت رشته‌های مجوز اختصاصی هر نوع خدمت. '
+                . 'این بخش در نسخهٔ ۱.۲ به‌صورت کامل فعال خواهد شد.',
+        ]);
+    }
+
     private function connection(): \App\Shared\Persistence\Connection
     {
         return $this->container->make(\App\Shared\Persistence\Connection::class);

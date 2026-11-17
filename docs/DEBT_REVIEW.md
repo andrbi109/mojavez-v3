@@ -580,14 +580,111 @@
 - [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۹ scope محدود داشت و در
   همان release کامل شد. ۹ assertion تست جدید اضافه شد.
 
-#### توصیه برای فاز ۱۰ (post-Phase 9)
+#### توصیه برای فاز ۱۰ (post-Phase 9) — **انجام شد**
 
-- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۱۰ (v1.2.0) باید
-  D-8-4 (admin UI برای readiness) و D-7-1 (کنترلرهای باقی‌مانده) را پرداخت کند.
-- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-8-4 (medium)، D-7-1 (medium).
-  همچنین وقتی upstream endpoint نوشتنی اضافه کرد، D-8-1 باید فوراً پرداخت شود.
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بخشی — فاز ۱۰ به‌جای پاکسازی
+  کامل D-7-1/D-8-4، یک **bug-fix مسیر/ویو** بود: برطرف‌سازی ۴۰۴ها و خطاهای
+  ۵۰۰ پنهان که در time اجرای واقعی ظاهر می‌شدند. پیاده‌سازی شد.
+- [x] اگر بله، کدام debt‌ها باید پرداخت شوند؟ فاز ۱۰ D-7-1 را **بخشی پرداخت**
+  کرد: سه مسیر admin که در سایدبار ارجاع شده بودند اما کنترلر نداشتند
+  (`/admin/form-fields`, `/admin/fee-tariff`, `/admin/license-titles`) با stub
+  «coming soon» متصل شدند (به‌جای ۴۰۴). D-8-4 همچنان به v1.2 موکول.
+- [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۱۰ scope محدود داشت
+  (برطرف‌سازی ۴۰۴ها و ۵۰۰های پنهان) و در همان release کامل شد.
+
+---
+
+### فاز ۱۰: برطرف‌سازی خطاهای مسیر و ویو (Route/View 404/500 prevention)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.1.1 (phase/10-routes-views-404-prevention branch)
+
+#### زمینه
+
+کاربر پس از فاز ۹ (پیاده‌سازی `/panel/*` و برطرف‌سازی ۴۰۴ پس از ورود) درخواست
+کرد که بازبینی گسترده‌تری روی **تمام** مسیرها و ویوهای پروژه انجام شود تا
+هر ۴۰۴ یا خطای ۵۰۰ پنهان که در time اجرا ظاهر می‌شود برطرف گردد. این فاز
+حاصل آن بازبینی است.
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-7-1 (partial) | کنترلرهای ادمین باقی‌مانده | سه مسیر سایدبار ادمین که ۴۰۴ برمی‌گرداندند (`/admin/form-fields`, `/admin/fee-tariff`, `/admin/license-titles`) با stub «coming soon» در `AdminController::formFields/feeTariff/licenseTitles` متصل شدند — کاربر دیگر ۴۰۴ نمی‌بیند، بلکه یک صفحهٔ ۲۰۰ با توضیح «فعال‌سازی در v1.2» می‌بیند. کنترلرهای کامل (CRUD) همچنان به v1.2 موکول. |
+
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-10-1 | `AdminController::formFields/feeTariff/licenseTitles` سه action stub هستند که فقط یک view «coming soon» برمی‌گردانند — CRUD کامل در v1.2 باید پیاده شود. این یک stub آگاهانه است (نه ۴۰۴) و در DEBT_REVIEW ثبت شده. | `app/Modules/Core/Controllers/AdminController.php::formFields/feeTariff/licenseTitles` | medium | در v1.2 با افزودن `FormFieldController` + `FeeTariffController` + `LicenseTitleController` کامل (CRUD + views). |
+| D-10-2 | `SyncAdminController` در فاز ۸ از `Controller` base ارث نمی‌برد و در نتیجه `requireLogin/requireRole` فراخوانی نمی‌کرد — یعنی `/admin/sync/*` برای کاربران غیراحراز هویت باز بود. این یک **باگ امنیتی** است که از فاز ۸ موجود بود و در این فاز برطرف شد. برای ثبت تاریخی این اتفاق، در CHANGELOG و این فایل آورده شده. | `app/Modules/NationalGateway/Controllers/SyncAdminController.php` | (paid) | paid — حالا از `Controller` ارث می‌برد و `requireRole(['admin','sync_operator'])` در هر action فراخوانی می‌کند. |
+
+#### چیزهایی که برطرف شد اما debt ثبت نشد (چون bug-fix بود نه new feature)
+
+این موارد خطای زمان اجرا بودند که از فاز ۷ موجود بودند و در این فاز برطرف شدند:
+
+1. **`UsersController` constructor signature mismatch** — فقط ۴ arg به
+   `parent::__construct` پاس می‌داد در حالی که `Controller` ۶ arg می‌خواهد
+   (`Hash` و `StructuredLogger` کم داشت). این باعث fatal error روی هر مسیر
+   `/admin/users*` می‌شد. برطرف شد: هر دو dependency اضافه شد و به parent پاس
+   داده شد.
+
+2. **`SettingsController` constructor signature mismatch** — همان باگ. هر
+   مسیر `GET/POST /admin/settings` fatal error می‌داد. برطرف شد.
+
+3. **`UsersController` و `SettingsController` render() third-arg misuse** —
+   یک رشتهٔ فارسی به‌عنوان آرگومان سوم `render()` پاس می‌شد، اما آرگومان سوم
+   `$layout` است نه title. نتیجه: layout resolver به دنبال
+   `app/Views/مدیریت کاربران.php` می‌گشت، آن را پیدا نمی‌کرد، و به fallback
+   «no layout» برمی‌گشت — یعنی صفحات admin بدون `admin_layout` رندر می‌شدند
+   (بدون سایدبار، بدون هدر صحیح). برطرف شد: title حالا به‌عنوان کلید `title`
+   در `$data` پاس داده می‌شود و `render()` با layout پیش‌فرض (`layout`) فراخوانی
+   می‌شود که برای admin/* views به‌صورت خودکار به `admin_layout` تبدیل می‌شود.
+
+4. **`admin/login.php` nested-HTML** — یک HTML document کامل بود (`<html>`,
+   `<head>`, `<body>`) اما چون با `render('admin/login', [])` فراخوانی
+   می‌شد، `render()` آن را در `admin_layout.php` می‌پیچید که خودش یک HTML
+   کامل است — یعنی `<html>` داخل `<body>`. برطرف شد: `render('admin/login',
+   [], 'none')` حالا یک sentinel جدید `'none'` دارد که layout wrapping را
+   skip می‌کند.
+
+5. **`print.php` nested-HTML** — همان باگ: یک HTML کامل بود اما با `render('print', ...)`
+   در `layout.php` پیچیده می‌شد. برطرف شد: `render('print', ..., 'none')`.
+
+6. **`Container` self-registration** — `Container` خودش را به‌عنوان singleton
+   در `singletons[]` ثبت نمی‌کرد، بنابراین وقتی یک کنترلر با autowire ساخته
+   می‌شد و `Container` به‌عنوان dependency می‌خواست، یک `Container` جدید خالی
+   (بدون bindings) ساخته می‌شد. سپس `$this->container->make(Connection::class)`
+   با `RuntimeException` fail می‌شد چون factory برای Connection نبود. این یعنی
+   `AdminController::dashboard()` (که از `$this->connection()->scalar(...)` استفاده
+   می‌کند) با ۵۰۰ fail می‌شد. برطرف شد: `$this->singletons[self::class] = $this`
+   در constructor.
+
+7. **صفحهٔ ۴۰۴ bare HTML** — صفحهٔ ۴۰۴ فقط `<h1>۴۰۴</h1><p>صفحه یافت نشد.</p>`
+   بود بدون هیچ layout/brading. برطرف شد: `errors/404.php` view با layout.php
+   اصلی سایت، با دکمه‌های بازگشت به خانه/پیگیری/راهنما.
+
+#### Debt carried forward به فاز ۱۱
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-2-2 | AdminController فقط ۵ متد (dashboard/applications/viewApplication/changeStatus + 3 stub جدید) | medium | v1.2 |
+| D-2-3 | کنترلرهای License, Payment, Revision, Report, ServiceType, ServiceController, BulkImport, FormField, WizardStep, Sms, LicenseTitle, DocumentController, RecordsController هنوز ساخته نشده | medium | v1.2 |
+| D-7-1 (partial) | سه stub admin (form-fields/fee-tariff/license-titles) فعال شد ولی CRUD کامل نه | medium | v1.2 |
+| D-8-4 | admin UI برای /admin/sync/readiness (نمایش گزارش Stage2ReadinessChecker) | medium | v1.2 |
+| D-9-1 | `POST /panel/profile` و `POST /panel/avatar` stub | medium | v1.3 |
+| D-10-1 | سه stub admin CRUD کامل ندارد | medium | v1.2 (با D-7-1 ادغام) |
+
+#### توصیه برای فاز ۱۱ (post-Phase 10)
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۱۱ (v1.2.0) باید
+  D-7-1 + D-10-1 (ادغام‌شده) و D-8-4 را پرداخت کند: CRUD کامل برای form-fields,
+  fee-tariff, license-titles + admin UI برای Stage2ReadinessChecker.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-7-1+D-10-1 (medium)،
+  D-8-4 (medium)، D-2-2 (medium)، D-2-3 (medium).
 - [ ] آیا D-9-1 (updateProfile/uploadAvatar) باید در v1.2 یا v1.3 پرداخت شود؟
-  v1.3 پیشنهاد می‌شود چون نیاز به `AvatarService` مستقل دارد که scope فاز ۱۰
+  v1.3 پیشنهاد می‌شود چون نیاز به `AvatarService` مستقل دارد که scope فاز ۱۱
   را بیش از حد گسترش می‌دهد.
 
 ---
@@ -601,13 +698,13 @@
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 0 | — | — |
-| medium | 5 | 2026-11-17 | D-2-2, D-2-3, D-7-1, D-8-4, D-9-1 |
+| medium | 6 | 2026-11-17 | D-2-2, D-2-3, D-7-1, D-8-4, D-9-1, D-10-1 |
 | low | 26 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۹ (User Panel):** ۰ critical، ۰ high، ۵ medium (همگی به v1.2/v1.3 موکول)، ۲۶ low.
-تغییر نسبت به فاز ۸ + fix ISSUE-001: ۱ debt جدید اضافه شد (D-9-1 = updateProfile/uploadAvatar stub ها در پنل کاربری). فاز ۹ هدف اصلی‌اش (بستن 404 پس از ورود با پیاده‌سازی `/panel/*`) را به‌طور کامل انجام داد — ۱۰ مسیر، ۱۰ اکشن، ۷ ویو، ۱ layout، ۱ repo جدید، ۹ assertion تست جدید.
+**وضعیت پس از فاز ۱۰ (Route/View 404/500 prevention):** ۰ critical، ۰ high، ۶ medium (همگی به v1.2/v1.3 موکول)، ۲۶ low.
+تغییر نسبت به فاز ۹: ۱ debt جدید اضافه شد (D-10-1 = سه stub admin برای form-fields/fee-tariff/license-titles). فاز ۱۰ هدف اصلی‌اش (برطرف‌سازی ۴۰۴ و ۵۰۰های پنهان در مسیرها و ویوها) را به‌طور کامل انجام داد — ۷ bug-fix زمان اجرا (در DEBT_REVIEW فهرست شد)، ۳ مسیر stub جدید، ۱ view جدید (`admin/stub_coming_soon.php`)، ۱ view جدید (`errors/404.php`)، ۱ sentinel جدید در `Controller::render()` (`'none'`).
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
