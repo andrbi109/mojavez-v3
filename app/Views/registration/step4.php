@@ -8,6 +8,18 @@
  * the (future) RegistrationController creates the applicants row + a
  * status_log row + redirects to /register/success/{trackingCode}.
  *
+ * Phase 15.1 (v1.6.1) — removed the static HTML5 `required` attribute
+ * from the file inputs because the document_types table was empty
+ * in a fresh install and the wizard blocked form submission when no
+ * docs were uploaded. Kept the `*` asterisk for visual indication.
+ *
+ * Phase 16 (v1.7.0) — restored the `required` attribute dynamically
+ * based on each document_type's computed `is_required` field
+ * (national_id and personal_photo are required; the rest are
+ * optional). `RegistrationController::requiredDocs()` now reads from
+ * the document_types table seeded by migration 010, so the wizard
+ * reflects what's actually configured.
+ *
  * Expected $data:
  *   $requiredDocs  array<int, array{doc_type, label, is_required}> —
  *                   document_types rows the wizard expects.
@@ -60,7 +72,8 @@ require __DIR__ . '/_progress.php';
                             </label>
                             <input type="file" class="form-control" id="doc_<?= htmlspecialchars($docType, ENT_QUOTES) ?>"
                                 name="docs[<?= htmlspecialchars($docType, ENT_QUOTES) ?>]"
-                                accept="image/jpeg,image/png,application/pdf">
+                                accept="image/jpeg,image/png,application/pdf"
+                                <?= $req ? 'required' : '' ?>>
                         </div>
                     <?php endforeach; ?>
 
