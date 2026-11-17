@@ -1,0 +1,78 @@
+# ===== mojavez-v3 .gitignore =====
+# Philosophy: keep the repo lean; never commit credentials, runtime data, or build artifacts.
+
+# ----- Environment & secrets -----
+.env
+.env.local
+.env.*.local
+!env.example
+!deploy/docker/.env.example
+*.pem
+*.key
+
+# ----- Runtime data (must be writable by the app, never committed) -----
+storage/logs/*
+!storage/logs/.gitkeep
+storage/cache/*
+!storage/cache/.gitkeep
+storage/sessions/*
+!storage/sessions/.gitkeep
+storage/exports/*
+!storage/exports/.gitkeep
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# User-uploaded files (outside public web root)
+uploads/*
+!uploads/.gitkeep
+
+# ----- Installer artefacts (one-shot installer must be deleted after install) -----
+# public/install.php is committed for first-run; delete after deployment.
+# public/check.php is committed for prerequisite checking; delete after deployment.
+
+# ----- Composer / dependencies (forbidden by philosophy, but ignore if any test artifacts) -----
+/vendor/
+composer.lock
+composer.phar
+
+# ----- Node (only used for vendor asset build, never committed) -----
+/node_modules/
+package-lock.json
+
+# ----- IDE & editor -----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ----- Test reports -----
+tests/reports/*
+!tests/reports/.gitkeep
+.phpunit.result.cache
+.phpunit.cache/
+
+# ----- Docker -----
+docker-compose.override.yml
+
+# ----- Build / temp -----
+*.tmp
+*.bak
+*.orig
+
+# ----- Python tooling caches (tools/, scripts/test_*.py) -----
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# ----- Coverage -----
+coverage/
+*.coverage
+htmlcov/
+
+# ----- Misc -----
+phpinfo.php
+*.har.bak

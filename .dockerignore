@@ -1,0 +1,62 @@
+# Docker build context ignore — keep images lean.
+# Anything not needed to run mojavez-v3 inside the container is excluded.
+
+# VCS
+.git
+.gitignore
+.gitattributes
+.github/
+
+# Documentation
+docs/
+*.md
+!README.md
+!CHANGELOG.md
+!VERSION
+
+# Source repos (should never be inside the project tree anyway)
+src_repos/
+
+# Tests & reports (not needed in the runtime image)
+tests/
+tools/
+scripts/test_*.py
+scripts/pattern_matcher.py
+
+# Storage & uploads — runtime data, mounted as volumes
+storage/logs/*
+storage/cache/*
+storage/sessions/*
+storage/exports/*
+storage/uploads/*
+uploads/*
+
+# IDE / editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Composer / Node — forbidden by philosophy, but ignore if any test artefacts
+vendor/
+node_modules/
+composer.*
+package*.json
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Build / temp
+*.tmp
+*.bak
+*.orig
+__pycache__/
+*.pyc
+.phpunit.result.cache
+.phpunit.cache/
+coverage/

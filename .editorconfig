@@ -1,0 +1,29 @@
+# EditorConfig — mojavez-v3
+# https://editorconfig.org
+# Keeps a consistent style across editors and the AI agents that work on this repo.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{js,ts,css,scss,html,json,yml,yaml,vue,svelte}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+[Makefile]
+indent_style = tab
+
+[*.sql]
+indent_size = 2
+
+[*.sh]
+indent_size = 2
