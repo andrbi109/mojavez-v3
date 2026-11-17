@@ -697,6 +697,8 @@ CREATE TABLE IF NOT EXISTS `user_accounts` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `person_id` int(11) DEFAULT NULL,
   `username` varchar(50) DEFAULT NULL,
+  `email` varchar(254) DEFAULT NULL,
+  `display_name` varchar(100) DEFAULT NULL,
   `mobile` char(11) NOT NULL,
   `password` varchar(255) NOT NULL,
   `avatar_document_id` int(11) DEFAULT NULL,
@@ -711,6 +713,7 @@ CREATE TABLE IF NOT EXISTS `user_accounts` (
   UNIQUE KEY `uq_user_accounts_person` (`person_id`),
   KEY `avatar_document_id` (`avatar_document_id`),
   KEY `idx_user_accounts_mobile` (`mobile`),
+  KEY `idx_user_accounts_email` (`email`),
   CONSTRAINT `user_accounts_ibfk_1` FOREIGN KEY (`person_id`) REFERENCES `persons` (`id`) ON DELETE CASCADE,
   CONSTRAINT `user_accounts_ibfk_2` FOREIGN KEY (`avatar_document_id`) REFERENCES `documents` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

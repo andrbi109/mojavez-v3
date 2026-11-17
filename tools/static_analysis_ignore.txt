@@ -1,0 +1,90 @@
+# static_analysis_ignore.txt — false-positive patterns for
+# tools/static_analysis.py.
+#
+# Used in --strict mode (or with the MOJAVEZ_STRICT=1 env var) to suppress
+# warnings that are known false positives. CI runs the analyzer with
+# --strict (see .github/workflows/ci.yml).
+#
+# Format:
+#   - One pattern per line.
+#   - Lines starting with '#' are comments (ignored).
+#   - Blank lines are ignored.
+#   - Patterns are matched as substrings (case-sensitive) on the full
+#     warning text (e.g. "app/Views/user/profile.php:<?= $csrfField ?>
+#     without htmlspecialchars (XSS risk)").
+#   - A warning is suppressed if its text contains ANY of the listed
+#     patterns as a substring.
+#
+# When adding a new pattern:
+#   - Make it specific enough to suppress ONLY the false-positive class
+#     you intend (don't over-broaden — that hides real warnings).
+#   - Add a comment above explaining why the warning is a false positive
+#     and where it appears.
+
+# -----------------------------------------------------------------------------
+# 1. CSRF field in view forms.
+#
+# `Csrf::field()` (app/Http/Csrf.php) returns an HTML `<input type="hidden">`
+# whose value is generated server-side and escaped via htmlspecialchars
+# internally. The `<?= $csrfField ?>` short-echo in views is therefore
+# safe — the analyzer can't see through the method call.
+# Applies to: app/Views/**/*.php (login, signup, profile, all admin CRUD
+# forms).
+# -----------------------------------------------------------------------------
+csrfField
+
+# -----------------------------------------------------------------------------
+# 2. $content in layout files.
+#
+# `app/Views/{admin_layout,layout,user_layout}.php` re-emit the captured
+# inner-view output (`$content`) as-is — it's the rendered HTML of the
+# inner view, not user input. htmlspecialchars would double-escape the
+# already-rendered HTML. The layout-rendering contract is that inner
+# views are responsible for escaping their own user input.
+# -----------------------------------------------------------------------------
+$content ?> without htmlspecialchars
+
+# -----------------------------------------------------------------------------
+# 3. "controller not in app/Modules/<X>/Controllers/" false positives.
+#
+# The analyzer's heuristic ("file contains 'class ' + 'Controller' +
+# 'final class'") flags false positives where a file MENTIONS a
+# Controller class name without DEFINING one:
+#   - app/Modules/<X>/Module.php — route registrations mention
+#     Controllers::class as the handler.
+#   - app/Modules/<X>/Services/*.php — docblocks mention AdminController.
+#   - app/Events/EventBus.php — docblock mentions SseController.
+#   - app/Queue/Worker.php — references a controller.
+#   - tests/Unit/*Test.php — RouterTest etc. reference
+#     HealthController/ApplicantController as test fixtures.
+# Real controllers ARE under app/Modules/<X>/Controllers/ — check_schema
+# ownership + the route registration in Module.php guarantee that.
+# -----------------------------------------------------------------------------
+controller not in app/Modules
+
+# -----------------------------------------------------------------------------
+# 4. SQL string-concat in app/Shared/Persistence/Connection.php.
+#
+# `SET NAMES {$charset}` and `SET time_zone = '{$tz}'` use allowlist-
+# validated values (charsets: utf8mb4/utf8/latin1; timezone: regex-validated
+# fixed offset). Prepared statements can't be used here because MariaDB
+# does not accept placeholders in SET NAMES / SET time_zone.
+# -----------------------------------------------------------------------------
+SQL string-concat with variable
+
+# -----------------------------------------------------------------------------
+# 5. $totalPages in app/Views/admin/applications.php.
+#
+# `$totalPages = max(1, (int)ceil($total / max(1, $pageSize)));` — already
+# cast to int via (int)ceil(...). Cannot contain user input.
+# -----------------------------------------------------------------------------
+totalPages
+
+# -----------------------------------------------------------------------------
+# 6. $roleLabel in app/Views/admin/users/index.php.
+#
+# A Persian string literal chosen from a fixed three-value lookup
+# ('مدیر کل' / 'اپراتور همگام‌سازی' / 'کارشناس'), assigned based on the
+# user's `role` field. Not user input.
+# -----------------------------------------------------------------------------
+roleLabel

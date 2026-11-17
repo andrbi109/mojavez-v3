@@ -95,14 +95,15 @@ jobs:
       - name: Schema ownership matrix check
         run: python3 tools/check_schema_ownership.py
 
-      - name: Static analysis (0 FAIL required)
-        run: |
-          python3 tools/static_analysis.py
-          # Fail the step if any FAIL line appears (warnings are OK).
-          if python3 tools/static_analysis.py 2>&1 | grep -qi "fail"; then
-            echo "::error::static analysis reported a FAIL"
-            exit 1
-          fi
+      - name: Static analysis (0 surviving warnings required)
+        # Phase 13 (v1.4.0): pays D-1-8. --strict mode + the ignore
+        # patterns in tools/static_analysis_ignore.txt are now enforced
+        # in CI. The ignore file lists known false-positive patterns
+        # (csrfField, $content in layouts, controller-name false
+        # positives, SQL string-concat in Connection.php for the
+        # allowlist-validated SET NAMES / SET time_zone). Any warning
+        # not covered by the ignore list fails the build.
+        run: python3 tools/static_analysis.py --strict
 
       - name: Unit tests (0 failures required)
         run: php tests/run.php
@@ -115,6 +116,30 @@ jobs:
 
       - name: Smoke test (--no-http, 0 failures required)
         run: ./tests/smoke-test.sh --no-http
+
+      # Phase 13 (v1.4.0): pays D-7-2. database/schema.sql is the
+      # canonical idempotent schema (single source of truth for fresh
+      # installs). The script scripts/generate_schema_sql.py regenerates
+      # it by applying all module migrations to a throwaway DB and
+      # dumping SHOW CREATE TABLE. This step regenerates it and fails
+      # the build if the result differs from the committed file — so
+      # a migration that adds a column but doesn't get its schema.sql
+      # updated is caught before merge.
+      - name: Schema drift check (database/schema.sql)
+        run: |
+          python3 scripts/generate_schema_sql.py
+          # The generator's write_install() does not include the
+          # Phase 12 seed for the 'avatar' document_type (that seed is
+          # hand-added to install.sql at the bottom). Restore the
+          # committed install.sql so the drift check only flags
+          # schema.sql (which is the file we actually want to verify).
+          git checkout database/install.sql
+          if ! git diff --exit-code -- database/schema.sql; then
+            echo "::error::database/schema.sql has drifted from the actual schema. Run 'python3 scripts/generate_schema_sql.py' locally and commit the updated schema.sql."
+            git diff -- database/schema.sql | head -50
+            exit 1
+          fi
+          echo "OK: database/schema.sql is in sync with the migrations."
 
   smoke:
     runs-on: ubuntu-latest

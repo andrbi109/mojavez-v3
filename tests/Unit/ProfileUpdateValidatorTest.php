@@ -185,6 +185,50 @@ final class ProfileUpdateValidatorTest extends TestCase
         $this->assertTrue($result['valid'], 'empty username (clear) → valid=true');
         $this->assertArrayHasKey('username', $result['clean'], 'clean has username key');
         $this->assertNull($result['clean']['username'], 'username normalised to null (clear)');
+
+        // 9. Phase 13 (v1.4.0): the validator's `clean` output is now
+        //    PERSISTED — `update()` whitelist extended to include
+        //    `email` + `display_name` (migration 008). Before Phase 13,
+        //    these were silently dropped (D-12-1). Verify the
+        //    persistence path end-to-end: validate → update → DB row.
+        $validInput = [
+            'username'     => 'ali.reza.persist',
+            'mobile'       => '09129990149',  // a fresh mobile not in DB
+            'email'        => 'persist@example.com',
+            'display_name' => 'علی رضایی-پایدار',
+        ];
+        $result = \App\Modules\Core\Support\ProfileUpdateValidator::validate(
+            $validInput,
+            $this->repo,
+            $this->accountId
+        );
+        $this->assertTrue($result['valid'], 'persistence-path validate → valid=true');
+        $this->assertSame([], $result['errors'], 'persistence-path validate → no errors');
+        // Persist via the repository — the Phase 13 whitelist extension
+        // means email + display_name are now actually stored (before
+        // Phase 13, they were silently dropped).
+        $this->repo->update($this->accountId, $result['clean']);
+        $row = $this->conn->one(
+            'SELECT username, mobile, email, display_name FROM user_accounts WHERE id = ?',
+            [$this->accountId]
+        );
+        $this->assertNotNull($row, 'persistence-path row found');
+        $this->assertSame('ali.reza.persist', (string)$row['username'], 'persistence-path: username persisted');
+        $this->assertSame('09129990149', (string)$row['mobile'], 'persistence-path: mobile persisted');
+        $this->assertSame('persist@example.com', (string)$row['email'], 'persistence-path: email persisted (was silently dropped before Phase 13)');
+        $this->assertSame('علی رضایی-پایدار', (string)$row['display_name'], 'persistence-path: display_name persisted (was silently dropped before Phase 13)');
+
+        // 9b. Restoring the original mobile so tearDown's `DELETE WHERE id`
+        //     works (it does, by id) — but also keeps the test account
+        //     state consistent in case the test is re-run in the same
+        //     process. The unique constraint on `mobile` would block
+        //     re-running the test if we left the changed mobile in place.
+        $this->repo->update($this->accountId, [
+            'username' => 'puv_self',
+            'mobile'   => $this->ownMobile,
+            'email'    => null,
+            'display_name' => null,
+        ]);
     }
 }
 

@@ -71,14 +71,13 @@ final class FeeCalculatorService
         $property = $this->jobAndProperty->findPropertyDetailByApplicantId($applicantId);
         $ruralCheck = $this->isRural($property?->fullAddress() ?? '');
 
-        $decile = $applicant->matchConfidence; // not used — placeholder
-        // Actually, decile comes from applicant_field_values. For Phase 2 we
-        // approximate: use applicants.income_decile if set, else fallback.
-        $decileRow = $this->connection->one(
-            'SELECT income_decile FROM applicants WHERE id = ?',
-            [$applicantId]
-        );
-        $decile = $decileRow === null ? null : (int)$decileRow['income_decile'];
+        // Phase 13 (v1.4.0): pays D-2-4. income_decile is now read from
+        // applicant_field_values (the wizard-populated EAV) first, with
+        // a transparent fallback to applicants.income_decile for older
+        // records that pre-date the wizard port. The fallback keeps
+        // existing tests passing (those insert into applicants
+        // directly) and keeps the fee calculation backward-compatible.
+        $decile = $this->getIncomeDecile($applicantId);
 
         $group = null;
         $amount = 0;
@@ -168,6 +167,60 @@ final class FeeCalculatorService
             }
         }
         return ['rural' => $rural, 'suspicious' => $suspicious];
+    }
+
+    /**
+     * Resolve the income decile for an applicant.
+     *
+     * Phase 13 (v1.4.0): pays D-2-4. Was previously a direct
+     * `SELECT income_decile FROM applicants WHERE id = ?` — which read
+     * from the legacy column populated by the v2-style wizard. In v3,
+     * the wizard stores all per-applicant free-form data in the EAV
+     * table `applicant_field_values` (joined to `form_fields` by
+     * `field_key='income_decile'`). This helper tries the EAV first,
+     * then falls back to the legacy `applicants.income_decile` column
+     * for records that pre-date the wizard port (so existing tests and
+     * migration-from-v2 data keep working).
+     *
+     * @return int|null The decile (1-10) or null when no value is set.
+     */
+    private function getIncomeDecile(int $applicantId): ?int
+    {
+        // 1. Try applicant_field_values (EAV) — joined to form_fields
+        //    by field_key='income_decile'. This is the wizard-populated
+        //    path (the canonical v3 source).
+        $row = $this->connection->one(
+            'SELECT afv.field_value
+               FROM applicant_field_values afv
+               JOIN form_fields ff ON ff.id = afv.field_id
+              WHERE afv.applicant_id = ?
+                AND ff.field_key = ?
+              LIMIT 1',
+            [$applicantId, 'income_decile']
+        );
+        if ($row !== null && $row['field_value'] !== null) {
+            $value = (int)$row['field_value'];
+            // Sanity: decile is 1..10. Anything else is treated as
+            // "no usable value" (so the fallback path runs).
+            if ($value >= 1 && $value <= 10) {
+                return $value;
+            }
+        }
+
+        // 2. Fall back to the legacy column on applicants (used by v2
+        //    imports and existing tests). NULL or 0 = not set.
+        $legacy = $this->connection->one(
+            'SELECT income_decile FROM applicants WHERE id = ?',
+            [$applicantId]
+        );
+        if ($legacy === null) {
+            return null;
+        }
+        $value = $legacy['income_decile'] === null ? null : (int)$legacy['income_decile'];
+        if ($value === null || $value < 1 || $value > 10) {
+            return null;
+        }
+        return $value;
     }
 
     /**

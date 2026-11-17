@@ -780,6 +780,76 @@
 
 ---
 
+### فاز ۱۳: user_accounts email/display_name + low debt cleanup (v1.4.0)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.4.0 (phase/13-user-profile-columns-v1.4.0 branch, tag v1.4.0)
+
+#### زمینه
+
+فاز ۱۲ به‌جز D-12-1 (یک debt low جدید) همه‌چیز را پاک کرد. D-12-1 این
+بود: `ProfileUpdateValidator` (فاز ۱۲) چهار فیلد `username`/`mobile`/
+`email`/`display_name` را اعتبارسنجی می‌کرد ولی `update()` whitelist در
+`PdoUserAccountRepository` فقط `username`+`mobile` را قبول می‌کرد چون
+`user_accounts` در schema فقط این دو ستون قابل‌ویرایش را داشت. نتیجه:
+`email` و `display_name` به‌صورت silent drop می‌شدند.
+
+فاز ۱۳ این gap را با یک migration کوچک `ALTER TABLE` می‌بندد. به‌علاوه،
+هفت debt low از فازهای قبلی که همگی cheap-to-fix بودند پرداخت شد:
+- D-11-1 (public license-titles endpoint برای ویزارد)
+- D-11-2 (FormFieldController::move tie-break docblock)
+- D-1-3 (Request::$trustProxy از config)
+- D-2-4 (FeeCalculatorService از applicant_field_values با fallback)
+- D-2-5 (AutoCancelService::updatePriorities به‌صورت SQL مستقیم)
+- D-1-8 (static_analysis --strict + ignore patterns)
+- D-7-2 (CI schema-drift check روی database/schema.sql)
+
+#### Debt paid در این فاز
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-12-1 | `email` و `display_name` معتبر ولی ذخیره نمی‌شدند | migration 008: `ALTER TABLE user_accounts ADD email VARCHAR(254) NULL, ADD display_name VARCHAR(100) NULL, ADD INDEX idx_user_accounts_email`. `PdoUserAccountRepository::WHITELIST` به ۴ فیلد (`username`، `mobile`، `email`، `display_name`) گسترش یافت. `database/schema.sql` هم‌گام شد. |
+| D-11-1 | `LicenseTitleController::byService` admin-only بود ولی ویزارد نیاز به endpoint عمومی داشت | اکشن جدید `byServicePublic` (بدون auth، payload محدود به `{id, title, category, is_active}` — بدون `sort_order`). مسیر جدید `GET /api/v1/license-titles/by-service/{id}` در `Core/Module.php`. اکشن admin `byService` همچنان admin-only باقی ماند. |
+| D-11-2 | `FormFieldController::move` tie-break با id در docblock ذکر نشده بود | docblock روشن شد: وقتی چند ردیف `sort_order` یکسان دارند، tie-break با `id` (ASC برای down، DESC برای up). SQL از فاز ۱۱ درست بود — فقط docblock ناقص بود. |
+| D-1-3 | `Request::$trustProxy` در `public/index.php` hard-code `false` بود | حالا از `Config::get('app.trust_proxy', false)` خوانده می‌شود. کلید جدید `'trust_proxy'` در `config/app.php` (default false، قابل override با `APP_TRUST_PROXY=true` در `.env`). |
+| D-2-4 | `FeeCalculatorService` مستقیم از `applicants.income_decile` می‌خواند (legacy column) | helper خصوصی جدید `getIncomeDecile(int $applicantId): ?int`: اول `applicant_field_values` (EAV) JOIN `form_fields` با `field_key='income_decile'` را امتحان می‌کند، سپس fallback به `applicants.income_decile` برای رکوردهای pre-wizard. fallback شفاف است — تست‌های موجود که مستقیم در `applicants` درج می‌کنند همچنان pass می‌شوند. |
+| D-2-5 | `AutoCancelService::updatePriorities` با `paginate(1000)` + حلقه PHP کند بود | متد جدید `ApplicantRepositoryInterface::bulkSetPriorityForPreIssueOlderThan(int $days): int` یک SQL `UPDATE ... WHERE ...` واحد صادر می‌کند (با همان WHERE clause قبلی: `priority=0 AND registration_completed_at < DATE_SUB(NOW(), INTERVAL ? DAY) AND current_status IN (pre-issue statuses) AND deleted_at IS NULL`). `updatePriorities()` حالا از آن استفاده می‌کند. رفتار با نسخه قبلی همسان است. |
+| D-1-8 | `static_analysis.py` advisory-only بود (warnings در CI fail نمی‌کرد) | flag جدید `--strict` (یا `MOJAVEZ_STRICT=1` env var). در حالت strict، warnings که با الگوهای `tools/static_analysis_ignore.txt` تطابق دارند suppress می‌شوند؛ اگر warning باقی ماند، exit 1. فایل ignore شامل ۶ الگوی false-positive شناخته‌شده است (csrfField، `$content` در layoutها، controller-not-in-Modules false positives، SQL string-concat در `Connection.php` برای `SET NAMES`/`SET time_zone`، `$totalPages`، `$roleLabel`). با فایل ignore، هر ۳۸ warning موجود suppress می‌شوند → ۰ surviving → CI pass. |
+| D-7-2 | `database/schema.sql` drift در CI چک نمی‌شد | step جدید CI در `.github/workflows/ci.yml`: `python3 scripts/generate_schema_sql.py` را اجرا می‌کند، سپس `git checkout database/install.sql` (چون generator seed Phase 12 را شامل نمی‌شود)، سپس `git diff --exit-code -- database/schema.sql` — اگر schema.sql با migrations هماهنگ نباشد، build fail می‌شود. |
+
+#### Debt introduced
+
+(هیچ — فاز ۱۳ هیچ debt جدیدی وارد نکرد.)
+
+#### Debt carried forward به فاز ۱۴
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-2-3 (partial) | ~۱۲ کنترلر ادمین باقی‌مانده (PaymentController, RevisionController, ReportController, ServiceTypeController, ...) | low | incremental — هر فاز feature-driven چندتا |
+| D-8-5 | ۸ smoke test HTTP به‌دلیل MariaDB fixture drift fail می‌شوند (pre-existing از فاز ۸) | low | زمان مناسب |
+| D-1-9 | writable storage assumptions برای shared hosting | low | فاز ۶ (still deferred) |
+| D-2-9 | migration seed برای 5 service_type + license_titles پیش‌فرض هنوز اجرا نشده | low | فرصت مناسب |
+| D-4-5, D-4-6, D-4-7 | ۳ debt از فاز ۴ (low) | low | فرصت مناسب |
+| D-5-1, D-5-2, D-5-4, D-5-5 | ۴ debt از فاز ۵ (low) | low | فرصت مناسب |
+| D-6-2, D-6-3, D-6-4, D-6-5, D-6-6 | ۵ debt از فاز ۶ (low) | low | فرصت مناسب |
+| D-7-3, D-7-4 | ۲ debt از فاز ۷ (low) | low | فرصت مناسب |
+| D-8-1, D-8-2, D-8-3 | ۳ debt از فاز ۸ (low) | low | فرصت مناسب |
+
+#### توصیه برای فاز ۱۴ (post-Phase 13)
+
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ **خیر** — پس از فاز ۱۳،
+  همچنان ۰ debt medium یا بالاتر باقی مانده است. ۲۱ debt low باقی‌مانده
+  که incremental در فازهای feature-driven پرداخت می‌شوند.
+- [x] اگر خیر، تمرکز بعدی چه باشد؟ (۱) اتمام ~۱۲ کنترلر ادمین باقی‌مانده
+  (D-2-3). (۲) فعال‌سازی Stage 2 (sync_direction='two_way') اگر آماده
+  باشیم. (۳) پورت کامل ویزارد ثبت‌نام (که از D-2-4 و D-11-1 بهره می‌برد).
+- [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۱۳ الگوی migration
+  + repository whitelist extension را تثبیت کرد که برای فازهای بعدی
+  تکرارپذیر است.
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -790,19 +860,18 @@
 | critical | 0 | — | — |
 | high | 0 | — | — |
 | medium | 0 | — | — |
-| low | 29 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5, D-11-1, D-11-2, D-12-1, D-2-3, D-9-1-paid |
+| low | 21 | 2026-11-17 | D-1-9, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5, D-2-3 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱۲ (AvatarService + ProfileUpdateValidator):** ۰ critical، ۰ high، **۰ medium**، ۲۹ low.
-تغییر نسبت به فاز ۱۱: ۱ medium پرداخت شد (D-9-1)، ۱ low جدید اضافه شد (D-12-1:
-`email` و `display_name` معتبر ولی ذخیره نمی‌شوند چون ستون‌ها در `user_accounts`
-وجود ندارند — فرم برای forward-compat این فیلدها را نمایش می‌دهد).
-همچنین ۲ تست unit جدید برای اعتبارسنجی service‌های جدید اضافه شد
-(AvatarServiceTest, ProfileUpdateValidatorTest).
+**وضعیت پس از فاز ۱۳ (user_accounts email/display_name + 7 low-debt
+items):** ۰ critical، ۰ high، **۰ medium**، ۲۱ low.
+تغییر نسبت به فاز ۱۲: ۸ مورد low پرداخت شد (D-12-1، D-11-1، D-11-2،
+D-1-3، D-2-4، D-2-5، D-1-8، D-7-2). هیچ debt جدیدی وارد نشد.
 
-پس از فاز ۱۲، پروژه در وضعیت «بدون debt medium یا بالاتر» است — تنها
-موارد low-priority polish باقی مانده (v1.4+ scope).
+پس از فاز ۱۳، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر» است —
+۲۱ مورد low-priority باقی‌مانده که در فازهای بعدی به‌صورت incremental
+پرداخت می‌شوند.
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 

@@ -39,12 +39,16 @@ interface UserAccountRepositoryInterface
      * The $fields array is a map of column-name => value. Only the
      * following columns are accepted (whitelist-enforced in the PDO
      * implementation):
-     *   - username (string|null)
-     *   - mobile   (string)
+     *   - username     (string|null)
+     *   - mobile       (string)
+     *   - email        (string|null)  — Phase 13 (v1.4.0), migration 008
+     *   - display_name (string|null)   — Phase 13 (v1.4.0), migration 008
      *
-     * (email and display_name are validated by ProfileUpdateValidator
-     * for forward compatibility but are NOT persisted because the
-     * `user_accounts` table has no such columns — see D-12-1.)
+     * Phase 13 (v1.4.0) extended the whitelist from `['username', 'mobile']`
+     * to include `email` and `display_name`, paying D-12-1 (those fields
+     * were validated by `ProfileUpdateValidator` since Phase 12 but
+     * silently dropped because the `user_accounts` table had no such
+     * columns).
      *
      * @param array<string,mixed> $fields
      */

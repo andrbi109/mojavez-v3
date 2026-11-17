@@ -66,36 +66,38 @@ final class AutoCancelService
 
     /**
      * Recompute priority flags. Returns the count of newly-prioritised.
+     *
+     * Phase 13 (v1.4.0): pays D-2-5. Rewritten as a single SQL UPDATE
+     * (via ApplicantRepositoryInterface::bulkSetPriorityForPreIssueOlderThan)
+     * instead of the previous `paginate()` + per-row `updatePriority()`
+     * PHP loop. The new approach is O(1) round-trips regardless of the
+     * number of eligible rows; the old approach was O(N) UPDATE
+     * statements (slow for large volumes — capped at 1000 per call by
+     * the paginate() default page size).
+     *
+     * Behaviour is identical to the previous PHP-loop version:
+     *   - eligibility: registration_completed_at < NOW() - $days days
+     *     AND current_status IN (pre-issue statuses)
+     *     AND priority = 0
+     *     AND deleted_at IS NULL
+     *   - action: SET priority = 1, updated_at = NOW()
+     *   - return: count of newly-prioritised rows.
+     *
+     * The pre-issue status list is mirrored from
+     * ApplicantStatus::isPreIssue() inside the SQL UPDATE (kept as a
+     * literal because MariaDB can't call into PHP). The list must stay
+     * in sync with the enum.
      */
     public function updatePriorities(): int
     {
         $days = (int)Config::get('app.priority_days', 12);
-        // Find applicants who:
-        //  - have registration_completed_at older than $days days
-        //  - are in a pre-issue status
-        //  - do NOT yet have priority=1
-        $eligible = $this->applicants->paginate([
-            // Filter by status is done in SQL via current_status IN pre_issue
-            // We approximate by paginating and filtering in PHP.
-        ], 1, 1000);
-        $count = 0;
-        $cutoff = date('Y-m-d H:i:s', strtotime("-{$days} days"));
-        foreach ($eligible['rows'] as $row) {
-            $completedAt = $row['registration_completed_at'] ?? null;
-            $priority = (int)($row['priority'] ?? 0);
-            $statusSlug = (string)$row['current_status'];
-            $status = ApplicantStatus::fromSlug($statusSlug);
-            if ($status === null || !$status->isPreIssue()) {
-                continue;
-            }
-            if ($priority === 1) {
-                continue;  // already prioritised
-            }
-            if ($completedAt === null || $completedAt > $cutoff) {
-                continue;  // not old enough
-            }
-            $this->applicants->updatePriority((int)$row['id'], true);
-            $count++;
+        $count = $this->applicants->bulkSetPriorityForPreIssueOlderThan($days);
+        if ($count > 0) {
+            $this->logger->info('AutoCancelService bulk-prioritised applicants', [
+                '_module'  => 'core',
+                'count'    => $count,
+                'days'     => $days,
+            ]);
         }
         return $count;
     }

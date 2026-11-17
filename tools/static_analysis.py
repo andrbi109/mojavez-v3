@@ -10,11 +10,21 @@ Phase 1 subset (will grow in later phases per docs/00-MASTER.md §18.1):
 - Every echo/print of dynamic content uses htmlspecialchars.
 - Constants MAX_UPLOAD_SIZE / APP_VERSION etc. are NOT re-defined.
 
-Exit code: 0 if all checks pass, 1 otherwise.
+Exit code:
+  - Default (advisory): 0 even with warnings.
+  - --strict (or MOJAVEZ_STRICT=1 env var): non-zero if any warning remains
+    after applying the ignore patterns in tools/static_analysis_ignore.txt.
+
+Phase 13 (v1.4.0): pays D-1-8. Added --strict mode + ignore-patterns file.
+The ignore file lists known false-positive patterns (one per line, '#'
+starts a comment). When --strict is set, warnings whose text contains any
+ignore-pattern substring are suppressed; if any warning survives, exit 1.
+CI runs with --strict (see .github/workflows/ci.yml).
 """
+import os
+import pathlib
 import re
 import sys
-import pathlib
 
 
 def find_php_files(root: pathlib.Path) -> list[pathlib.Path]:
@@ -62,10 +72,44 @@ def check_controller_location(rel: str, content: str) -> list[str]:
     return errors
 
 
+def load_ignore_patterns(root: pathlib.Path) -> list[str]:
+    """Load the false-positive ignore patterns.
+
+    File: tools/static_analysis_ignore.txt (one pattern per line, '#' = comment).
+    Returns a list of substrings; a warning is suppressed if its text contains
+    any of these substrings (case-sensitive).
+    """
+    path = root / "tools" / "static_analysis_ignore.txt"
+    if not path.is_file():
+        return []
+    patterns: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line == "" or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def is_ignored(warning: str, patterns: list[str]) -> bool:
+    """True if the warning text contains any ignore-pattern substring."""
+    return any(p in warning for p in patterns)
+
+
+def parse_args() -> dict:
+    """Parse CLI args. Only --strict is supported (plus the env var)."""
+    strict = "--strict" in sys.argv[1:] or os.environ.get("MOJAVEZ_STRICT", "") == "1"
+    return {"strict": strict}
+
+
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parent.parent
+    args = parse_args()
+    patterns = load_ignore_patterns(root)
     files = find_php_files(root)
-    total = 0
+    total = 0          # all warnings (advisory count)
+    suppressed = 0     # warnings suppressed by ignore patterns
+    surviving = 0      # warnings not suppressed (only meaningful in --strict)
     for path in files:
         rel = path.relative_to(root)
         content = path.read_text(encoding="utf-8")
@@ -74,11 +118,29 @@ def main() -> int:
         errors.extend(check_htmlspecialchars(content, str(rel)))
         errors.extend(check_controller_location(str(rel), content))
         for e in errors:
+            total += 1
+            if args["strict"] and is_ignored(e, patterns):
+                suppressed += 1
+                continue
             print(f"  WARN  {e}")
-        total += len(errors)
+            if args["strict"]:
+                surviving += 1
+    if args["strict"]:
+        print(
+            f"\n{len(files)} files analyzed, {total} warning(s) "
+            f"({suppressed} suppressed by tools/static_analysis_ignore.txt, "
+            f"{surviving} surviving)."
+        )
+        if surviving > 0:
+            print(
+                f"FAIL: --strict mode: {surviving} warning(s) survived "
+                f"the ignore list — fix them or extend the ignore file."
+            )
+            return 1
+        print("PASS: --strict mode: no surviving warnings.")
+        return 0
+    # Advisory mode (Phase 1-12 behaviour) — exit 0 even with warnings.
     print(f"\n{len(files)} files analyzed, {total} warning(s).")
-    # In Phase 1 we return 0 even with warnings — these are advisory.
-    # Phase 6 will tighten to fail-on-warning.
     return 0
 
 
