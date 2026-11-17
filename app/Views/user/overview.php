@@ -76,9 +76,14 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                         <h6 class="small text-uppercase text-muted">خط زمانی وضعیت</h6>
                         <ul class="list-unstyled ms-3 border-s-2 border-info border-opacity-50">
                             <?php foreach (array_slice($timeline, 0, 6) as $t): ?>
+                                <?php
+                                // Support both array (legacy) and StatusLogEntry (object) forms.
+                                $tStatus = is_array($t) ? (string)($t['status'] ?? $t['to_status'] ?? '—') : (string)($t->statusName ?? '—');
+                                $tCreated = is_array($t) ? (string)($t['created_at'] ?? '') : (string)($t->createdAt ?? '');
+                                ?>
                                 <li class="mb-2">
-                                    <div class="fw-semibold"><?= htmlspecialchars((string)($t['status'] ?? ($t['to_status'] ?? '—')), ENT_QUOTES, 'UTF-8') ?></div>
-                                    <div class="small text-muted"><?= htmlspecialchars((string)($t['created_at'] ?? ''), ENT_QUOTES) ?></div>
+                                    <div class="fw-semibold"><?= htmlspecialchars($tStatus, ENT_QUOTES, 'UTF-8') ?></div>
+                                    <div class="small text-muted"><?= htmlspecialchars($tCreated, ENT_QUOTES) ?></div>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
