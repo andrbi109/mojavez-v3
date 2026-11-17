@@ -850,6 +850,67 @@
 
 ---
 
+### فاز ۱۴: seed defaults + low-debt cleanup (v1.5.0)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.5.0 (phase/14-low-debt-cleanup-v1.5.0 branch, tag v1.5.0)
+
+#### زمینه
+
+پس از فاز ۱۳ که `user_accounts.email/display_name` را اضافه کرد و ۷
+debt low پرداخت کرد، ۲۱ debt low باقی‌مانده بود. فاز ۱۴ به‌صورت
+targeted-cleanup روی ۷ مورد از آن‌ها تمرکز کرد که همگی cheap-to-fix
+بودند: D-2-9 (seed پیش‌فرض service_types/license_titles)، D-1-9
+(writable storage check)، D-4-6 (License::fromArray anchors)،
+D-4-7 (OperatorFlag admin notification)، D-5-2 (migrate_from_v2.php
+side tables)، D-7-4 (SettingsController per-key validation)، D-7-3
+(registration views to Bootstrap).
+
+#### Debt paid در این فاز
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-2-9 | migration seed برای 5 service_types + license_titles هنوز اجرا نشده بود | Migration 009 (`20261117_009_seed_default_service_types.sql`) 5 service_types + 8 license_titles با `INSERT ... ON DUPLICATE KEY UPDATE`. companion INSERTs به `database/install.sql` (دستی — generator فقط DDL می‌نویسد). |
+| D-1-9 | writable-storage assumptions برای shared hosting | `deploy/shared-hosting/check.php` حالا در ۵ زیرشاخهٔ `storage/` + `uploads/` یک فایل probe 1-byte می‌نویسد و PASS/FAIL + پیام خطای PHP را گزارش می‌کند. |
+| D-4-6 | `License::fromArray` anchorهای golden-link (masked_national_code, father_name) را drop می‌کرد | `fromArray` حالا آن‌ها را با default null-safe می‌خواند. `LicenseService::hydrateLicense` docblock به‌روز شد. cache-restoration path همچنان null می‌گیرد (همان رفتار قبلی). |
+| D-4-7 | OperatorFlag matches هیچ سیگنال in-band برای ادمین نداشت | Event جدید `OperatorFlag` + `NotificationSubscriber::handleOperatorFlag` + `NotificationService::notifyAdmins` (فقط in-app، بدون SMS). ادمین‌ها با username به user_accounts بریج می‌شوند. |
+| D-5-2 | `migrate_from_v2.php` فقط جداول اصلی را migrate می‌کرد | +5 side table: `applicant_revisions`, `wizard_steps`, `postal_code_changes`, `fee_groups`, `fee_group_items`. هر کدام با `INSERT IGNORE` (idempotent). |
+| D-7-4 | `SettingsController` کلیدهای سفارشی را فقط بررسی طول می‌کرد؛ کلیدهای نامعتبر silently drop می‌شدند | متد جدید `validateCustomKey` با regex `[a-zA-Z0-9_.-]+` + max len 64 + رد پیشوندهای `_`/`.`. خطاها در `$errors` جمع و به‌عنوان warning banner در صفحهٔ تنظیمات نمایش داده می‌شوند. |
+| D-7-3 | ویوهای ویزارد ثبت‌نام bare HTML بودند | 9 فایل view جدید در `app/Views/registration/` با Bootstrap 5 RTL + Vazirmatn + Bootstrap Icons. آماده برای `RegistrationController` آینده. |
+
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-14-1 | `NotificationService::notifyAdmins` ادمین‌ها (`users`) را با username-lookup به `user_accounts` بریج می‌کند. ادمین‌های بدون user_account skip می‌شوند (هیچ in-app notificationای ساخته نمی‌شود — ردیف `sync_audit_log` تنها سیگنال است). در آینده با جدول `admin_notifications` یا nullable کردن `user_notifications.user_account_id` + ستون `user_id` این gap بسته شود. | `app/Modules/Core/Services/NotificationService.php::notifyAdmins` | low | فاز ۱۵+: جدول admin_notifications یا schema change روی user_notifications. |
+
+#### Debt carried forward به فاز ۱۵
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-2-3 (partial) | ~۱۲ کنترلر ادمین باقی‌مانده (PaymentController, RevisionController, ReportController, ServiceTypeController, ...) | low | incremental — هر فاز feature-driven چندتا |
+| D-8-5 | ۸ smoke test HTTP به‌دلیل MariaDB fixture drift fail می‌شوند (pre-existing از فاز ۸) | low | زمان مناسب |
+| D-14-1 | notifyAdmins ادمین‌های بدون user_account را skip می‌کند (username-bridge gap) | low | فاز ۱۵+ |
+| D-4-5, D-5-1, D-5-4, D-5-5 | ۴ debt از فاز ۵ (low) | low | فرصت مناسب |
+| D-6-2, D-6-3, D-6-4, D-6-5, D-6-6 | ۵ debt از فاز ۶ (low) | low | فرصت مناسب |
+| D-8-1, D-8-2, D-8-3 | ۳ debt از فاز ۸ (low) | low | فرصت مناسب |
+
+#### توصیه برای فاز ۱۵ (post-Phase 14)
+
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ **خیر** — پس از فاز ۱۴،
+  همچنان ۰ debt medium یا بالاتر باقی مانده است. ~۱۳ مورد low باقی‌مانده
+  که incremental در فازهای feature-driven پرداخت می‌شوند.
+- [x] اگر خیر، تمرکز بعدی چه باشد؟ (۱) پیاده‌سازی `RegistrationController`
+  برای وصل کردن ویوهای ویزارد فاز ۱۴ به مسیرها (`/register/*`). (۲)
+  اتمام ~۱۲ کنترلر ادمین باقی‌مانده (D-2-3). (۳) فعال‌سازی Stage 2 اگر
+  آماده باشیم.
+- [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۱۴ الگوی
+  migration + event/subscriber + view Bootstrap را تثبیت کرد که برای
+  فازهای بعدی تکرارپذیر است.
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -860,17 +921,18 @@
 | critical | 0 | — | — |
 | high | 0 | — | — |
 | medium | 0 | — | — |
-| low | 21 | 2026-11-17 | D-1-9, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5, D-2-3 |
+| low | 13 | 2026-11-17 | D-2-3, D-4-5, D-5-1, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5, D-14-1 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱۳ (user_accounts email/display_name + 7 low-debt
-items):** ۰ critical، ۰ high، **۰ medium**، ۲۱ low.
-تغییر نسبت به فاز ۱۲: ۸ مورد low پرداخت شد (D-12-1، D-11-1، D-11-2،
-D-1-3، D-2-4، D-2-5، D-1-8، D-7-2). هیچ debt جدیدی وارد نشد.
+**وضعیت پس از فاز ۱۴ (seed defaults + 7 low-debt items paid):** ۰
+critical، ۰ high، **۰ medium**، ~۱۳ low. تغییر نسبت به فاز ۱۳: ۷ مورد
+low پرداخت شد (D-2-9، D-1-9، D-4-6، D-4-7، D-5-2، D-7-4، D-7-3) و ۱
+مورد low جدید وارد شد (D-14-1، username-bridge gap در notifyAdmins).
+خالص: ۶ مورد کاهش (۲۱ → ۱۳+۱=۱۴ → ۱۳).
 
-پس از فاز ۱۳، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر» است —
-۲۱ مورد low-priority باقی‌مانده که در فازهای بعدی به‌صورت incremental
+پس از فاز ۱۴، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر» است —
+~۱۳ مورد low-priority باقی‌مانده که در فازهای بعدی به‌صورت incremental
 پرداخت می‌شوند.
 
 اگر critical > 0 یا high > 3، هشدار در CI.

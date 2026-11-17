@@ -5,6 +5,7 @@ namespace App\Modules\NationalGateway\Services;
 
 use App\Events\EventBus;
 use App\Events\Events\ApplicantMatched;
+use App\Events\Events\OperatorFlag;
 use App\Modules\Core\Domain\Applicant;
 use App\Modules\Core\Domain\Enums\ApplicantStatus;
 use App\Modules\Core\Domain\Enums\LicenseState;
@@ -286,6 +287,13 @@ final class ApplicantSyncAdapter
 
     /**
      * OperatorFlag action — log for manual review, no status change.
+     *
+     * Phase 14 (v1.5.0) — pays D-4-7: also dispatches an OperatorFlag
+     * event so NotificationSubscriber can fire an in-app notification
+     * for admins. The audit-log row stays the source of truth for the
+     * review decision; the in-app notification just signals to admins
+     * that a new flag needs review (so they don't have to poll the
+     * sync_audit_log page).
      */
     private function actOperatorFlagged(License $license, Applicant $applicant, MatchResult $result): void
     {
@@ -309,6 +317,19 @@ final class ApplicantSyncAdapter
             'rn' => $license->requestNumber,
             'score' => $result->totalScore,
         ]);
+
+        // §9.5 step 5 (operator-flag branch): dispatch OperatorFlag so
+        // NotificationSubscriber can fire an in-app notification for
+        // admins (no SMS — admins review via the admin panel, not via
+        // personal channels).
+        $this->eventBus->dispatch(new OperatorFlag([
+            'applicant_id' => $applicant->id,
+            'national_request_number' => $license->requestNumber,
+            'license_title' => $license->licenseTitle,
+            'confidence' => $result->confidence->value,
+            'fields_matched' => $result->fieldsMatched,
+            'reason' => $result->reason,
+        ]));
     }
 
     private function outcomeForConfidence(?\App\Modules\NationalGateway\Domain\Enums\MatchConfidence $c): string

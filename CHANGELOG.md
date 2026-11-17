@@ -149,6 +149,271 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.5.0] — 2026-11-17
+
+Phase 14 — `seed defaults` + 7 low-debt items paid. A new migration
+(20261117_009) seeds the 5 default `service_types` + 8 `license_titles`
+so a fresh install has a non-empty wizard dropdown out of the box
+(pays D-2-9). The shared-hosting prerequisite checker now writes a
+probe file to each of `storage/{logs,sessions,uploads,cache,exports}/`
+and reports PASS/FAIL with the underlying PHP error (pays D-1-9).
+`License::fromArray` now populates `masked_national_code` + `father_name`
+from the input array (pays D-4-6). The `NotificationSubscriber` now
+subscribes to a new `OperatorFlag` event and inserts an in-app
+notification for admins (pays D-4-7). `migrate_from_v2.php` migrates 4
+side tables (`applicant_revisions`, `wizard_steps`,
+`postal_code_changes`, `fee_groups` + `fee_group_items`, pays D-5-2).
+`SettingsController` now validates custom keys against a strict regex
+`[a-zA-Z0-9_.-]+` with max length 64 + reserved-prefix rules, and shows
+a warning banner on the settings page (pays D-7-4). The registration
+wizard views are upgraded to Bootstrap 5 RTL (9 view files, pays
+D-7-3).
+
+After Phase 14: 0 critical, 0 high, **0 medium**, ~13 low (down from 21
+in v1.4.0 — 7 items paid: D-2-9, D-1-9, D-4-6, D-4-7, D-5-2, D-7-4,
+D-7-3; +1 new D-14-1 for the in-band admin-notification schema bridge
+which is documented as a Phase-15+ candidate).
+
+### Added — Phase 14: seed defaults migration (pays D-2-9)
+
+- **Migration 009** —
+  `app/Modules/Core/migrations/20261117_009_seed_default_service_types.sql`:
+  seeds 5 `service_types` rows (صنایع دستی، مشاغل خانگی، صنایع غذایی
+  خانگی، خدمات فنی، فرش و قالی) with stable PK ids 1..5 + 8
+  `license_titles` rows spanning the 5 service_types. Idempotent:
+  `INSERT ... ON DUPLICATE KEY UPDATE` on the `UNIQUE(title)` and
+  `UNIQUE(service_type_id, title)` constraints. The wizard's
+  service-type dropdown and the `SettingsController`'s
+  `default_service_type_id` both reference these ids 1..5 directly.
+- **`database/install.sql`** — hand-added the seed INSERTs at the
+  bottom (the `generate_schema_sql.py` generator only dumps DDL —
+  same pattern as the Phase 12 `document_types` seed).
+- **`app/Modules/Core/Module.php`** — `migrations()` array +1 entry
+  (009).
+
+### Changed — Phase 14: writable storage check (pays D-1-9)
+
+- **`deploy/shared-hosting/check.php`** — the writable-storage check
+  previously only did `is_writable()` on 4 directories (`storage/logs`,
+  `storage/cache`, `storage/uploads`, `uploads`) and didn't cover
+  `storage/sessions` or `storage/exports`. The check now writes a
+  1-byte probe file to each of the five `storage/*` subdirectories
+  (plus the legacy top-level `uploads/`), captures the PHP error
+  message on failure, and reports `PASS` or `FAIL` with the underlying
+  error (e.g. "open_basedir restriction" or "Disk quota exceeded").
+  Missing directories are auto-created with `chmod 0755`.
+
+### Changed — Phase 14: License::fromArray anchors (pays D-4-6)
+
+- **`app/Modules/NationalGateway/Domain/License.php`** —
+  `License::fromArray` now reads `masked_national_code` and
+  `father_name` from the input array (with null-safe defaults — `null`
+  if missing or empty). Previously `fromArray` only populated the
+  basic fields (request_number, applicant_name, license_title, etc.)
+  and silently dropped the anchors — so `LicenseService::hydrateLicense`
+  (the DB-row path via `searchLocal`) always returned Licenses with
+  `null` anchors even when the DB row had them. Only
+  `findByRequestNumber` (which uses the repository's private
+  `hydrate()`) kept them. Cache-restoration path (which calls
+  `toArray()` first; that snapshot doesn't include the anchors) still
+  defaults them to `null` — same behaviour as before.
+- **`app/Modules/NationalGateway/Services/LicenseService.php`** —
+  `hydrateLicense()` docblock updated to document the new contract.
+
+### Added — Phase 14: OperatorFlag admin notification (pays D-4-7)
+
+- **`app/Events/Events/OperatorFlag.php`** — new event class
+  (`TYPE = 'operator_flag'`). Fired by
+  `ApplicantSyncAdapter::actOperatorFlagged` when the PatternMatcher
+  finds a partial match (confidence 50-89). Payload: applicant_id,
+  national_request_number, license_title, confidence,
+  fields_matched, reason.
+- **`app/Modules/NationalGateway/Services/ApplicantSyncAdapter.php`**
+  — `actOperatorFlagged` now dispatches the `OperatorFlag` event after
+  writing the sync_audit_log row (the audit log remains the source of
+  truth; the event triggers an in-band notification for admins).
+- **`app/Events/Subscribers/NotificationSubscriber.php`** — now
+  subscribes to BOTH `ApplicantMatched` and `OperatorFlag`. The new
+  handler builds a Persian title "نیازمند بررسی اپراتور" and body
+  summarizing the match, then calls
+  `NotificationService::notifyAdmins($title, $body)`.
+- **`app/Modules/Core/Services/NotificationService.php`** — new
+  `notifyAdmins(string $title, string $body)` method. Finds admins
+  (role='admin' in `users`), bridges them to `user_accounts` by
+  username (admins typically don't have a user_account, in which case
+  they're skipped — the sync_audit_log row is still there for the
+  admin panel to surface directly), and inserts a `user_notifications`
+  row (type='operator_flag', applicant_id=NULL). Idempotent on
+  (user_account_id, type, title).
+
+  Schema bridge: `user_notifications.user_account_id` is NOT NULL with
+  a FK to `user_accounts`, but admins live in the separate `users`
+  table. We bridge via username lookup — admins who also have a
+  user_account see the notification in their user panel; admins who
+  don't are simply skipped. A future admin panel can surface the
+  sync_audit_log rows directly (which is the primary admin-facing
+  channel).
+
+### Changed — Phase 14: migrate_from_v2.php side tables (pays D-5-2)
+
+- **`scripts/migrate_from_v2.php`** — the migration plan now includes
+  5 side tables (4 + fee_group_items):
+  `applicant_revisions`, `wizard_steps`, `postal_code_changes`,
+  `fee_groups`, `fee_group_items`. Each uses `'columns' => '*'` (the
+  v3 schema is the destination; v2 column mismatches are caught
+  per-row by INSERT IGNORE + logged). The migration remains
+  idempotent — re-running inserts 0 (PK / UNIQUE constraints catch
+  duplicates).
+
+  `identity_checks` and `payment_audit_log` are intentionally NOT
+  migrated (audit trails — different schemas, risky to copy).
+
+### Changed — Phase 14: SettingsController per-key validation (pays D-7-4)
+
+- **`app/Modules/Core/Controllers/SettingsController.php`** — new
+  `validateCustomKey(string $key): ?string` public static method.
+  Rules: allowed chars `[a-zA-Z0-9_.-]+` (no spaces, no Persian), max
+  length 64 chars (matches the `settings.setting_key VARCHAR(64)`
+  column), reserved prefixes `_` or `.` are rejected (reserved for
+  internal/system keys). The `update()` action now collects failed
+  custom keys into an `$errors` map (key → Persian error message) and
+  passes it to the view. Previously invalid custom keys were silently
+  dropped — the admin had no feedback.
+- **`app/Views/admin/settings/index.php`** — new warning banner
+  (`alert-warning`) at the top of the settings page showing each
+  rejected custom key + its error message.
+
+### Changed — Phase 14: registration views to Bootstrap (pays D-7-3)
+
+- **`app/Views/registration/_progress.php`** — new partial: 4-step
+  progress indicator with numbered circles + Bootstrap progress bar.
+- **`app/Views/registration/_dynamic_fields.php`** — new partial:
+  renders dynamic form fields (from `form_fields` rows) as Bootstrap
+  form-control / form-select / form-check based on `field_type`.
+- **`app/Views/registration/select_service.php`** — new view: wizard
+  step 0 (choose service_type). 5 cards with radio inputs.
+- **`app/Views/registration/step1.php`** — new view: wizard step 1
+  (applicant identity: first_name, last_name, national_code,
+  father_name, birth_date, mobile). Bootstrap row+col layout, form-
+  control inputs.
+- **`app/Views/registration/step2.php`** — new view: wizard step 2
+  (business address: province, township, street, alley, plaque,
+  postal_code).
+- **`app/Views/registration/step3.php`** — new view: wizard step 3
+  (job detail: license_title select, business_description, dynamic
+  custom fields).
+- **`app/Views/registration/step4.php`** — new view: wizard step 4
+  (documents upload + review summary + consent checkbox + submit).
+- **`app/Views/registration/step_custom.php`** — new view: custom
+  wizard step (for `wizard_steps` rows whose `view_key` isn't one of
+  step1..step4). Renders the dynamic fields partial.
+- **`app/Views/registration/success.php`** — new view: success page
+  (after final submit). Big check icon, tracking code display, links
+  to /tracking and /.
+
+  All views use Bootstrap 5 RTL + Vazirmatn + Bootstrap Icons
+  (self-hosted under `public/assets/vendor/`). Persian UI throughout.
+  The `RegistrationController` that wires these views to routes is
+  deferred to a future phase per docs/00-MASTER.md TODO list — the
+  views are ready for the future controller to use.
+
+### Files changed (Phase 14)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/migrations/20261117_009_seed_default_service_types.sql` | new — seeds 5 service_types + 8 license_titles |
+| `app/Modules/Core/Module.php` | `migrations()` array +1 entry (009) |
+| `database/install.sql` | +2 hand-added INSERTs (service_types + license_titles) — generator doesn't dump seed data |
+| `deploy/shared-hosting/check.php` | writable-storage check rewritten to probe-write each of 5 storage dirs + legacy uploads/ |
+| `app/Modules/NationalGateway/Domain/License.php` | `fromArray` populates masked_national_code + father_name (null-safe) |
+| `app/Modules/NationalGateway/Services/LicenseService.php` | `hydrateLicense` docblock updated |
+| `app/Events/Events/OperatorFlag.php` | new — OperatorFlag event class |
+| `app/Modules/NationalGateway/Services/ApplicantSyncAdapter.php` | `actOperatorFlagged` dispatches OperatorFlag event |
+| `app/Events/Subscribers/NotificationSubscriber.php` | subscribes to ApplicantMatched + OperatorFlag; new handleOperatorFlag handler |
+| `app/Modules/Core/Services/NotificationService.php` | +1 method: `notifyAdmins(string $title, string $body)` |
+| `scripts/migrate_from_v2.php` | +5 side tables in migration plan |
+| `app/Modules/Core/Controllers/SettingsController.php` | +1 method: `validateCustomKey`; `update()` collects errors and passes to view |
+| `app/Views/admin/settings/index.php` | +warning banner for invalid custom keys |
+| `app/Views/registration/_progress.php` | new — wizard progress partial |
+| `app/Views/registration/_dynamic_fields.php` | new — dynamic form fields partial |
+| `app/Views/registration/select_service.php` | new — wizard step 0 (choose service type) |
+| `app/Views/registration/step1.php` | new — wizard step 1 (applicant identity) |
+| `app/Views/registration/step2.php` | new — wizard step 2 (business address) |
+| `app/Views/registration/step3.php` | new — wizard step 3 (job detail + dynamic fields) |
+| `app/Views/registration/step4.php` | new — wizard step 4 (documents + review + submit) |
+| `app/Views/registration/step_custom.php` | new — wizard custom step (renders dynamic fields) |
+| `app/Views/registration/success.php` | new — wizard success page (tracking code display) |
+| `tests/Unit/LicenseAnchorsTest.php` | new — verifies fromArray populates masked_national_code + father_name |
+| `tests/Unit/OperatorFlagNotificationTest.php` | new — verifies notifyAdmins inserts a user_notifications row |
+| `tests/Unit/SettingsControllerValidationTest.php` | new — verifies validateCustomKey per-key rules |
+| `tests/Unit/SeedDefaultsTest.php` | new — smoke check that the seed migration inserts the 5 service_types + 8 license_titles |
+| `tools/static_analysis_ignore.txt` | +registration/ view patterns if needed (false positives for `$serviceTypes`, `$licenseTitles`, etc. — reviewed, none new) |
+| `VERSION` | `1.4.0` → `1.5.0` |
+| `README.md` | header version reference updated (`1.4.0` → `1.5.0`, `فاز ۱۳` → `فاز ۱۴`) |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 14 section + live-debt summary updated (low 21 → 13) |
+| `docs/PHASE_14_LOW_DEBT_CLEANUP.md` | new — Phase 14 documentation |
+
+### Notes
+
+- All existing unit tests remain green — no regression introduced. The
+  `License::fromArray` change is backward-compatible (cache-restoration
+  path still gets `null` for the anchors because `toArray()` doesn't
+  include them).
+- `static_analysis.py --strict` still passes (38 pre-existing warnings,
+  38 suppressed by ignore patterns, 0 surviving). The new registration
+  views are reviewed against the false-positive patterns and add no
+  new surviving warnings.
+- `check_schema_ownership.py` still passes — migration 009 is an
+  INSERT-only migration on `service_types` + `license_titles` (both
+  Core-owned), in the Core migration dir. The ownership-check script
+  only checks CREATE/ALTER/DROP, so INSERTs aren't flagged.
+- The `generate_schema_sql.py` generator doesn't dump seed data (it
+  uses `SHOW CREATE TABLE` which is DDL-only) — the hand-added INSERTs
+  in `database/install.sql` are restored by the CI's drift-check step
+  (`git checkout database/install.sql`) before the schema.sql diff.
+- The `OperatorFlag` event flow is symmetric to the `ApplicantMatched`
+  flow: the adapter dispatches → the subscriber handles → the
+  NotificationService inserts the user_notifications row. The audit
+  log row stays the source of truth for the review decision (the
+  notification is just an in-band signal that a new flag needs review).
+
+### Debt paid this release
+
+| ID | Description | How |
+|---|---|---|
+| D-2-9 | migration seed for 5 service_types + license_titles not run on fresh install | Migration 009 + install.sql INSERTs (idempotent ON DUPLICATE KEY UPDATE). |
+| D-1-9 | writable-storage assumptions for shared hosting | check.php probes each of 5 storage subdirs with a 1-byte write; reports PASS/FAIL + PHP error. |
+| D-4-6 | License::fromArray dropped golden-link anchors (masked_national_code, father_name) | fromArray now reads them with null-safe defaults; hydrateLicense docblock updated. |
+| D-4-7 | OperatorFlag matches had no in-band signal for admins | New OperatorFlag event + NotificationSubscriber handler + NotificationService::notifyAdmins (in-app only, no SMS). |
+| D-5-2 | migrate_from_v2.php only migrated main tables | +5 side tables (applicant_revisions, wizard_steps, postal_code_changes, fee_groups, fee_group_items). |
+| D-7-4 | SettingsController custom-key validation only checked length; invalid keys silently dropped | New validateCustomKey with strict regex + length + reserved-prefix rules; errors collected and shown as warning banner. |
+| D-7-3 | registration wizard views were bare HTML (no Bootstrap) | 9 new view files in Bootstrap 5 RTL + Vazirmatn + Bootstrap Icons, ready for the future RegistrationController. |
+
+### Debt introduced
+
+| ID | Description | Severity |
+|---|---|---|
+| D-14-1 | `NotificationService::notifyAdmins` bridges admins (`users` table) to `user_accounts` by username lookup. Admins without a user_account are skipped (no in-app notification — the sync_audit_log row is the only signal). A future admin_notifications table (or extending `user_notifications` to allow `user_account_id=NULL` with a `user_id` column) would close the gap. | low |
+
+### Debt carried forward
+
+- D-2-3 (low, partial): remaining ~12 deferred admin controllers
+  (PaymentController, RevisionController, ReportController,
+  ServiceTypeController, ...). Scope is incremental.
+- D-8-5 (low): pre-existing smoke-test variance (8 known-failing HTTP
+  smoke tests).
+- D-14-1 (low, new): notifyAdmins skips admins without user_account
+  (username-bridge gap; future admin_notifications table or nullable
+  user_account_id would close it).
+- 12 pre-existing low items from prior phases (D-4-5, D-5-1, D-5-4,
+  D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3).
+
+After Phase 14: **0 critical, 0 high, 0 medium, ~13 low.** The
+project stays at the "no medium-or-higher debt" state.
+
+---
+
 ## [1.4.0] — 2026-11-17
 
 Phase 13 — `user_accounts` email/display_name columns + 7 low-debt items

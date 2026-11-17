@@ -98,6 +98,7 @@ final class SettingsController extends Controller
             'settings' => $settings,
             'known'    => self::KNOWN_SETTINGS,
             'saved'    => false,
+            'errors'   => [],
         ]);
     }
 
@@ -128,15 +129,36 @@ final class SettingsController extends Controller
         }
 
         // Also persist any custom (unknown) settings submitted.
+        // Phase 14 (v1.5.0) — pays D-7-4: per-key validation for custom
+        // settings. Previously invalid custom keys were silently
+        // dropped (no banner shown, admin had no feedback). Now invalid
+        // keys are collected into $errors and shown as a warning banner
+        // on the settings page.
         $customKeys = $body['custom_keys'] ?? [];
         $customValues = $body['custom_values'] ?? [];
+        $errors = [];
         if (is_array($customKeys) && is_array($customValues)) {
             for ($i = 0, $n = count($customKeys); $i < $n; $i++) {
                 $k = trim((string)($customKeys[$i] ?? ''));
                 $v = trim((string)($customValues[$i] ?? ''));
-                if ($k !== '' && !array_key_exists($k, self::KNOWN_SETTINGS)) {
-                    $this->upsertSetting($k, mb_substr($v, 0, 500));
+                if ($k === '') {
+                    // Empty key — silently drop (allow rows for "add a new
+                    // custom setting" — the empty row at the bottom of the
+                    // form has empty key + maybe-empty value).
+                    continue;
                 }
+                if (array_key_exists($k, self::KNOWN_SETTINGS)) {
+                    // Custom form shouldn't redefine a known key — silently
+                    // drop (the known-setting section above handles it).
+                    continue;
+                }
+                // Per-key validation (D-7-4):
+                $error = self::validateCustomKey($k);
+                if ($error !== null) {
+                    $errors[$k] = $error;
+                    continue;
+                }
+                $this->upsertSetting($k, mb_substr($v, 0, 500));
             }
         }
 
@@ -146,7 +168,43 @@ final class SettingsController extends Controller
             'settings' => $settings,
             'known'    => self::KNOWN_SETTINGS,
             'saved'    => true,
+            'errors'   => $errors,
         ]);
+    }
+
+    /**
+     * Validate a custom settings key against the per-key rules.
+     *
+     * Phase 14 (v1.5.0) — pays D-7-4. Rules (also exercised by
+     * tests/Unit/SettingsControllerValidationTest.php):
+     *   - Allowed chars: [a-zA-Z0-9_.-]+ (no spaces, no Persian).
+     *   - Max length: 64 chars (matches the settings.setting_key
+     *     VARCHAR(64) column).
+     *   - Reserved prefixes: keys starting with `_` or `.` are rejected
+     *     (reserved for internal/system keys like `_migration_version`
+     *     or `.next_id`).
+     *
+     * @return string|null  null if valid; a Persian error message otherwise.
+     */
+    public static function validateCustomKey(string $key): ?string
+    {
+        if ($key === '') {
+            return 'کلید خالی مجاز نیست.';
+        }
+        if (strlen($key) > 64) {
+            return 'کلید بیش از ۶۴ نویسه است.';
+        }
+        // Reject reserved prefixes (internal / system keys).
+        if ($key[0] === '_' || $key[0] === '.') {
+            return 'کلیدهای پیشوند «_» یا «.» رزرو شده‌اند.';
+        }
+        // Allowed chars: a-z A-Z 0-9 _ . -  (no spaces, no Persian).
+        // The pattern is anchored (full-match). The `u` flag is not
+        // needed because the charset is ASCII-only.
+        if (preg_match('/^[a-zA-Z0-9_.\-]+$/', $key) !== 1) {
+            return 'کلید فقط می‌تواند شامل حروف انگلیسی، اعداد، زیرخط، نقطه و خط تیره باشد.';
+        }
+        return null;
     }
 
     /**

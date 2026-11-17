@@ -28,6 +28,13 @@ declare(strict_types=1);
  *   16. form_fields          — wizard form definitions
  *   17. applicant_field_values — wizard field data (father_name/birth_date source)
  *
+ *   Phase 14 (v1.5.0) — pays D-5-2: side tables added.
+ *   18. applicant_revisions  — applicant edit-revision audit trail (FK to applicants)
+ *   19. wizard_steps         — wizard step reference data (FK to service_types, nullable)
+ *   20. postal_code_changes  — postal-code change requests (FK to applicants)
+ *   21. fee_groups           — fee group definitions (no FK)
+ *   22. fee_group_items      — fee group line items (FK to fee_groups)
+ *
  * NOT migrated (v3-only or deprecated):
  *   - national_licenses, national_lookups, national_filters, national_batches
  *     (migrated from gateway via migrate_from_gateway.php)
@@ -204,6 +211,54 @@ $plan = [
     ],
     'settings' => [
         'sql' => 'SELECT * FROM settings',
+        'columns' => '*',
+        'transform' => null,
+    ],
+
+    // ----- Phase 14 (v1.5.0) — pays D-5-2: side tables. -----
+    // applicant_revisions: applicant edit-revision audit trail. v3
+    // schema: id, applicant_id, payload (longtext JSON), note, status,
+    // reviewed_by, reviewed_at, reject_reason, created_at. v2 had a
+    // slightly different column set (the task description speculates on
+    // the v2 shape but the v3 schema is the destination). Using '*' so
+    // PDO can handle column-name differences via INSERT IGNORE — any
+    // mismatched v2 column causes a row-by-row skip (logged), not a
+    // script-wide failure. Idempotent on the PK id.
+    'applicant_revisions' => [
+        'sql' => 'SELECT * FROM applicant_revisions',
+        'columns' => '*',
+        'transform' => null,
+    ],
+    // wizard_steps: static reference data — copy as-is. v3 schema: id,
+    // view_key, title, service_type_id, is_system, is_active, sort_order,
+    // icon. v2 had a near-identical schema. Idempotent on PK id.
+    'wizard_steps' => [
+        'sql' => 'SELECT * FROM wizard_steps',
+        'columns' => '*',
+        'transform' => null,
+    ],
+    // postal_code_changes: postal-code change requests. v3 schema: id,
+    // applicant_id, old_postal_code, new_postal_code, status,
+    // reviewed_by, reviewed_at, reject_reason, requested_at. Idempotent
+    // on PK id.
+    'postal_code_changes' => [
+        'sql' => 'SELECT * FROM postal_code_changes',
+        'columns' => '*',
+        'transform' => null,
+    ],
+    // fee_groups: fee group definitions. v3 schema: id, code, label,
+    // decile_min, decile_max, total_amount, is_active, sort_order.
+    // Idempotent on UNIQUE(code).
+    'fee_groups' => [
+        'sql' => 'SELECT * FROM fee_groups',
+        'columns' => '*',
+        'transform' => null,
+    ],
+    // fee_group_items: fee group line items. v3 schema: id, fee_group_id,
+    // item_key, item_label, amount, sort_order, notes. Idempotent on
+    // UNIQUE(fee_group_id, item_key).
+    'fee_group_items' => [
+        'sql' => 'SELECT * FROM fee_group_items',
         'columns' => '*',
         'transform' => null,
     ],
