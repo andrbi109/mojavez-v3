@@ -1174,6 +1174,63 @@ document serving، revision requests، license image access، و ~۳۵
 
 ---
 
+### فاز ۲۰: تکمیلی TrackingController + پولیش نهایی (v1.9.2)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.2 (phase/20-tracking-final-polish branch, tag v1.9.2)
+
+#### زمینه
+
+فاز ۲۰ آخرین فاز feature قبل از تأیید v2.0.0 است. کار باقی‌مانده:
+۱) مسیر مفقود `/admin/settings/upload-image` (آپلود لوگوی سامانه)،
+۲) ۵ مسیر مفقود FeeTariff از v2 (تنظیمات نرخ‌نامه، CRUD گروه قیمتی،
+bulk-save آیتم‌ها، toggle تیک خدمات پرداخت)، ۳) پولیش جزئی 404،
+print.php، و افزودن favicon. پس از فاز ۲۰، فاز ۲۱ (v1.9.3) فقط
+تست خواهد بود، سپس کاربر می‌تواند v2.0.0 را تأیید کند.
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-2-3 (full) | TrackingController::submitPayment + submitSms هنوز stub بودند | بررسی + تأیید: این دو متد از فاز ۱۵ (v1.6.0) به‌صورت کامل پیاده‌سازی شده بودند — در DEBT_REVIEW فاز ۱۹ به‌اشتباه «stub» علامت‌گذاری شده بودند ولی در واقع پیاده‌سازی کامل بودند. در این فاز به‌صورت کامل تأیید و مستند شدند. ورودی D-2-3 به‌طور کامل بسته شد. |
+| (مستندسازی) | CHANGELOG فاز ۱۹ ادعا داشت که `/admin/license-requests` و `/admin/revisions` به سایدبار اضافه شده‌اند ولی واقعاً اضافه نشده بودند | اضافه شدند به سایدبار `admin_layout.php` زیر بخش «درخواست‌ها» با آیکون `bi-patch-check` و `bi-arrow-clockwise`. |
+
+#### Debt introduced
+
+هیچ.
+
+#### Debt carried forward به فاز ۲۱
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-4-5 | SSE تست واقعی نیاز به Apache | low | v1.9+ |
+| D-5-1 | seed_lookups sandbox fallback محدود | low | v1.9+ |
+| D-5-4 | business_address suffix-mask محدودیت | low | v1.9+ |
+| D-5-5 | county = township assumption | low | v1.9+ |
+| D-6-2 | static_analysis false-positive warnings | low | v1.9+ |
+| D-6-3 | test_track_scraper fixture missing | low | v1.9+ |
+| D-6-4 | install.php lock-file fallback | low | v1.9+ |
+| D-6-5 | docker secrets manual generation | low | v1.9+ |
+| D-6-6 | CI smoke job needs .env | low | v1.9+ |
+| D-8-1 | OutboundSyncService stub | low | v2.0+ |
+| D-8-2 | Stage2ReadinessChecker::checkContractTests | low | v1.9+ |
+| D-8-3 | NationalSyncOrchestrator dedup set | low | v1.9+ |
+| D-8-5 | smoke-test sandbox variance | low | v1.9+ |
+| D-14-1 | notifyAdmins username-bridge gap | low | v1.9+ |
+| D-16-1 | document_types فاقد is_required column | low | v1.9+ |
+
+#### توصیه برای فاز ۲۱
+
+- [ ] فاز ۲۱ (v1.9.3): تست کامل + آماده‌سازی v2.0.0
+- [ ] پس از تأیید کاربر → v2.0.0
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ **خیر** — پس از
+  فاز ۲۰، هیچ debt medium یا بالاتر باقی نمانده است. همهٔ debt‌های
+  باقی‌مانده low-priority هستند ( sandbox/deploy-only). فاز ۲۱
+  فقط تست است؛ کار می‌تواند مستقیماً به v2.0.0 برود.
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -1185,6 +1242,16 @@ document serving، revision requests، license image access، و ~۳۵
 | high | 0 | — | — |
 | medium | 0 | — | — |
 | low | 13 | 2026-11-17 | D-4-5, D-5-1, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5, D-14-1, D-16-1 |
+
+اگر critical > 0 یا high > 3، هشدار در CI.
+
+**وضعیت پس از فاز ۲۰ (تکمیلی TrackingController + پولیش نهایی):**
+۰ critical، ۰ high، **۰ medium**، ~۱۳ low (بدون تغییر در شمارش).
+فاز ۲۰ آخرین فاز feature بود: ۶ مسیر جدید (آپلود تصویر تنظیمات +
+۵ مسیر تکمیلی FeeTariff)، favicon، پولیش 404 + print.php، و بستن
+D-2-3 به‌صورت کامل (verify + document). مهم‌ترین دستاورد فاز ۲۰:
+پروژه آمادهٔ فاز ۲۱ (تست) و سپس v2.0.0 است. هیچ debt medium یا
+بالاتر باقی نمانده — همهٔ ~۱۳ debt low-priority هستند (sandbox/deploy-only).
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 

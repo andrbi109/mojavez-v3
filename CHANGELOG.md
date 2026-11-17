@@ -149,6 +149,131 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.2] — 2026-11-17
+
+### Added — Phase 20: final polish (settings upload-image, FeeTariff extensions, favicon)
+
+Phase 20 is the last feature phase before the user can approve v2.0.0.
+It closes the remaining v2→v3 feature gap (settings image upload +
+FeeTariff extensions) and polishes the 404 page, the print view, and
+adds a favicon. Phase 21 (v1.9.3) will be the test-only phase, then
+v2.0.0.
+
+**6 new admin routes** (Core total: 150 → 156; project total: 193 → 199):
+
+1. `POST /admin/settings/upload-image` → `SettingsController::uploadImage`
+   — image upload for `site_logo` and similar brand assets.
+   Validates JPEG/PNG/WEBP via `finfo`, ≤ 2 MB. The `setting_key` is
+   sanitized to `[a-zA-Z0-9_.-]+` (the same charset as
+   `SettingsController::validateCustomKey()`), used as the on-disk
+   filename prefix (path-traversal impossible). The file is saved under
+   `storage/uploads/settings/{key}-{Ymd-His}.{ext}` and the relative
+   path is upserted into the `settings` table. Returns JSON.
+2. `POST /admin/fee-tariff/settings` → `FeeTariffController::saveSettings`
+   — saves the 8 `fee_*` global settings (active, valid-until, rural
+   auto-eligible, modal enabled, fallback group code, min amount
+   percent, max discount with/without reason). PRG redirect.
+3. `POST /admin/fee-tariff/group/save` → `FeeTariffController::groupSave`
+   — INSERT/UPDATE on `fee_groups`. Accepts `id` (0 = insert), `code`
+   (unique), `label` (alias `name` from v2), `decile_min`, `decile_max`,
+   `total_amount`, `is_active`, `sort_order`. Refuses dup `code` on
+   insert. PRG redirect.
+4. `POST /admin/fee-tariff/group/{id}/delete` → `FeeTariffController::groupDelete`
+   — DELETE on `fee_groups` (cascades to `fee_group_items` via FK).
+   Refuses to delete if any `payments.fee_group_id` references the
+   group (preserves audit history). PRG redirect.
+5. `POST /admin/fee-tariff/items/save` → `FeeTariffController::itemsSave`
+   — bulk upsert of `fee_group_items` for one `fee_group`. Accepts
+   `group_id` + an `items[item_key] = {label, amount, sort, notes?}`
+   map. Existing rows updated by `(fee_group_id, item_key)`; new ones
+   inserted. Blank-label rows skipped. PRG redirect.
+6. `POST /admin/payment/tick` → `FeeTariffController::toggleTick` —
+   toggle a `payment_service_ticks` row. Accepts `tick_id` + `done`
+   (1/0) + optional `reason`. Stamps `ticked_by` + `ticked_at`, writes
+   `done_reason` on undo. Returns JSON for AJAX callers.
+
+**Polish:**
+
+- `public/assets/favicon.svg` — new simple SVG favicon (teal
+  checkmark in a circle, brand color `#0f766e`, 64×64, <500 bytes).
+  `<link rel="icon">` added to `layout.php`, `admin_layout.php`,
+  `user_layout.php`.
+- `app/Views/errors/404.php` — added "تماس با پشتیبانی" mailto link
+  (reads `settings.support_email` if present, hidden if absent) +
+  small home-button group with separator. The front controller
+  (`public/index.php`) now reads `support_email` from the `settings`
+  table before rendering the 404 view, failure-tolerant (any DB
+  error → empty string → the link is hidden, the 404 page never 500s).
+- `app/Views/print.php` — ported + polished from v2 `layout_print.php`:
+  A4 sheet container, gradient header bar with brand mark + tracking
+  code box, numbered section titles, better table styling (zebra
+  striping on the status log), print-mode CSS overrides, mobile
+  responsive. Still self-contained inline CSS (no external CSS) so
+  the printable page is one HTML doc.
+- `app/Views/admin_layout.php` sidebar — verified all 6 sections
+  present; **added 2 missing links**: `/admin/license-requests` and
+  `/admin/revisions` (the CHANGELOG of v1.9.1 claimed they were added
+  but they were not — now actually present under "درخواست‌ها" with
+  icons `bi-patch-check` and `bi-arrow-clockwise`).
+- `app/Views/admin/settings/index.php` — added an image-upload card
+  at the top of the settings page (Phase 20). Shows the current
+  `site_logo` preview (if any), the upload form (`setting_key` + file
+  input), and a small AJAX handler that posts to
+  `/admin/settings/upload-image` and reloads on success.
+
+### Files changed (Phase 20)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/Controllers/SettingsController.php` | +1 method (`uploadImage`) |
+| `app/Modules/Core/Controllers/FeeTariffController.php` | +5 methods (`saveSettings`, `groupSave`, `groupDelete`, `itemsSave`, `toggleTick`) + private `upsertSetting` helper |
+| `app/Modules/Core/Module.php` | +6 routes (1 settings upload + 5 fee-tariff extensions) |
+| `app/Views/admin/settings/index.php` | + image-upload card at the top |
+| `app/Views/admin_layout.php` | +2 sidebar links (`license-requests`, `revisions`) + favicon link |
+| `app/Views/layout.php` | + favicon link |
+| `app/Views/user_layout.php` | + favicon link |
+| `app/Views/errors/404.php` | + support-email link + separator |
+| `app/Views/print.php` | polished (A4 container + gradient header + numbered sections + responsive) |
+| `public/assets/favicon.svg` | new — teal checkmark in a circle |
+| `public/index.php` | read `support_email` from settings for 404 view (failure-tolerant) |
+| `VERSION` | `1.9.1` → `1.9.2` |
+| `README.md` | header version `1.9.1`/فاز ۱۹ → `1.9.2`/فاز ۲۰ |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 20 section + live-debt summary update |
+| `docs/PHASE_20_FINAL_POLISH.md` | new — Phase 20 documentation |
+
+### Debt paid
+
+- **D-2-3 (full)** — `TrackingController::submitPayment` + `submitSms`
+  were already fully functional since Phase 15 (v1.6.0); the
+  Phase-19 debt-review listed them as "stub" but they were not — they
+  were complete implementations. This phase verified + documented them
+  as complete. The D-2-3 debt entry is now closed in full.
+
+### Debt introduced
+
+None.
+
+### Notes
+
+- All 6 new routes are admin-only (`requireRole(['admin'])`).
+- `uploadImage` validates the MIME via `finfo::file()` (not the
+  browser-supplied `$_FILES['image']['type']`) and uses
+  `move_uploaded_file()` (not `copy`/`rename`) so the SAPI tmp_name
+  check is enforced.
+- `groupSave` accepts both `label` (v3 schema) and `name` (v2 alias)
+  for backwards-compat with any client still using the v2 field name.
+- `groupDelete` refuses to delete a group with payment references
+  (preserves audit history); the admin can mark it inactive instead.
+- `itemsSave` is idempotent: re-submitting the same items just updates
+  them (UNIQUE on `(fee_group_id, item_key)`).
+- The 404 page's `support_email` lookup is wrapped in try/catch so a
+  DB error (e.g. `settings` table not migrated yet on a fresh install)
+  → empty string → the link is hidden, the 404 page never 500s.
+- Static-analysis strict mode passes (0 surviving warnings).
+
+---
+
 ## [1.9.1] — 2026-11-17
 
 ### Added — Phase 19: complete License + Document + Revision controllers

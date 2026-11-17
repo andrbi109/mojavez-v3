@@ -4,7 +4,10 @@
 /** @var bool $saved */
 /** @var array<string,string> $errors  custom-key validation errors (Phase 14) */
 /** @var string $csrfField */
+/** @var string $baseUrl */
+$baseUrl ??= '/';
 $errors ??= [];
+$siteLogoPath = $settings['site_logo'] ?? '';
 ?>
 <h2 class="h5 mb-3"><i class="bi bi-gear"></i> تنظیمات سامانه</h2>
 
@@ -24,6 +27,84 @@ $errors ??= [];
     </ul>
 </div>
 <?php endif; ?>
+
+<!-- Phase 20 (v1.9.2): image upload (site_logo + similar brand assets). -->
+<div class="card mb-3">
+    <div class="card-header"><i class="bi bi-image"></i> تصویر سامانه (لوگو)</div>
+    <div class="card-body">
+        <p class="text-muted small">
+            تصویر لوگوی سرصفحه/پاصفحه را آپلود کنید. فقط JPEG/PNG/WEBP حداکثر ۲ مگابایت.
+            مسیر فایل در تنظیم <code dir="ltr">site_logo</code> ذخیره می‌شود.
+        </p>
+        <?php if ($siteLogoPath !== '' && is_file(ROOT_PATH . '/' . $siteLogoPath)): ?>
+            <div class="mb-3 d-flex align-items-center gap-3">
+                <img src="<?= htmlspecialchars($baseUrl . $siteLogoPath, ENT_QUOTES) ?>"
+                     alt="لوگوی فعلی"
+                     class="img-thumbnail"
+                     style="max-height: 80px; max-width: 240px;">
+                <div class="small text-muted">
+                    لوگوی فعلی ذخیره شده:<br>
+                    <code dir="ltr"><?= htmlspecialchars($siteLogoPath, ENT_QUOTES, 'UTF-8') ?></code>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="mb-3 text-muted small"><i class="bi bi-info-circle"></i> هنوز تصویری آپلود نشده.</div>
+        <?php endif; ?>
+        <form id="upload-image-form" method="post"
+              action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/settings/upload-image"
+              enctype="multipart/form-data">
+            <?= $csrfField ?>
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-sm-5">
+                    <label class="form-label small">کلید تنظیم</label>
+                    <input type="text" class="form-control form-control-sm" name="setting_key"
+                           value="site_logo" dir="ltr" required
+                           pattern="[a-zA-Z0-9_.\-]+">
+                    <div class="form-text">پیش‌فرض: site_logo. فقط حروف انگلیسی/اعداد/_/.-</div>
+                </div>
+                <div class="col-12 col-sm-7">
+                    <label class="form-label small">فایل تصویر</label>
+                    <input type="file" class="form-control form-control-sm" name="image"
+                           accept="image/jpeg,image/png,image/webp" required>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="bi bi-cloud-upload"></i> آپلود تصویر
+                    </button>
+                    <span id="upload-image-result" class="small text-muted ms-2"></span>
+                </div>
+            </div>
+        </form>
+        <script>
+        (function () {
+            var form = document.getElementById('upload-image-form');
+            if (!form) return;
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var out = document.getElementById('upload-image-result');
+                out.textContent = 'در حال آپلود...';
+                var fd = new FormData(form);
+                fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
+                    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+                    .then(function (res) {
+                        if (res.ok && res.json && res.json.success) {
+                            out.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> آپلود شد. مسیر: <code>' +
+                                (res.json.data && res.json.data.path ? res.json.data.path : '') + '</code></span>';
+                            // Reload the page after 1.2s so the new image shows in the preview.
+                            setTimeout(function () { window.location.reload(); }, 1200);
+                        } else {
+                            var err = (res.json && res.json.error) ? res.json.error : 'خطای نامشخص';
+                            out.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> خطا: ' + err + '</span>';
+                        }
+                    })
+                    .catch(function () {
+                        out.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> خطای شبکه.</span>';
+                    });
+            });
+        })();
+        </script>
+    </div>
+</div>
 
 <form method="post" action="/admin/settings">
     <?= $csrfField ?>

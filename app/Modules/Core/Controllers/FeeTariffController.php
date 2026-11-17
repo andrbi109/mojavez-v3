@@ -185,6 +185,229 @@ final class FeeTariffController extends Controller
     }
 
     /**
+     * POST /admin/fee-tariff/settings — save the fee-tariff-related
+     * global settings (active, valid-until, rural auto-eligible, modal
+     * enabled, fallback group code, min amount percent, max discount
+     * with/without reason).
+     *
+     * Phase 20 (v1.9.2) — ports v2's `FeeTariffController::saveSettings`.
+     * The settings are stored in the `settings` table under `fee_*`
+     * keys. They are read by `FeeCalculatorService` to decide the
+     * active tariff group + the rural/auto-eligible branch.
+     *
+     * Auth: requireRole(['admin']) (superadmin only — per docs/00-MASTER.md §11).
+     *
+     * Returns: 302 redirect to /admin/fee-tariff (PRG pattern).
+     */
+    public function saveSettings(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $body = $request->body();
+        $set = [
+            'fee_tariff_active'              => !empty($body['fee_tariff_active']) ? '1' : '0',
+            'fee_tariff_valid_until'         => mb_substr(trim((string)($body['fee_tariff_valid_until'] ?? '')), 0, 20),
+            'fee_rural_auto_eligible'         => !empty($body['fee_rural_auto_eligible']) ? '1' : '0',
+            'fee_modal_enabled'              => !empty($body['fee_modal_enabled']) ? '1' : '0',
+            'fee_fallback_group_code'        => mb_substr(trim((string)($body['fee_fallback_group_code'] ?? 'C')), 0, 8),
+            'fee_min_amount_percent'         => (string)max(1, min(50, (int)($body['fee_min_amount_percent'] ?? 10))),
+            'fee_max_discount_without_reason' => (string)max(0, min(12, (int)($body['fee_max_discount_without_reason'] ?? 2))),
+            'fee_max_discount_with_reason'   => (string)max(10, min(100, (int)($body['fee_max_discount_with_reason'] ?? 50))),
+        ];
+        foreach ($set as $k => $v) {
+            $this->upsertSetting($k, $v);
+        }
+        return Response::redirect('/admin/fee-tariff');
+    }
+
+    /**
+     * POST /admin/fee-tariff/group/save — create or update a fee_group.
+     *
+     * Phase 20 (v1.9.2) — ports v2's `FeeTariffController::groupSave`.
+     * Accepts: `id` (0 = insert), `code` (unique), `label` (Persian name),
+     * `decile_min`, `decile_max`, `total_amount`, `is_active`, `sort_order`.
+     * Backwards-compat: `name` is accepted as an alias for `label` (v2
+     * used `name`; v3's `fee_groups` schema uses `label`).
+     *
+     * Schema: `fee_groups(id, code, label, decile_min, decile_max,
+     * total_amount, is_active, sort_order)`.
+     *
+     * Auth: requireRole(['admin']).
+     * Returns: 302 redirect to /admin/fee-tariff.
+     */
+    public function groupSave(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $body = $request->body();
+        $id = (int)($body['id'] ?? 0);
+        $code = mb_substr(trim((string)($body['code'] ?? '')), 0, 8);
+        $label = trim((string)($body['label'] ?? $body['name'] ?? ''));
+        $decileMin = max(1, min(10, (int)($body['decile_min'] ?? 1)));
+        $decileMax = max(1, min(10, (int)($body['decile_max'] ?? $decileMin)));
+        $totalAmount = max(0, (int)($body['total_amount'] ?? 0));
+        $isActive = !empty($body['is_active']) ? 1 : 0;
+        $sortOrder = (int)($body['sort_order'] ?? 50);
+
+        if ($code === '' || $label === '') {
+            return Response::redirect('/admin/fee-tariff');
+        }
+        if ($decileMin > $decileMax) {
+            return Response::redirect('/admin/fee-tariff');
+        }
+
+        if ($id > 0) {
+            $existing = $this->conn->one('SELECT id FROM fee_groups WHERE id = ?', [$id]);
+            if ($existing === null) {
+                return Response::redirect('/admin/fee-tariff');
+            }
+            $this->conn->execute(
+                'UPDATE fee_groups SET code = ?, label = ?, decile_min = ?, decile_max = ?,
+                     total_amount = ?, is_active = ?, sort_order = ? WHERE id = ?',
+                [$code, $label, $decileMin, $decileMax, $totalAmount, $isActive, $sortOrder, $id]
+            );
+        } else {
+            $dupe = $this->conn->one('SELECT id FROM fee_groups WHERE code = ?', [$code]);
+            if ($dupe !== null) {
+                return Response::redirect('/admin/fee-tariff');
+            }
+            $this->conn->execute(
+                'INSERT INTO fee_groups (code, label, decile_min, decile_max, total_amount, is_active, sort_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$code, $label, $decileMin, $decileMax, $totalAmount, $isActive, $sortOrder]
+            );
+        }
+        return Response::redirect('/admin/fee-tariff');
+    }
+
+    /**
+     * POST /admin/fee-tariff/group/{id}/delete — delete a fee_group.
+     *
+     * Phase 20 (v1.9.2) — ports v2's `FeeTariffController::groupDelete`.
+     * Refuses to delete if any `payments.fee_group_id` references this
+     * group (preserves audit history). On success, cascades to
+     * `fee_group_items` via the FK ON DELETE CASCADE.
+     *
+     * Auth: requireRole(['admin']).
+     * Returns: 302 redirect to /admin/fee-tariff.
+     */
+    public function groupDelete(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $id = (int)($params['id'] ?? 0);
+        $existing = $this->conn->one('SELECT id FROM fee_groups WHERE id = ?', [$id]);
+        if ($existing === null) {
+            return Response::redirect('/admin/fee-tariff');
+        }
+        $usage = $this->conn->scalar('SELECT COUNT(*) FROM payments WHERE fee_group_id = ?', [$id]);
+        if ((int)$usage > 0) {
+            return Response::redirect('/admin/fee-tariff');
+        }
+        $this->conn->execute('DELETE FROM fee_groups WHERE id = ?', [$id]);
+        return Response::redirect('/admin/fee-tariff');
+    }
+
+    /**
+     * POST /admin/fee-tariff/items/save — bulk-upsert fee_group_items
+     * for one fee_group.
+     *
+     * Phase 20 (v1.9.2) — ports v2's `FeeTariffController::itemsSave`.
+     * Accepts `group_id` + an `items` array of `{item_key: {label,
+     * amount, sort, notes?}}`. Existing items with the same
+     * `(fee_group_id, item_key)` are updated; new ones are inserted.
+     * Items whose `label` is empty are skipped (defensive — lets the
+     * admin submit a partial form with blank trailing rows).
+     *
+     * Schema: `fee_group_items(id, fee_group_id, item_key, item_label,
+     * amount, sort_order, notes)` — UNIQUE(fee_group_id, item_key).
+     *
+     * Auth: requireRole(['admin']).
+     * Returns: 302 redirect to /admin/fee-tariff.
+     */
+    public function itemsSave(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $body = $request->body();
+        $groupId = (int)($body['group_id'] ?? 0);
+        $group = $this->conn->one('SELECT id FROM fee_groups WHERE id = ?', [$groupId]);
+        if ($group === null) {
+            return Response::redirect('/admin/fee-tariff');
+        }
+        $items = $body['items'] ?? [];
+        if (!is_array($items)) {
+            $items = [];
+        }
+        foreach ($items as $key => $data) {
+            $key = (string)$key;
+            $label = trim((string)($data['label'] ?? ''));
+            $amount = max(0, (int)($data['amount'] ?? 0));
+            $sort = (int)($data['sort'] ?? 0);
+            $notes = trim((string)($data['notes'] ?? ''));
+            if ($key === '' || $label === '') {
+                continue;
+            }
+            $existing = $this->conn->one(
+                'SELECT id FROM fee_group_items WHERE fee_group_id = ? AND item_key = ?',
+                [$groupId, $key]
+            );
+            if ($existing !== null) {
+                $this->conn->execute(
+                    'UPDATE fee_group_items SET item_label = ?, amount = ?, sort_order = ?, notes = ?
+                     WHERE id = ?',
+                    [$label, $amount, $sort, $notes !== '' ? $notes : null, $existing['id']]
+                );
+            } else {
+                $this->conn->execute(
+                    'INSERT INTO fee_group_items (fee_group_id, item_key, item_label, amount, sort_order, notes)
+                     VALUES (?, ?, ?, ?, ?, ?)',
+                    [$groupId, $key, $label, $amount, $sort, $notes !== '' ? $notes : null]
+                );
+            }
+        }
+        return Response::redirect('/admin/fee-tariff#group-' . $groupId);
+    }
+
+    /**
+     * POST /admin/payment/tick — toggle a `payment_service_ticks` row.
+     *
+     * Phase 20 (v1.9.2) — ports v2's `FeeTariffController::toggleTick`.
+     * Accepts `tick_id` + `done` (1/0) + optional `reason`. Toggles
+     * `is_done` on the row, stamps `ticked_by` + `ticked_at`, and
+     * writes `done_reason` when undoing a tick.
+     *
+     * Schema: `payment_service_ticks(id, payment_id, item_key,
+     * item_label, is_done, done_reason, ticked_by, ticked_at)` —
+     * UNIQUE(payment_id, item_key).
+     *
+     * Auth: requireRole(['admin']). Returns JSON for AJAX callers.
+     */
+    public function toggleTick(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $tickId = (int)$request->input('tick_id', 0);
+        $done = $request->input('done', '1') === '1';
+        $reason = mb_substr(trim((string)$request->input('reason', '')), 0, 255);
+
+        if ($tickId <= 0) {
+            return Response::json(['success' => false, 'error' => 'invalid_tick_id'], 422);
+        }
+        $tick = $this->conn->one('SELECT * FROM payment_service_ticks WHERE id = ?', [$tickId]);
+        if ($tick === null) {
+            return Response::json(['success' => false, 'error' => 'not_found'], 404);
+        }
+        $adminId = (int)($this->session->get('admin_id') ?? 0);
+        $this->conn->execute(
+            'UPDATE payment_service_ticks
+             SET is_done = ?, done_reason = ?, ticked_by = ?, ticked_at = NOW()
+             WHERE id = ?',
+            [$done ? 1 : 0, (!$done && $reason !== '') ? $reason : null, $adminId > 0 ? $adminId : null, $tickId]
+        );
+        return Response::json([
+            'success' => true,
+            'tick_id' => $tickId,
+            'is_done' => $done,
+        ]);
+    }
+
+    /**
      * @return array<string,mixed>
      */
     private function blankTariff(): array
@@ -251,5 +474,26 @@ final class FeeTariffController extends Controller
             $errors[] = 'یادداشت حداکثر ۵۰۰ نویسه.';
         }
         return $errors;
+    }
+
+    /**
+     * Upsert a single settings row (key → value). Same pattern as
+     * SettingsController::upsertSetting — used by saveSettings() and
+     * by the image-upload flow (not used here, but kept for symmetry).
+     */
+    private function upsertSetting(string $key, string $value): void
+    {
+        $existing = $this->conn->one('SELECT setting_key FROM settings WHERE setting_key = ?', [$key]);
+        if ($existing !== null) {
+            $this->conn->execute(
+                'UPDATE settings SET setting_value = ? WHERE setting_key = ?',
+                [$value, $key]
+            );
+        } else {
+            $this->conn->execute(
+                'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)',
+                [$key, $value]
+            );
+        }
     }
 }
