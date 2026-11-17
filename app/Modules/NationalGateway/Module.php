@@ -187,8 +187,8 @@ final class Module implements ModuleInterface
     public function boot(ModuleLoader $loader): void
     {
         // Register the golden-link subscribers on the EventBus.
-        // LogSubscriber (wildcard) + SyncSubscriber (LicenseIssuedOnNational).
-        // NotificationSubscriber is wired in Phase 4g once NotificationService exists.
+        // LogSubscriber (wildcard) + SyncSubscriber (LicenseIssuedOnNational)
+        // + NotificationSubscriber (ApplicantMatched → SMS + in-app notification).
         $container = $loader->container();
         $eventBus = $container->make(\App\Events\EventBus::class);
         $logger = $container->logger;
@@ -198,14 +198,21 @@ final class Module implements ModuleInterface
             $container->make(\App\Queue\JobQueue::class),
             $logger
         ));
+        $eventBus->subscribe(new \App\Events\Subscribers\NotificationSubscriber(
+            $container->make(\App\Modules\Core\Services\NotificationService::class),
+            $logger
+        ));
     }
 
     public function routes(): array
     {
-        // Phase 3: routes are deferred — the admin sync panel will be added
-        // when LicenseService (Phase 4) is in place. For now, only the
-        // health endpoint circuit-breaker check is exposed via /health.
-        return [];
+        return [
+            // Golden-link sync admin panel — poor man's cron pattern.
+            // Each /admin/sync/status poll drains one queued job.
+            ['method' => 'GET',  'path' => '/admin/sync/status',  'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'status'],
+            ['method' => 'GET',  'path' => '/admin/sync/pending',  'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'pending'],
+            ['method' => 'POST', 'path' => '/admin/sync/run',      'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'run'],
+        ];
     }
 
     public function migrations(): array

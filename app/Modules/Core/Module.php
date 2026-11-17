@@ -135,6 +135,18 @@ final class Module implements ModuleInterface
                 $container->make(\App\Shared\Contracts\SettingRepositoryInterface::class)
             )
         );
+
+        // NotificationService — SMS + in-app notification delivery.
+        // Called by NotificationSubscriber on ApplicantMatched events.
+        $container->bind(
+            \App\Modules\Core\Services\NotificationService::class,
+            fn () => new \App\Modules\Core\Services\NotificationService(
+                $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\PersonRepositoryInterface::class),
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void
