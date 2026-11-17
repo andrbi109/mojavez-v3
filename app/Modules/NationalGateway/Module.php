@@ -204,7 +204,8 @@ final class Module implements ModuleInterface
                 $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
                 $container->make(\App\Events\EventBus::class),
                 $container->logger,
-                $container->make(\App\Shared\Persistence\Connection::class)
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->make(\App\Modules\NationalGateway\Services\OutboundSyncService::class)
             )
         );
     }
