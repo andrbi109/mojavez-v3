@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS `document_types` (
   `label` varchar(100) NOT NULL,
   `category` enum('user_upload','admin_add') NOT NULL DEFAULT 'user_upload',
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `is_required` tinyint(1) NOT NULL DEFAULT 0,
   `sort_order` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `doc_type_key` (`doc_type_key`)
@@ -591,6 +592,7 @@ CREATE TABLE IF NOT EXISTS `property_details` (
   `ownership_status` enum('شخص','مستأجر','سرپرست') NOT NULL,
   `province` varchar(50) NOT NULL,
   `county` varchar(50) NOT NULL,
+  `township` varchar(50) DEFAULT NULL,
   `city` varchar(50) NOT NULL,
   `district` varchar(50) DEFAULT NULL,
   `rural_district` varchar(50) DEFAULT NULL,

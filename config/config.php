@@ -21,6 +21,8 @@ return (static function (): array {
     $filters = require __DIR__ . '/filters.php';
     $statuses = require __DIR__ . '/statuses.php';
     $workflow = require __DIR__ . '/workflow.php';
+    // Phase 24 (v1.9.6) — pattern matcher per-field mode config (D-5-4).
+    $patternMatcher = require __DIR__ . '/pattern_matcher.php';
 
     // routes.php is loaded lazily by the Router at boot time (it returns
     // closures that depend on container-resolved controllers), so we don't
@@ -33,5 +35,6 @@ return (static function (): array {
         'filters'         => $filters,
         'statuses'        => $statuses,
         'workflow'        => $workflow,
+        'pattern_matcher' => $patternMatcher,
     ];
 })();

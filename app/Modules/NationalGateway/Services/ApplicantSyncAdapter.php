@@ -142,9 +142,15 @@ final class ApplicantSyncAdapter
                 $propertyDetail->addressAlley,
                 $propertyDetail->addressPlaque ? 'پلاک ' . $propertyDetail->addressPlaque : null,
             ]);
+            // Phase 24 (v1.9.6 / D-5-5): prefer the new `township` column
+            // (the resolved title from the wizard's `township_id` select)
+            // over `county` (the v2 backward-compat value). Old rows
+            // written before migration 013 have township=NULL — fall
+            // back to `county` for those.
+            $townshipValue = $propertyDetail->township ?? $propertyDetail->county;
             $property = [
                 'province' => $propertyDetail->province,
-                'township' => $propertyDetail->county,  // county = township in v2/v3
+                'township' => $townshipValue,
                 'business_address' => implode('، ', $addressParts),
                 'postal_code' => $applicant->postalCode,  // postal_code lives on applicant, not property
             ];

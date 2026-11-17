@@ -1,6 +1,6 @@
 # mojavez-v3
 
-> **نسخهٔ پایه:** 1.9.5 · **وضعیت:** در حال توسعه (فاز ۲۳ — CRUD views تکمیل)
+> **نسخهٔ پایه:** 1.9.6 · **وضعیت:** در حال توسعه (فاز ۲۴ — low-debt cleanup batch 1)
 > **فلسفه:** PHP 8.2 خالص، بدون Composer، بدون فریم‌ورک.
 > **مخزن‌های مرجع:** [`andrbi109/Mojavez-v2`](https://github.com/andrbi109/Mojavez-v2) (سامانهٔ صدور مجوز صنایع دستی) و [`andrbi108/mojavez-gateway`](https://github.com/andrbi108/mojavez-gateway) (scraper درگاه ملی).
 

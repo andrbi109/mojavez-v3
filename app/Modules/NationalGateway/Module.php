@@ -135,9 +135,15 @@ final class Module implements ModuleInterface
         );
 
         // PatternMatcher — stateless, cheap to construct.
+        // Phase 24 (v1.9.6 / D-5-4): inject the per-field match modes
+        // from config/pattern_matcher.php so the fuzzy `contains`
+        // matching for business_address is tunable without code change.
         $container->bind(
             \App\Modules\NationalGateway\Services\PatternMatcher::class,
-            fn () => new \App\Modules\NationalGateway\Services\PatternMatcher()
+            fn () => new \App\Modules\NationalGateway\Services\PatternMatcher(
+                \App\Shared\Support\Config::get('pattern_matcher.modes', []),
+                (float)\App\Shared\Support\Config::get('pattern_matcher.contains_confidence', 0.7)
+            )
         );
 
         // LicenseService — the orchestrator. Wires all of the above.

@@ -18,11 +18,22 @@ use App\Modules\Core\Domain\Person;
  * applicant's full value, and the * positions are wildcards that the local
  * value fills in.
  *
- * Two match modes:
+ * Two match modes (Phase 4 baseline):
  *   - matchNumeric($full, $masked): digit-by-digit alignment (national code,
  *     postal code). * = single-char wildcard.
  *   - matchText($full, $masked): glob-style alignment (business address).
  *     ***** (5 stars) = suffix wildcard — only the trailing anchors matter.
+ *
+ * Phase 24 (v1.9.6): pays D-5-4 — adds matchAddress() for fuzzy `contains`
+ * address matching. The upstream masks business_address with `*****`
+ * (the first 5 chars are hidden). The local property address is the full
+ * concatenation (street + alley + plaque), usually longer and in a
+ * different order. The old strict suffix matcher often failed when the
+ * local concatenation order differed from the upstream's. The new
+ * `contains` mode normalizes both strings (lowercase, strip punctuation,
+ * collapse whitespace) and accepts a match if the shorter string is
+ * contained in the longer one, with a reduced confidence multiplier
+ * (default 0.7 — configurable via config/pattern_matcher.php).
  *
  * Quorum matching (§9.3): no single field is enough — the matcher aggregates
  * 9 weighted fields and requires national code match + ≥2 other fields for
@@ -44,9 +55,42 @@ final class PatternMatcher
         'business_township'    => 2,  // exact text
         'license_title'        => 2,  // fuzzy text (contains)
         'postal_code'          => 3,  // masked pattern
-        'business_address'     => 4,  // masked text pattern
+        'business_address'     => 4,  // masked text pattern (Phase 24: fuzzy contains)
         'request_number'       => 1,  // auxiliary signal
     ];
+
+    /**
+     * Per-field match mode (Phase 24 / D-5-4).
+     *
+     * Keys mirror WEIGHTS. Missing keys default to the original matcher
+     * method (national_code/postal_code → matchNumeric; business_address
+     * → matchText; everything else → exact / fuzzy as before).
+     *
+     * 'contains' = the new fuzzy matchAddress() path — strict suffix first,
+     * then normalized contains-either-direction fallback at 0.7 confidence.
+     *
+     * @var array<string,string>
+     */
+    private readonly array $modes;
+
+    /**
+     * Confidence multiplier for `contains` (fuzzy) matches. 1.0 = full
+     * weight, 0.7 = 70% credit. Applied to the field's weight when
+     * summed into the quorum totalScore. The field still counts as 1
+     * field for the count-based quorum (AutoConfirmed needs national +
+     * 2+ others) — we just trust it less for the score.
+     */
+    private readonly float $containsConfidence;
+
+    /**
+     * @param array<string,string> $modes  Per-field mode overrides.
+     * @param float|null $containsConfidence  Confidence multiplier for contains matches.
+     */
+    public function __construct(array $modes = [], ?float $containsConfidence = null)
+    {
+        $this->modes = $modes;
+        $this->containsConfidence = $containsConfidence ?? 0.7;
+    }
 
     /**
      * Match a full numeric value against a masked pattern.
@@ -95,7 +139,7 @@ final class PatternMatcher
     }
 
     /**
-     * Match a full text value against a masked text pattern.
+     * Match a full text value against a masked text pattern (suffix mode).
      *
      * The upstream masks business addresses with `*****` (5 stars) which
      * means "the first 5 characters are hidden; the trailing part is
@@ -107,6 +151,10 @@ final class PatternMatcher
      * Examples:
      *   matchText('استان خراسان رضوی، خیابان مطهری 11', '*****، خیابان مطهری 11')
      *     → match (suffix anchors align)
+     *
+     * Kept public for backward compatibility (Phase 4 tests call it
+     * directly). The quorum matcher now routes business_address through
+     * matchAddress() when the field's mode is 'contains'.
      */
     public function matchText(string $fullValue, string $maskedPattern): MatchResult
     {
@@ -141,6 +189,113 @@ final class PatternMatcher
             return MatchResult::match($anchorsMatched, $starsCount);
         }
         return MatchResult::mismatch('glob_no_match');
+    }
+
+    /**
+     * Fuzzy address match (Phase 24 / D-5-4).
+     *
+     * Strategy:
+     *   1. Try the strict suffix matcher (matchText). If it matches,
+     *      accept it at FULL confidence (backward-compat for the common
+     *      case where suffix actually aligns).
+     *   2. Otherwise, strip the leading `*****` mask from the pattern
+     *      (the upstream always prefixes business_address with it),
+     *      normalize both strings (lowercase, strip punctuation, collapse
+     *      whitespace), and check if the visible suffix is CONTAINED in
+     *      the local full address. Accept at REDUCED confidence
+     *      (containsConfidence × weight).
+     *   3. Otherwise, mismatch.
+     *
+     * The reduced confidence is applied via MatchResult::matchFuzzy(),
+     * which carries a scoreMultiplier that the quorum function multiplies
+     * into the field's weight. The field still counts as 1 toward the
+     * field-count quorum (AutoConfirmed requires national + 2 others).
+     *
+     * Why this works: the upstream's address string is often a
+     * different concatenation order than the local (street + alley +
+     * plaque), but the visible suffix (e.g. "خیابان مطهری، پلاک ۱۱")
+     * usually appears as a substring of the local address. The strict
+     * suffix matcher required the suffix to align AT THE END; the
+     * contains matcher just requires it to be ANYWHERE.
+     *
+     * Examples:
+     *   matchAddress('خیابان مطهری 11، کوچه علی‌آباد، پلاک 25',
+     *                '*****، خیابان مطهری 11')
+     *     → match (contains, 0.7 confidence — suffix is "خیابان مطهری 11"
+     *       which is contained in the full value, even though the full
+     *       value doesn't end with it).
+     */
+    public function matchAddress(string $fullValue, string $maskedPattern): MatchResult
+    {
+        if ($maskedPattern === '') {
+            return MatchResult::inconclusive('empty_pattern');
+        }
+
+        // 1. Strict suffix matcher first — if it passes, full confidence.
+        $strict = $this->matchText($fullValue, $maskedPattern);
+        if ($strict->matched) {
+            return $strict;
+        }
+
+        // 2. Fuzzy contains mode. Strip the leading `*****` mask if present;
+        //    the remainder is the visible trailing anchor.
+        $visibleSuffix = $maskedPattern;
+        if (str_starts_with($visibleSuffix, '*****')) {
+            $visibleSuffix = substr($visibleSuffix, 5);
+        }
+        $visibleSuffix = $this->normalizeAddress($visibleSuffix);
+        $fullNormalized = $this->normalizeAddress($fullValue);
+
+        if ($visibleSuffix === '') {
+            return MatchResult::inconclusive('pattern_all_wildcard');
+        }
+        if ($fullNormalized === '') {
+            return MatchResult::inconclusive('empty_full_value');
+        }
+
+        // Contains either direction (the suffix is usually shorter and
+        // contained in the full address, but the local address may also
+        // be a substring of a longer upstream description).
+        if (
+            mb_strpos($fullNormalized, $visibleSuffix) !== false
+            || mb_strpos($visibleSuffix, $fullNormalized) !== false
+        ) {
+            return MatchResult::matchFuzzy(
+                anchorsMatched: mb_strlen($visibleSuffix),
+                wildcardsMatched: 0,
+                scoreMultiplier: $this->containsConfidence,
+                reason: 'address_contains_match',
+            );
+        }
+
+        return MatchResult::mismatch('address_no_contains');
+    }
+
+    /**
+     * Normalize an address string for fuzzy comparison.
+     *
+     *   - Persian/Arabic digits → Latin (via Normalizer::digits).
+     *   - Lowercase (for any Latin chars).
+     *   - Strip Persian and Latin punctuation (., ، ؛ : ! ؟ - _ ' " () [] {}).
+     *   - Strip ZWNJ / ZWJ (they don't carry address meaning).
+     *   - Collapse whitespace runs to a single space.
+     *   - Trim.
+     */
+    private function normalizeAddress(string $s): string
+    {
+        // Persian/Arabic digits → Latin (so ۱۱ == 11).
+        $s = Normalizer::digits($s);
+        // Lowercase Latin chars.
+        $s = mb_strtolower($s);
+        // Strip Persian and Latin punctuation + ZWNJ/ZWJ.
+        $s = preg_replace(
+            '/[.,،؛:!؟\-_\'"()\[\]{}\x{200c}\x{200d}]/u',
+            ' ',
+            $s
+        ) ?? $s;
+        // Collapse whitespace runs to a single space.
+        $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
+        return trim($s);
     }
 
     /**
@@ -187,7 +342,7 @@ final class PatternMatcher
         }
         // contains either direction
         if (mb_strpos($full, $upstream) !== false || mb_strpos($upstream, $full) !== false) {
-            return MatchResult::match(min(strlen($full), strlen($upstream)), 0, 'contains_match');
+            return MatchResult::match(strlen($full), 0, 'contains_match');
         }
         return MatchResult::mismatch('fuzzy_no_match');
     }
@@ -235,8 +390,11 @@ final class PatternMatcher
         );
 
         // 5. Business township — exact text match.
+        // Phase 24 (D-5-5): prefer the new `township` field on
+        // property_details (forwarded by ApplicantSyncAdapter) if set;
+        // otherwise fall back to `county` (v2/v3 convention).
         $fieldResults['business_township'] = $this->matchExactText(
-            $property['township'] ?? '',
+            $property['township'] ?? $property['county'] ?? '',
             $license->townshipTitle ?? ''
         );
 
@@ -252,11 +410,20 @@ final class PatternMatcher
             $license->postalCodeMasked ?? ''
         );
 
-        // 8. Business address — masked text match.
-        $fieldResults['business_address'] = $this->matchText(
-            $property['business_address'] ?? '',
-            $license->businessAddress ?? ''
-        );
+        // 8. Business address — Phase 24 / D-5-4: route via matchAddress()
+        //    when the field mode is 'contains', else fall back to matchText()
+        //    (suffix). The 'contains' mode tries strict suffix first, then
+        //    fuzzy contains — so it's a superset of the old behaviour.
+        $addressMode = $this->modes['business_address'] ?? 'suffix';
+        $fieldResults['business_address'] = $addressMode === 'contains'
+            ? $this->matchAddress(
+                $property['business_address'] ?? '',
+                $license->businessAddress ?? ''
+            )
+            : $this->matchText(
+                $property['business_address'] ?? '',
+                $license->businessAddress ?? ''
+            );
 
         // 9. Request number — auxiliary signal (exact match).
         $fieldResults['request_number'] = $this->matchExactText(
