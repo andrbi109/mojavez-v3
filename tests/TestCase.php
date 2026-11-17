@@ -34,6 +34,28 @@ class TestCase
     /** @var array<int,string> */
     private array $failureMessages = [];
 
+    /** If set, the test is skipped (not counted as pass or fail). */
+    protected ?string $skipReason = null;
+
+    /**
+     * Mark this test as skipped (e.g. because a required source DB isn't set up).
+     * Should be called from setUp() or the start of run().
+     */
+    protected function markTestSkipped(string $reason): void
+    {
+        $this->skipReason = $reason;
+    }
+
+    public function isSkipped(): bool
+    {
+        return $this->skipReason !== null;
+    }
+
+    public function skipReason(): ?string
+    {
+        return $this->skipReason;
+    }
+
     public function assertTrue(bool $cond, string $message = ''): void
     {
         $this->assertions++;

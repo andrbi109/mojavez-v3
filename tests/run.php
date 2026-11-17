@@ -41,6 +41,11 @@ foreach ($testFiles as $file) {
         if (method_exists($instance, 'setUp')) {
             $instance->setUp();
         }
+        if (method_exists($instance, 'isSkipped') && $instance->isSkipped()) {
+            $reason = method_exists($instance, 'skipReason') ? $instance->skipReason() : '';
+            printf("%-40s %s  SKIP\n", $name, $reason !== '' ? '(' . substr($reason, 0, 25) . ')' : '');
+            continue;
+        }
         $instance->run();
         if (method_exists($instance, 'tearDown')) {
             $instance->tearDown();

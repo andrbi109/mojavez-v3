@@ -163,6 +163,7 @@ final class Module implements ModuleInterface
                 $container->make(\App\Modules\NationalGateway\Services\PatternMatcher::class),
                 $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\PersonRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\JobAndPropertyRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
                 $container->make(\App\Events\EventBus::class),
@@ -220,6 +221,7 @@ final class Module implements ModuleInterface
         return [
             '20261117_001_national_gateway_tables.sql',
             '20261117_002_golden_link_columns.sql',
+            '20261117_003_sync_audit_log_nullable_applicant.sql',
         ];
     }
 
