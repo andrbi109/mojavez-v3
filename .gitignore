@@ -21,6 +21,9 @@ storage/exports/*
 !storage/exports/.gitkeep
 storage/uploads/*
 !storage/uploads/.gitkeep
+# Phase 25 (v1.9.7) — D-6-4: install.php marker file (install timestamp).
+# Must never be committed (would block re-install in fresh deploys).
+storage/.installed
 
 # User-uploaded files (outside public web root)
 uploads/*

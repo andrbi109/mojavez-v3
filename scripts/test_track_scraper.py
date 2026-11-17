@@ -7,8 +7,17 @@ qr.mojavez.ir track page HTML into a License domain object).
 
 Per docs/00-MASTER.md §18.4 — runs the TrackScraper against a saved
 HTML fixture (tests/fixtures/track_page.html) and verifies the parsed
-License fields. The scraper itself is PHP; this script invokes it via
-the CLI and parses the JSON output.
+fields. The scraper itself is PHP; this script invokes it via the CLI
+and parses the JSON output.
+
+Phase 25 (v1.9.7) — D-6-3: the fixture is now a SYNTHETIC track page
+(tests/fixtures/track_page.html) that mimics the structure of
+qr.mojavez.ir's /track/{request_number} page (Next.js App Router with
+RSC flight payload). The previous approach required a real HAR capture
+from inside Iran — the synthetic fixture lets the test run anywhere
+(not just from inside Iran). The PHP-native sibling test
+(tests/Unit/TrackScraperTest.php) still uses the real HAR fixture for
+end-to-end regression, so we keep both.
 
 Usage:
     python3 scripts/test_track_scraper.py
@@ -40,42 +49,57 @@ def red(msg):
 
 
 def run_scraper(fixture_path: str) -> dict:
-    """Run the PHP TrackScraper against the fixture and return parsed JSON."""
-    php_code = f"""
-require 'app/Shared/Support/Environment.php';
-require 'app/Shared/Support/StructuredLogger.php';
-spl_autoload_register(static function (string $class): void {{
-    $prefix = 'App\\\\';
+    """Run the PHP TrackScraper against the fixture and return parsed JSON.
+
+    Constructs a stub HttpClient that returns the fixture HTML as if it
+    were the upstream track-page response, then calls
+    TrackScraper::fetch('I17981871', false) — which returns the parsed
+    array. The advanced-data API call is stubbed to return ERROR so
+    specialized_items comes back as an empty list.
+    """
+    php_code = r"""
+require_once 'app/Shared/Support/Environment.php';
+require_once 'app/Shared/Support/StructuredLogger.php';
+spl_autoload_register(static function (string $class): void {
+    $prefix = 'App\\';
     if (!str_starts_with($class, $prefix)) return;
     $relative = substr($class, strlen($prefix));
-    $file = 'app/' . str_replace('\\\\', '/', $relative) . '.php';
+    $file = 'app/' . str_replace('\\', '/', $relative) . '.php';
     if (is_file($file)) require_once $file;
-}});
-$env = App\\Shared\\Support\\Environment::load('.env');
-$logger = new App\\Shared\\Support\\StructuredLogger('/tmp/trackscraper.log', 'debug');
-$container = new App\\Container($env, $logger);
-$container->boot(getcwd());
-$scraper = $container->make(App\\Modules\\NationalGateway\\Infrastructure\\TrackScraper::class);
-$html = file_get_contents({json.dumps(fixture_path)});
-$license = $scraper->parse($html);
-if ($license === null) {{
-    echo json_encode(['error' => 'scraper returned null']);
-    exit(1);
-}}
-echo json_encode([
-    'request_number' => $license->requestNumber,
-    'applicant_name' => $license->applicantName,
-    'masked_national_code' => $license->maskedNationalCode,
-    'father_name' => $license->fatherName,
-    'province_title' => $license->provinceTitle,
-    'township_title' => $license->townshipTitle,
-    'license_title' => $license->licenseTitle,
-    'organization_title' => $license->organizationTitle,
-    'status_slug' => $license->status->value,
-    'business_address' => $license->businessAddress,
-    'postal_code_masked' => $license->postalCodeMasked,
-], JSON_UNESCAPED_UNICODE);
+});
+
+final class StubHttp implements App\Modules\NationalGateway\Infrastructure\HttpClientInterface {
+    private string $html;
+    public function __construct(string $path) { $this->html = (string)file_get_contents($path); }
+    public function request(string $method, string $url, array $headers = [], ?string $body = null, ?string $contentType = null): App\Modules\NationalGateway\Infrastructure\HttpResponse {
+        if (str_contains($url, '/advanced-data')) {
+            return new App\Modules\NationalGateway\Infrastructure\HttpResponse(
+                200,
+                '{"data":{"biServices":{"advanceData":{"Status":"ERROR","Result":[]}}}}',
+                [],
+                0.0
+            );
+        }
+        return new App\Modules\NationalGateway\Infrastructure\HttpResponse(
+            200,
+            $this->html,
+            ['content-type' => 'text/html; charset=utf-8'],
+            0.1
+        );
+    }
+}
+
+$logger = new App\Shared\Support\StructuredLogger(sys_get_temp_dir() . '/trackscraper-test.log', 'debug');
+$stub = new StubHttp(__FIXTURE_PATH__);
+$scraper = new App\Modules\NationalGateway\Infrastructure\TrackScraper(
+    $stub,
+    'https://qr.mojavez.ir',
+    $logger
+);
+$result = $scraper->fetch('I17981871', false);
+echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 """
+    php_code = php_code.replace("__FIXTURE_PATH__", json.dumps(fixture_path))
     result = subprocess.run(
         [PHP, "-r", php_code],
         cwd=str(ROOT),
@@ -86,7 +110,12 @@ echo json_encode([
     if result.returncode != 0:
         print(red(f"  ✘ scraper failed: {result.stderr[:200]}"))
         return {}
-    return json.loads(result.stdout.strip())
+    try:
+        return json.loads(result.stdout.strip())
+    except json.JSONDecodeError as e:
+        print(red(f"  ✘ scraper returned non-JSON: {e}"))
+        print(f"    stdout: {result.stdout[:200]!r}")
+        return {}
 
 
 def main():
@@ -94,7 +123,8 @@ def main():
 
     if not Path(fixture).exists():
         print(red(f"  ✘ fixture not found: {fixture}"))
-        print("    Generate one by saving the track page HTML to tests/fixtures/track_page.html")
+        print("    The synthetic fixture lives at tests/fixtures/track_page.html")
+        print("    (committed by Phase 25 / D-6-3 — see docs/PHASE_25_LOW_DEBT_BATCH_2.md)")
         return 1
 
     print("═══════════ TrackScraper test ═══════════")
@@ -102,11 +132,22 @@ def main():
     if not parsed:
         return 1
 
+    # The synthetic fixture is a minimal Next.js App Router page that
+    # carries the RSC flight payload with the license data object,
+    # applicant identity (label→value), business location (label→value),
+    # and the business-history table. Expected values are pinned so
+    # any regression in the scraper breaks this test.
     expected = {
-        "masked_national_code": "072****107",
         "father_name": "محمد",
-        "province_title": "خراسان رضوی",
+        "national_id": "072****107",
+        "business_province": "خراسان رضوی",
+        "business_township": "تربت جام",
+        "postal_code": "9571968***",
         "license_title": "کسب و کار خانگی",
+        "isic_code": "131202",
+        "isic_title": "نساجی سنتی",
+        "issuance_type": "ثبت محور",
+        "business_address": "استان خراسان رضوی، شهرستان تربت جام",
     }
 
     pass_count = 0
@@ -120,14 +161,78 @@ def main():
             fail_count += 1
             print(f"  ✘ {field}: expected {expected_val!r}, got {actual!r}")
 
-    # Required fields must be non-empty.
-    for required in ["request_number", "applicant_name", "status_slug"]:
-        if parsed.get(required):
+    # Status object — verify the slug, title, and id.
+    status = parsed.get("status") or {}
+    for field, expected_val in (("status_id", "2.24"), ("status_title", "معتبر"), ("status_slug", "active")):
+        actual = str(status.get(field, ""))
+        if actual == expected_val:
             pass_count += 1
-            print(f"  ✔ {required} non-empty: {parsed[required]!r}")
+            print(f"  ✔ status.{field} = {actual!r}")
         else:
             fail_count += 1
-            print(f"  ✘ {required} is empty")
+            print(f"  ✘ status.{field}: expected {expected_val!r}, got {actual!r}")
+
+    # Required fields must be present / non-empty.
+    required_nonempty = [
+        "request_number",
+        "tracking_code",
+        "issuing_authority",
+        "supervisory_authorities",
+    ]
+    for field in required_nonempty:
+        if parsed.get(field):
+            pass_count += 1
+            print(f"  ✔ {field} non-empty: {parsed[field]!r}")
+        else:
+            fail_count += 1
+            print(f"  ✘ {field} is empty")
+
+    # found must be True; error must be None.
+    if parsed.get("found") is True:
+        pass_count += 1
+        print("  ✔ found = True")
+    else:
+        fail_count += 1
+        print(f"  ✘ found: expected True, got {parsed.get('found')!r}")
+    if parsed.get("error") is None:
+        pass_count += 1
+        print("  ✔ error = None")
+    else:
+        fail_count += 1
+        print(f"  ✘ error: expected None, got {parsed.get('error')!r}")
+
+    # Mobile is publicly empty on the upstream track page → null in result.
+    if parsed.get("mobile") is None:
+        pass_count += 1
+        print("  ✔ mobile = None (publicly empty on upstream)")
+    else:
+        fail_count += 1
+        print(f"  ✘ mobile: expected None, got {parsed.get('mobile')!r}")
+
+    # Business history table — one row expected.
+    history = parsed.get("business_history") or []
+    if len(history) == 1:
+        pass_count += 1
+        print(f"  ✔ business_history has 1 row")
+        row = history[0]
+        for k, v in (("operation", "صدور مجوز"), ("date", "1405-08-17"), ("index", "1")):
+            if str(row.get(k, "")) == v:
+                pass_count += 1
+                print(f"  ✔ history[0].{k} = {v!r}")
+            else:
+                fail_count += 1
+                print(f"  ✘ history[0].{k}: expected {v!r}, got {row.get(k)!r}")
+    else:
+        fail_count += 1
+        print(f"  ✘ business_history: expected 1 row, got {len(history)}")
+
+    # specialized_items is [] because the advanced-data API was stubbed to ERROR.
+    if parsed.get("specialized_items") == []:
+        pass_count += 1
+        print("  ✔ specialized_items = [] (advanced-data stubbed)")
+    else:
+        fail_count += 1
+        print(f"  ✘ specialized_items: expected [], got {parsed.get('specialized_items')!r}")
 
     print()
     print(f"PASS: {pass_count}, FAIL: {fail_count}")

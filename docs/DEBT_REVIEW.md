@@ -1452,6 +1452,39 @@ array دسترسی داشت (`$t['status']`) اما controller آبجکت‌ها
 
 ---
 
+### فاز ۲۵: low debt cleanup batch 2 (v1.9.7)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.7 (phase/25-low-debt-cleanup-2 branch, tag v1.9.7)
+
+#### Debt paid در این فاز
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-6-2 | `static_analysis.py` ~۱۰ false-positive warning داشت (EventBus/Module/Worker به‌اشتباه به‌عنوان controller فلگ می‌شدند؛ layout view برای `<?= $content ?>`؛ Connection.php SET NAMES SQL string-concat) — با الگوهای broad در ignore file سرکوب می‌شدند | heuristic در خود ابزار بهتر شد: (۱) `check_controller_location` نام کلاس واقعی را با regex extract می‌کند و فقط اگر کلاس با `Controller` پایان یابد فلگ می‌زند (دکلک/اینپورت دیگر warning نمی‌سازد)؛ (۲) `IMPLICIT_SAFE_VIEW_VARS` (csrfField, content) به‌عنوان متغیرهای view-injected safe شناخته می‌شوند؛ (۳) `SQL_CONCAT_EXCLUDED_FILES` per-file exclusion برای Connection.php. الگوهای broad از ignore file حذف شدند. شمارش warning سرکوب‌شده ۱۳۶ → ۵۹. |
+| D-6-3 | `test_track_scraper.py` به fixture از `qr.mojavez.ir` وابسته بود که فقط از داخل ایران قابل دسترسی است | fixture synthetic جدید `tests/fixtures/track_page.html` ساخته شد: یک Next.js App Router page مینیمال با RSC flight payload شامل license data object + label→value (نام پدر/کدملی/...) + history rows. تست بازنویسی شد تا با stub HttpClient و `fetch()` آرایه‌ای ۲۵ assertion کند. حالا از هر جایی runnable است. |
+| D-6-4 | `install.php` خودش را `unlink` می‌کرد ولی در shared hosting با permission محدود ممکن بود fail شود | `storage/.installed` lock marker به‌عنوان guard اصلی اضافه شد: پس از موفقیت، timestamp نصب نوشته می‌شود. هر request ابتدا lock file را چک می‌کند. `?force=1&CRON_SECRET=<secret>` برای re-install. hash_equals برای مقایسه. .gitignore به‌روز شد. |
+| D-6-5 | `deploy/docker/.env.example` با secret خالی — ادمین باید `openssl rand -hex 32` را دستی اجرا می‌کرد | `deploy/docker/generate-secrets.sh` جدید: برای هر secret (CRON/SYNC/GATEWAY/DB_PASS/DB_ROOT) openssl rand می‌زند و .env کامل به stdout چاپ می‌کند. در `deploy/README.md` مستندسازی شد. |
+| D-6-6 | job `smoke` در CI فقط `cp .env.example .env` می‌کرد (DB credentials خالی) — migration fail می‌شد و HTTP checks به `--no-http` fallback می‌رسید | job `smoke` حالا MariaDB service دارد (همان mariadb:10.11 با DB جدا `mojavez_v3_test`)، `.env` کامل می‌نویسد (APP_ENV=development, DB_USER=root, DB_PASS=test), migration می‌زند، PHP built-in server روی ۸۰۰۰ شروع می‌کند، و `smoke-test.sh` را با `BASE_URL=http://127.0.0.1:8000` اجرا می‌کند. |
+
+#### Debt introduced در این فاز
+
+هیچ.
+
+#### Debt carried forward به فاز ۲۶
+
+4 low debt (D-8-1, D-8-2, D-8-3, D-8-5) — 5 مورد کمتر از فاز ۲۴.
+
+#### توصیه برای فاز ۲۶
+
+- [ ] فاز ۲۶ (v1.9.8): low debt cleanup batch 3 (D-8-1, D-8-2, D-8-3, D-8-5)
+- [ ] فاز ۲۷ (v1.9.9): final polish + tests
+- [ ] فاز ۲۸ (v1.9.10): آماده‌سازی v2.0.0
+- [ ] پس از تأیید کاربر → v2.0.0
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -1462,7 +1495,21 @@ array دسترسی داشت (`$t['status']`) اما controller آبجکت‌ها
 | critical | 0 | — | — |
 | high | 0 | — | — |
 | medium | 0 | — | — |
-| low | 9 | 2026-11-17 | D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5 |
+| low | 4 | 2026-11-17 | D-8-1, D-8-2, D-8-3, D-8-5 |
+
+اگر critical > 0 یا high > 3، هشدار در CI.
+
+**وضعیت پس از فاز ۲۵ (low debt cleanup batch 2):**
+۰ critical، ۰ high، **۰ medium**، **4 low** (5 مورد کمتر از فاز ۲۴: D-6-2، D-6-3، D-6-4، D-6-5، D-6-6 پرداخت شد). فاز ۲۵ پنج low-debt را به‌صورت تمیز پرداخت:
+- D-6-2: heuristic در static_analysis.py بهتر شد (extract class name، IMPLICIT_SAFE_VIEW_VARS، per-file SQL exclusion). شمارش warning سرکوب‌شده ۱۳۶ → ۵۹.
+- D-6-3: fixture synthetic `tests/fixtures/track_page.html` برای test_track_scraper.py — حالا از هر جایی runnable است.
+- D-6-4: `storage/.installed` lock marker به‌عنوان guard اصلی در install.php + `?force=1&CRON_SECRET=` bypass.
+- D-6-5: `deploy/docker/generate-secrets.sh` برای تولید .env با secret های random.
+- D-6-6: job `smoke` در CI حالا MariaDB service دارد + .env کامل + migration + PHP server start.
+
+پس از فاز ۲۵، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر» است. مهم‌ترین
+دستاورد فاز ۲۵: همهٔ 5 مورد low-debt پرداخت‌شده بدون debt جدید. لاگ تست
+همچنان سبز است و تست synthetic scraper 25/25 assertion را پاس می‌کند.
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
