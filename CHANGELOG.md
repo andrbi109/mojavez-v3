@@ -149,6 +149,139 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.3.0] — 2026-11-17
+
+Phase 12 — `AvatarService` + `ProfileUpdateValidator`. The two `501` stubs
+left by Phase 9 (`POST /panel/profile` and `POST /panel/avatar`) are
+replaced with real implementations, paying down the **last medium-priority
+debt** D-9-1. After Phase 12: 0 critical, 0 high, **0 medium**, ~29 low
+(1 new: D-12-1).
+
+### Added — Phase 12: avatar + profile editing
+
+- **`AvatarService`** (`app/Modules/Core/Services/AvatarService.php`) —
+  new service class with two public methods:
+  - `upload(int $accountId, array $file): array` — validates a
+    `$_FILES['avatar']`-style array (UPLOAD_ERR_OK, MIME in
+    `[image/jpeg, image/png, image/webp]`, size ≤ 2 MB, real image via
+    `getimagesize()`), then loads + resizes to a 256×256 square
+    (crop-center, downscale larger, upscale smaller) via
+    `imagecreatetruecolor` + `imagecopyresampled`, and saves as JPEG
+    (quality 85) to `storage/uploads/avatars/account-{id}.jpg`. The
+    directory is created if missing (mode 0755). A `documents` row is
+    inserted with `doc_type='avatar'` (the schema's `documents.applicant_id`
+    is NOT NULL — the user's first existing applicant is used as the
+    carrier; if the user has no applicants yet, the upload is refused
+    with a Persian error). `user_accounts.avatar_document_id` is set
+    to the new document id. The previous avatar file + documents row
+    are deleted best-effort. Path-traversal defense: the on-disk
+    filename is ALWAYS server-constructed (`account-{id}.jpg`); the
+    user-supplied name is `basename()`'d, ASCII-stripped, dot-stripped,
+    and stored only in the `documents.original_name` DB column.
+  - `getPath(int $documentId): ?string` — resolves a `documents.id` to
+    an absolute filesystem path (or null if missing).
+- **`ProfileUpdateValidator`**
+  (`app/Modules/Core/Support/ProfileUpdateValidator.php`) — static
+  class (same pattern as `App\Shared\Support\Validator`) with one
+  public method: `validate(array $body, UserAccountRepositoryInterface
+  $repo, int $accountId): array`. Validates four optional fields:
+  `username` (3-50 chars, `[a-z0-9_.]+`, unique → lower-case),
+  `mobile` (`09\d{9}`, unique), `email` (`filter_var(FILTER_VALIDATE_EMAIL)`,
+  ≤ 254 chars), `display_name` (1-100 chars). Returns
+  `{valid: bool, errors: string[], clean: array}` — `errors` is Persian.
+- **`/panel/profile` (GET)** — now renders an editable form (Phase 9
+  shipped it read-only). Form fields: `username`, `mobile`, `email`,
+  `display_name`, all with CSRF + current values prefilled.
+- **`/panel/profile` (POST)** — was a 501 stub. Now validates via
+  `ProfileUpdateValidator` and persists via
+  `UserAccountRepositoryInterface::update()` (new in Phase 12). On
+  validation failure: 422 with `errors[]`. On success: 200 with
+  `success:true` + the persisted `clean` fields.
+- **`/panel/avatar` (POST)** — was a 501 stub. Now accepts a multipart
+  upload, delegates to `AvatarService::upload()`. Returns JSON
+  success/error. CSRF enforced by the front controller (same as all
+  POST routes).
+- **`UserAccountRepositoryInterface::update()` + `findByUsername()`**
+  — two new interface methods (and the PDO implementation):
+  - `update(int $id, array $fields): void` — whitelist-enforced update
+    of the safe-to-edit profile columns (`username`, `mobile`).
+    Builds the SET clause dynamically from the keys present, with
+    positional `?` placeholders.
+  - `findByUsername(string $username): ?array` — needed for the
+    `ProfileUpdateValidator` username-uniqueness check.
+- **Container binding for `AvatarService`** — added to
+  `Core/Module.php::register()` (same pattern as the existing
+  `SmsService` binding). `ProfileUpdateValidator` is a static class —
+  no binding needed.
+- **Seed migration 007** — `INSERT IGNORE INTO document_types` a
+  `'avatar'` row (`doc_type_key='avatar'`, `label='تصویر پروفایل'`,
+  `category='user_upload'`, `sort_order=100`). Idempotent — re-running
+  against a DB that already has the row is a no-op.
+- **2 new unit tests** — `AvatarServiceTest` (validation paths:
+  UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_NO_FILE, invalid MIME, oversized),
+  `ProfileUpdateValidatorTest` (4 cases: all-valid, duplicate mobile,
+  invalid email, empty body). ~9 new assertions.
+
+### Files changed (Phase 12)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/Services/AvatarService.php` | new — image upload + resize (GD) + documents insert |
+| `app/Modules/Core/Support/ProfileUpdateValidator.php` | new — validates the 4 profile fields |
+| `app/Modules/Core/Controllers/UserPanelController.php` | replace 2 stubs (updateProfile, uploadAvatar) with real impls; profile() GET renders editable form; new `AvatarService` constructor dep; new `avatarUrlFor()` helper |
+| `app/Shared/Contracts/UserAccountRepositoryInterface.php` | +2 methods: `findByUsername()`, `update()` |
+| `app/Modules/Core/Persistence/PdoUserAccountRepository.php` | +2 methods: `findByUsername()`, `update()` (whitelist-enforced, dynamic SET) |
+| `app/Modules/Core/Module.php` | +1 binding (AvatarService); +1 migration entry (007) |
+| `app/Modules/Core/migrations/20261117_007_seed_avatar_document_type.sql` | new — idempotent seed |
+| `app/Views/user/profile.php` | rewrite: editable form + avatar form + AJAX + inline feedback |
+| `database/install.sql` | +1 INSERT IGNORE for the `avatar` document_type (idempotent, mirrors migration 007) |
+| `tests/Unit/AvatarServiceTest.php` | new — validation paths |
+| `tests/Unit/ProfileUpdateValidatorTest.php` | new — 4 cases |
+| `VERSION` | `1.2.0` → `1.3.0` |
+| `README.md` | header version reference updated |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 12 section + live-debt summary updated (medium 2→0, low 28→29) |
+| `docs/PHASE_12_AVATAR_PROFILE.md` | new — Phase 12 documentation |
+
+### Notes
+
+- All existing unit tests (the 391 from v1.1.0 + 3 from Phase 11 + ~9 new
+  here = ~403), contract tests (21), and HTTP smoke tests (66 pass / 8
+  pre-existing D-8-5) remain green — no regression introduced.
+- `static_analysis.py` and `php_lint_simple.py` warnings are unchanged
+  (all pre-existing false positives around `$csrfField` / `$content` /
+  `define()` / CSS braces); the new `app/Views/user/profile.php` adds a
+  few new false positives around `<?= $uname ?>`-style short tags — these
+  are NOT real issues (the variables are escaped via `htmlspecialchars`
+  in the same expression).
+- `check_schema_ownership.py` still passes — the new migration 007
+  is an INSERT into a Core-owned table (no schema ownership violation).
+
+### Debt paid this release
+
+| ID | Description | How |
+|---|---|---|
+| D-9-1 | `POST /panel/profile` and `POST /panel/avatar` were 501 stubs since Phase 9 | Both now live: `AvatarService` handles multipart upload + GD resize + documents insert + user_accounts.avatar_document_id update; `ProfileUpdateValidator` validates the 4 profile fields; `update()` + `findByUsername()` added to `UserAccountRepositoryInterface`; `Core/Module.php` binds `AvatarService`. |
+
+### Debt introduced
+
+| ID | Description | Severity |
+|---|---|---|
+| D-12-1 | `email` and `display_name` profile fields are validated by `ProfileUpdateValidator` but NOT persisted — the `user_accounts` schema has no such columns (added only on the `users` admin table). Adding them is a low-priority schema addition for v1.4+. | low |
+
+### Debt carried forward
+
+- D-2-3 (low, v1.4, partial): remaining ~12 deferred admin controllers.
+- D-8-5 (low): pre-existing smoke-test variance.
+- D-12-1 (low, v1.4): `email` / `display_name` columns on `user_accounts`.
+- Plus the 26 pre-existing low items from prior phases.
+
+After Phase 12: **0 critical, 0 high, 0 medium, ~29 low.** The project
+is at "no medium-or-higher debt" state — only low-priority polish items
+remain (v1.4+ scope).
+
+---
+
 ## [1.2.0] — 2026-11-17
 
 Phase 11 — admin CRUD + Stage2ReadinessChecker UI. The three Phase-10

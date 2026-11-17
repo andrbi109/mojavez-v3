@@ -165,6 +165,20 @@ final class Module implements ModuleInterface
                 $container->logger
             )
         );
+
+        // AvatarService — user-profile image upload + storage.
+        // Phase 12 (v1.3.0): resolves debt D-9-1 (the last medium-priority
+        // debt). Called by UserPanelController::uploadAvatar() for the
+        // multipart POST to /panel/avatar. Resizes via GD to 256x256,
+        // stores at storage/uploads/avatars/account-{id}.jpg, inserts a
+        // documents row, sets user_accounts.avatar_document_id.
+        $container->bind(
+            \App\Modules\Core\Services\AvatarService::class,
+            fn () => new \App\Modules\Core\Services\AvatarService(
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void
@@ -284,6 +298,7 @@ final class Module implements ModuleInterface
             '20261117_004_wizard_form_fields_and_sms.sql',
             '20261117_005_user_accounts_fees_and_lookup_tables.sql',
             '20261117_006_rate_limit_buckets.sql',
+            '20261117_007_seed_avatar_document_type.sql',
         ];
     }
 

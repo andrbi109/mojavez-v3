@@ -24,3 +24,13 @@ FLUSH PRIVILEGES;
 
 USE mojavez_v3;
 SOURCE schema.sql;
+
+-- Phase 12 (v1.3.0) seed: the 'avatar' document_type row. Idempotent
+-- (UNIQUE constraint on document_types.doc_type_key). The new
+-- AvatarService stores avatar uploads as documents with doc_type='avatar';
+-- this seed row is forward-compatibility for a future admin UI + tighter
+-- FK constraint.
+INSERT IGNORE INTO document_types
+    (doc_type_key, label, category, is_active, sort_order)
+VALUES
+    ('avatar', 'تصویر پروفایل', 'user_upload', 1, 100);

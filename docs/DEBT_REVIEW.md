@@ -733,6 +733,53 @@
 
 ---
 
+### فاز ۱۲: AvatarService + ProfileUpdateValidator (v1.3.0)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.3.0 (phase/12-avatar-service-v1.3.0 branch, tag v1.3.0)
+
+#### زمینه
+
+پس از فاز ۱۱ که ۴ debt medium را پرداخت کرد و D-2-3 را به low کاهش داد،
+تنها debt medium باقی‌مانده D-9-1 بود: دو stub `POST /panel/profile`
+(updateProfile) و `POST /panel/avatar` (uploadAvatar) که در فاز ۹ به‌صورت
+501 پیاده‌سازی شده بودند چون scope فاز ۹ فقط بستن 404 پس از ورود بود.
+
+فاز ۱۲ این debt را با ساخت یک service layer مستقل (`AvatarService` +
+`ProfileUpdateValidator`) پرداخت می‌کند. هر دو کنترلر stub با پیاده‌سازی
+واقعی تعویض شد و `/panel/profile` از یک صفحهٔ فقط‌خواندنی به یک فرم
+قابل‌ویرایش با AJAX + بازخورد درون‌خطی تبدیل شد.
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-9-1 | `POST /panel/profile` و `POST /panel/avatar` stub (501) | `AvatarService` جدید: اعتبارسنجی multipart، resize با GD به 256×256 (crop-center)، ذخیره به JPEG ۸۵، normalise به `storage/uploads/avatars/account-{id}.jpg`، درج documents row با `doc_type='avatar'`، تنظیم `user_accounts.avatar_document_id`، حذف best-effort آواتار قبلی (فایل + row). defense path-traversal: نام روی دیسک همیشه server-constructed (`account-{id}.jpg`)، نام کاربر فقط در `original_name` با basename + ASCII strip + dot strip. `ProfileUpdateValidator` جدید (static class): اعتبارسنجی ۴ فیلد username/mobile/email/display_name با بررسی یکتایی، خروجی `{valid, errors, clean}`. `UserAccountRepositoryInterface::update()` + `findByUsername()` اضافه شد. `Core/Module.php` binding `AvatarService` اضافه شد. View `user/profile.php` به فرم قابل‌ویرایش + فرم آواتار + AJAX + `<div id="profile-feedback">` بازنویسی شد. |
+
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-12-1 | فیلدهای `email` و `display_name` در فرم پروفایل اعتبارسنجی می‌شوند ولی در `user_accounts` ذخیره نمی‌شوند چون جدول این ستون‌ها را ندارد (فقط جدول admin `users` ستون `display_name` دارد و `email` جایی وجود ندارد). فرم برای forward-compat این فیلدها را نمایش می‌دهد و `ProfileUpdateValidator` آن‌ها را اعتبارسنجی می‌کند ولی `update()` whitelist به‌صورت silent آن‌ها را drop می‌کند. | `app/Shared/Contracts/UserAccountRepositoryInterface.php::update` (whitelist فقط `username`+`mobile`) | low | در v1.4 با migration کوچک `ALTER TABLE user_accounts ADD email VARCHAR(254) NULL, ADD display_name VARCHAR(100) NULL` اضافه شود. سپس whitelist در `PdoUserAccountRepository::update()` گسترش یابد. |
+
+#### توصیه برای فاز ۱۳ (post-Phase 12)
+
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ **خیر** — پس از فاز ۱۲،
+  هیچ debt medium یا بالاتر باقی نمانده است. تنها debt‌های low باقی‌مانده‌اند
+  (D-2-3 partial، D-8-5، D-11-1، D-11-2، D-12-1، + ۲۴ مورد pre-existing).
+  v1.4 می‌تواند به‌صورت feature-driven باشد (بدون نیاز به «پاکسازی debt»).
+- [x] اگر خیر، تمرکز بعدی چه باشد؟ (۱) اتمام ~۱۲ کنترلر ادمین باقی‌مانده
+  (D-2-3): PaymentController, RevisionController, ReportController,
+  ServiceTypeController, ServiceController, BulkImport, WizardStep,
+  SmsController, DocumentController, RecordsController, ... (۲) افزودن
+  ستون‌های `email`+`display_name` به `user_accounts` (D-12-1). (۳) endpoint
+  عمومی license-titles برای ویزارد (D-11-1).
+- [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۱۲ یک service-layer
+  مستقل ساخت که الگو برای فازهای بعدی تکرارپذیر است.
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -742,14 +789,20 @@
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 0 | — | — |
-| medium | 2 | 2026-11-17 | D-2-3, D-9-1 |
-| low | 28 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5, D-11-1, D-11-2 |
+| medium | 0 | — | — |
+| low | 29 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-7-2, D-7-3, D-7-4, D-8-1, D-8-2, D-8-3, D-8-5, D-11-1, D-11-2, D-12-1, D-2-3, D-9-1-paid |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱۱ (admin CRUD + Stage2ReadinessChecker UI):** ۰ critical، ۰ high، ۲ medium (D-2-3 partial + D-9-1)، ۲۸ low.
-تغییر نسبت به فاز ۱۰: ۴ medium پرداخت شد (D-7-1, D-10-1, D-2-2, D-8-4)، ۱ medium به low کاهش یافت (D-2-3 partial-paid). ۲ low جدید اضافه شد (D-11-1, D-11-2).
-همچنین ۳ تست unit جدید برای CRUD happy-path کنترلرهای جدید اضافه شد (FormFieldTest, FeeTariffTest, LicenseTitleTest).
+**وضعیت پس از فاز ۱۲ (AvatarService + ProfileUpdateValidator):** ۰ critical، ۰ high، **۰ medium**، ۲۹ low.
+تغییر نسبت به فاز ۱۱: ۱ medium پرداخت شد (D-9-1)، ۱ low جدید اضافه شد (D-12-1:
+`email` و `display_name` معتبر ولی ذخیره نمی‌شوند چون ستون‌ها در `user_accounts`
+وجود ندارند — فرم برای forward-compat این فیلدها را نمایش می‌دهد).
+همچنین ۲ تست unit جدید برای اعتبارسنجی service‌های جدید اضافه شد
+(AvatarServiceTest, ProfileUpdateValidatorTest).
+
+پس از فاز ۱۲، پروژه در وضعیت «بدون debt medium یا بالاتر» است — تنها
+موارد low-priority polish باقی مانده (v1.4+ scope).
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
