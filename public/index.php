@@ -61,13 +61,14 @@ $environment = Environment::load(ROOT_PATH . '/.env');
 // 2. Error reporting.
 //
 // PHP 8.4 deprecated the E_STRICT constant (it now emits a deprecation
-// notice when referenced). We build the bitfield without E_STRICT on
-// PHP 8.4+ to avoid the deprecation notice being emitted before any
-// headers can be sent (which would break every response in non-debug
-// mode). On PHP < 8.4 we keep the old E_ALL & ~E_DEPRECATED & ~E_STRICT
-// semantics.
+// notice when referenced). We suppress the deprecation notice with the
+// `@` operator while reading the constant value, then build the
+// bitfield without it on PHP 8.4+ to avoid breaking non-debug responses
+// (the deprecation notice would otherwise be emitted before any headers
+// can be sent). On PHP 9.0+ where the constant may be removed, the
+// `@`-suppressed read returns 0 (no notice), which is harmless.
 // ============================================================
-$strictBit = defined('E_STRICT') ? E_STRICT : 0;
+$strictBit = @E_STRICT;
 if ($environment->debug) {
     error_reporting(E_ALL);
     ini_set('display_errors', '1');
