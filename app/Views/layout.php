@@ -40,6 +40,7 @@ $baseUrl ??= '/';
             <div class="collapse navbar-collapse" id="mojNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-1">
                     <li class="nav-item"><a class="nav-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>">خانه</a></li>
+                    <li class="nav-item"><a class="nav-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>services">خدمات</a></li>
                     <li class="nav-item"><a class="nav-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>tracking">پیگیری</a></li>
                     <li class="nav-item"><a class="nav-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>guide">راهنما</a></li>
                     <li class="nav-item"><a class="nav-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>about">دربارهٔ ما</a></li>

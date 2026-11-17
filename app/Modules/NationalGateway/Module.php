@@ -240,6 +240,69 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/sync/run',        'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'run'],
             // Phase 11: admin UI for the Stage2ReadinessChecker report (D-8-4).
             ['method' => 'GET',  'path' => '/admin/sync/readiness',  'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'readiness'],
+
+            // ----- Phase 15 — REST API v1 surface (V1ApiController) -----
+            // Auth: GET /api/v1/licenses (list/show/track) is public;
+            // admin actions use requireRole(['admin']); /api/v1/applicants/*
+            // uses requireApiKey (X-API-Key header); /api/v1/admin/* uses
+            // requireRole(['admin']).
+            //
+            // Route order matters: specific routes (/saved, /export,
+            // /search, /save-all, /{id}/save, /{id}/track) are registered
+            // BEFORE the generic /{id} catch-all.
+            //
+            // Licenses API.
+            ['method' => 'GET',    'path' => '/api/v1/licenses',                'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseIndex'],
+            ['method' => 'GET',    'path' => '/api/v1/licenses/saved',          'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseSaved'],
+            ['method' => 'GET',    'path' => '/api/v1/licenses/export',         'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseExport'],
+            ['method' => 'POST',   'path' => '/api/v1/licenses/search',        'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseSearch'],
+            ['method' => 'POST',   'path' => '/api/v1/licenses/save-all',      'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseSaveAll'],
+            ['method' => 'POST',   'path' => '/api/v1/licenses/{id}/save',     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseSave'],
+            ['method' => 'DELETE', 'path' => '/api/v1/licenses/{id}/save',     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseUnsave'],
+            ['method' => 'GET',    'path' => '/api/v1/licenses/{id}/track',     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseTrack'],
+            ['method' => 'GET',    'path' => '/api/v1/licenses/{id}',           'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'licenseShow'],
+
+            // Applicants API (X-API-Key auth).
+            ['method' => 'GET', 'path' => '/api/v1/applicants/{trackingCode}',           'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'applicantShow'],
+            ['method' => 'GET', 'path' => '/api/v1/applicants/{trackingCode}/status',     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'applicantStatus'],
+            ['method' => 'GET', 'path' => '/api/v1/applicants/by-national/{nationalCode}', 'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'applicantByNational'],
+
+            // Admin API.
+            ['method' => 'GET',  'path' => '/api/v1/admin/stats',         'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminStats'],
+            ['method' => 'GET',  'path' => '/api/v1/admin/analytics',     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminAnalytics'],
+            ['method' => 'GET',  'path' => '/api/v1/admin/jobs',           'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminJobs'],
+            ['method' => 'POST', 'path' => '/api/v1/admin/jobs/{id}/retry','handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminRetryJob'],
+            ['method' => 'GET',  'path' => '/api/v1/admin/logs',           'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminLogs'],
+            ['method' => 'POST', 'path' => '/api/v1/admin/crawl',         'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminCrawl'],
+            ['method' => 'POST', 'path' => '/api/v1/admin/worker/start',   'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminWorkerStart'],
+            ['method' => 'POST', 'path' => '/api/v1/admin/worker/stop',    'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminWorkerStop'],
+            ['method' => 'GET',  'path' => '/api/v1/admin/worker/status',  'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'adminWorkerStatus'],
+
+            // Lookups + filters API.
+            ['method' => 'GET',  'path' => '/api/v1/lookups',                       'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'lookupIndex'],
+            ['method' => 'GET',  'path' => '/api/v1/lookups/townships/{provinceId}',  'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'lookupTownships'],
+            ['method' => 'GET',  'path' => '/api/v1/lookups/sub-organizations/{orgCode}', 'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'lookupSubOrgs'],
+            ['method' => 'POST', 'path' => '/api/v1/lookups/refresh',                 'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'lookupRefresh'],
+            ['method' => 'GET',  'path' => '/api/v1/filters',                         'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'filterIndex'],
+            ['method' => 'POST', 'path' => '/api/v1/filters',                         'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'filterStore'],
+            ['method' => 'GET',  'path' => '/api/v1/filters/{id}',                     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'filterShow'],
+            ['method' => 'PUT',  'path' => '/api/v1/filters/{id}',                     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'filterUpdate'],
+            ['method' => 'DELETE', 'path' => '/api/v1/filters/{id}',                  'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'filterDestroy'],
+
+            // Batch API.
+            ['method' => 'POST', 'path' => '/api/v1/batch/upload',          'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'batchUpload'],
+            ['method' => 'GET',  'path' => '/api/v1/batch',                  'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'batchIndex'],
+            ['method' => 'GET',  'path' => '/api/v1/batch/{id}/status',     'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'batchStatus'],
+
+            // Sync API (admin or secret).
+            ['method' => 'GET',  'path' => '/api/v1/sync/status',              'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'syncStatus'],
+            ['method' => 'GET',  'path' => '/api/v1/sync/pending',             'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'syncPending'],
+            ['method' => 'POST', 'path' => '/api/v1/sync/run',                 'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'syncRun'],
+            ['method' => 'POST', 'path' => '/api/v1/sync/{licenseId}/confirm', 'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'syncConfirm'],
+            ['method' => 'POST', 'path' => '/api/v1/sync/{licenseId}/reject',  'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'syncReject'],
+
+            // Proxy-image API (admin).
+            ['method' => 'GET',  'path' => '/api/v1/proxy-image',             'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'proxyImage'],
         ];
     }
 

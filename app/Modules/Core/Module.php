@@ -296,6 +296,67 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/tracking/status/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'status'],
             ['method' => 'POST', 'path' => '/tracking/change-postal-code', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'changePostalCode'],
             ['method' => 'GET', 'path' => '/tracking/print/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'printView'],
+
+            // ----- Phase 15 — Tracking: payment + SMS submit (user-facing) -----
+            ['method' => 'POST', 'path' => '/tracking/payments/submit', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'submitPayment'],
+            ['method' => 'POST', 'path' => '/tracking/sms/submit', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'submitSms'],
+
+            // ----- Phase 15 — Registration wizard -----
+            // The 4-step applicant registration wizard. Auth: requireUserLogin()
+            // at the top of every action (the session-keyed wizard.applicant_id
+            // is tied to user_account_id).
+            //
+            // Route order: specific routes (/service/{id}, /step/{n},
+            // /success/{trackingCode}) are registered before any catch-all.
+            ['method' => 'GET',  'path' => '/register',                       'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/register/service/{id}',          'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'selectService'],
+            ['method' => 'GET',  'path' => '/register/step/{n}',              'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'stepByPosition'],
+            ['method' => 'POST', 'path' => '/register/step/{n}',              'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processByPosition'],
+            ['method' => 'GET',  'path' => '/register/step1',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step1'],
+            ['method' => 'POST', 'path' => '/register/step1',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep1'],
+            ['method' => 'GET',  'path' => '/register/step2',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step2'],
+            ['method' => 'POST', 'path' => '/register/step2',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep2'],
+            ['method' => 'GET',  'path' => '/register/step3',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step3'],
+            ['method' => 'POST', 'path' => '/register/step3',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep3'],
+            ['method' => 'GET',  'path' => '/register/step4',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step4'],
+            ['method' => 'POST', 'path' => '/register/step4',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep4'],
+            ['method' => 'GET',  'path' => '/register/success/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'success'],
+
+            // ----- Phase 15 — Services (public list + purchase → wizard) -----
+            ['method' => 'GET',  'path' => '/services',              'handler' => \App\Modules\Core\Controllers\ServiceController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/services/{id}/purchase', 'handler' => \App\Modules\Core\Controllers\ServiceController::class, 'action' => 'purchase'],
+
+            // ----- Phase 15 — Records (user's own applications) -----
+            ['method' => 'GET',  'path' => '/my-records',         'handler' => \App\Modules\Core\Controllers\RecordsController::class, 'action' => 'form'],
+            ['method' => 'POST', 'path' => '/my-records/verify',  'handler' => \App\Modules\Core\Controllers\RecordsController::class, 'action' => 'verify'],
+
+            // ----- Phase 15 — Document serving -----
+            // /view is POST (AJAX modal). /avatar is GET (file stream).
+            // /thumb/{id}, /inline/{id}, /raw/{id} are GET (file streams).
+            // /pdf-viewer is GET (HTML wrapper, layout='none').
+            ['method' => 'POST', 'path' => '/document/view',       'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'view'],
+            ['method' => 'GET',  'path' => '/document/avatar',     'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'avatar'],
+            ['method' => 'GET',  'path' => '/document/thumb/{id}', 'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'thumb'],
+            ['method' => 'GET',  'path' => '/document/inline/{id}','handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'inline'],
+            ['method' => 'GET',  'path' => '/document/pdf-viewer', 'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'pdfViewer'],
+            ['method' => 'GET',  'path' => '/document/raw/{id}',   'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'raw'],
+
+            // ----- Phase 15 — Revision requests (user form + admin review) -----
+            ['method' => 'GET',  'path' => '/tracking/revision/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'form'],
+            ['method' => 'POST', 'path' => '/tracking/revision/submit',          'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'submit'],
+            ['method' => 'GET',  'path' => '/admin/revisions',                    'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/revisions/view/{id}',         'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'detail'],
+            ['method' => 'POST', 'path' => '/admin/revisions/approve/{id}',     'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'approve'],
+            ['method' => 'POST', 'path' => '/admin/revisions/reject/{id}',      'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'reject'],
+
+            // ----- Phase 15 — License image access + admin license mgmt -----
+            ['method' => 'GET',  'path' => '/license/view/{token}',              'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'viewByToken'],
+            ['method' => 'POST', 'path' => '/tracking/license/first-access',     'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'firstAccess'],
+            ['method' => 'POST', 'path' => '/tracking/license/request-access',   'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'requestAccess'],
+            ['method' => 'POST', 'path' => '/tracking/license/pay',              'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'submitReissuePayment'],
+            ['method' => 'POST', 'path' => '/admin/license/upload',              'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'upload'],
+            ['method' => 'GET',  'path' => '/admin/license-requests',             'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'requests'],
+            ['method' => 'POST', 'path' => '/admin/license-requests/review',     'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'reviewRequest'],
         ];
     }
 

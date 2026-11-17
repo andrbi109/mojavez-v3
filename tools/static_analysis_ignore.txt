@@ -115,3 +115,25 @@ app/Views/registration/_progress.php:<?= $percent ?>
 app/Views/registration/_progress.php:<?= $s ?>
 app/Views/registration/select_service.php:<?= $sid ?>
 app/Views/registration/step4.php:<?= $fa ?>
+
+# -----------------------------------------------------------------------------
+# 8. Phase 15 (v1.6.0) — admin views + document/pdf_viewer false positives.
+#
+# The new admin views (admin/revisions.php, admin/license_requests.php)
+# emit a `$badge` variable in a Bootstrap class attribute. `$badge` is
+# assigned via a `match { ... }` expression against fixed string literals
+# ('success', 'danger', 'warning' — Bootstrap CSS classes). Not user
+# input. The pattern would also catch a real XSS if a user-controlled
+# variable happened to be named `$badge`, but in this codebase that
+# name only refers to this fixed CSS-class lookup.
+#
+# `app/Views/document/pdf_viewer.php` emits `$src` in an `<iframe src>`
+# attribute. The controller (DocumentController::pdfViewer) builds `$src`
+# by `htmlspecialchars($baseUrl . 'document/inline/' . $id, ENT_QUOTES)`
+# — the value is already escaped at the controller level. The view's
+# docblock explicitly says "already escaped". The analyzer can't trace
+# through the controller→view variable hand-off.
+# -----------------------------------------------------------------------------
+app/Views/admin/revisions.php:<?= $badge ?>
+app/Views/admin/license_requests.php:<?= $badge ?>
+app/Views/document/pdf_viewer.php:<?= $src ?>
