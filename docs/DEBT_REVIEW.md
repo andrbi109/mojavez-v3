@@ -223,11 +223,69 @@
 
 ### فاز ۳: ماژول درگاه ملی
 
-**تاریخ تکمیل:** ____________
-**Maintainer:** ____________
-**نسخهٔ منتشرشده:** ____________
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 0.1.0 (phase/3-national-gateway branch)
 
-_(قالب همان فاز ۰)_
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-3-1 | LicenseService هنوز پورت نشده — به EventBus + JobQueue + LicenseRepository وابسته است که در فاز ۴ کامل می‌شوند. LicenseService هستهٔ orchestration است (search، cache، persist، dispatch events). | `app/Modules/NationalGateway/Services/LicenseService.php` (هنوز نساخته‌شده) | medium | در فاز ۴ بساز. |
+| D-3-2 | PatternMatcher هنوز پیاده نشده — هستهٔ منطق اتصال طلایی. | `app/Modules/NationalGateway/Services/PatternMatcher.php` | medium | در فاز ۴ بساز. |
+| D-3-3 | ApplicantSyncAdapter (ACL) هنوز ساخته نشده — پل بین NationalGateway و Core. | `app/Modules/NationalGateway/Services/ApplicantSyncAdapter.php` | medium | در فاز ۴ بساز. |
+| D-3-4 | PDO implementations برای 5 repository interface هنوز ساخته نشده‌اند (NationalLicenseRepository، NationalLookupRepository، NationalFilterRepository، NationalBatchRepository، SyncAuditLogRepository). | `app/Modules/NationalGateway/Persistence/` | medium | در فاز ۴ بساز. |
+| D-3-5 | routes() در NationalGateway/Module.php خالی است — مسیرهای admin sync panel به فاز ۴ موکول شده. | `app/Modules/NationalGateway/Module.php` | low | در فاز ۴ اضافه کن. |
+| D-3-6 | FilterService, CsvBatchService, ExportService پورت شده‌اند ولی به repository‌های وابسته‌اند که هنوز پیاده نشده‌اند (LicenseRepository, FilterRepository, BatchRepository, LookupRepository). در زمان استفادهٔ واقعی در فاز ۴ wire خواهند شد. | `app/Modules/NationalGateway/Services/` | medium | در فاز ۴ هنگام wire به Container. |
+| D-3-7 | RateLimiterService::wait() هنوز به MojavecClient::doWithRetry() wire نشده — در حال حاضر rate limiter ساخته می‌شود ولی صدا زده نمی‌شود. این همان ST1 است که در مستندات ذکر شده. | `app/Modules/NationalGateway/Infrastructure/MojavecClient.php` (doWithRetry) | medium | در فاز ۴ هنگام wire کردن LicenseService. |
+| D-3-8 | CircuitBreaker ساخته شده ولی هنوز به MojavecClient wire نشده. | `app/Modules/NationalGateway/Infrastructure/MojavecClient.php` | medium | در فاز ۴ هنگام wire کردن LicenseService. |
+| D-3-9 | Migration seed برای lookup table‌های national_lookups هنوز اجرا نشده (provinces، townships، organizations از upstream fetch نمی‌شوند چون LicenseService هنوز نیست). | `app/Modules/NationalGateway/migrations/` | low | در فاز ۴ هنگام اولین اجرای LicenseService::refreshLookups(). |
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| (پیشینیان) | نبود ماژول NationalGateway | ماژول کامل با Module.php، Domain، Infrastructure، Services ساخته شد. |
+| (پیشینیان gateway) | CSRF غیرفعال (S1) | در فاز ۱ رفع شد؛ در فاز ۳ تأیید شد که NationalGateway از همان Csrf استفاده می‌کند. |
+| (پیشینیان gateway) | نبود CircuitBreaker (§23.3) | CircuitBreaker با سه حالت CLOSED/OPEN/HALF_OPEN و persistence در storage/cache/ ساخته شد. |
+| (پیشینیان gateway) | نبود HttpClientInterface برای تزریق وابستگی در تست‌ها | HttpClientInterface ساخته شد و HttpClient آن را implements می‌کند. TrackScraper و MojavecClient به interface type-hint شده‌اند. |
+| (پیشینیان gateway) | نبود تست regression برای TrackScraper | TrackScraperTest با HAR fixture واقعی ساخته شد — 19 assertion که مقادیر استخراج‌شده را lock می‌کند. |
+| (پیشینیان gateway) | regex /u modifier bug در findLabelValue که postal_code را break می‌کرد | modifier /u حذف شد چون regex روی ASCII structural tokens کار می‌کند نه UTF-8. |
+
+#### Debt carried forward به فاز ۴
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-1-1 | EventBus placeholder | medium | فاز ۴ |
+| D-1-2 | collectSubscribers() معلق | medium | فاز ۴ |
+| D-1-4 | install.php و check.php | medium | فاز ۶ |
+| D-1-6 | SseController::stream واقعی | low | فاز ۴ |
+| D-1-8 | static_analysis fail-on-warning | low | فاز ۶ |
+| D-1-9 | writable storage assumptions | low | فاز ۶ |
+| D-2-1 | Viewهای بدون Bootstrap/Vazirmatn | medium | فاز ۶ |
+| D-2-2 | AdminController فقط ۴ متد | medium | فاز ۶ |
+| D-2-3 | کنترلرهای باقی‌مانده | medium | فاز ۶ |
+| D-2-4 | FeeCalculatorService reads income_decile directly | low | فاز ۶ |
+| D-2-5 | AutoCancelService::updatePriorities slow | low | فاز ۶ |
+| D-2-6 | rate_limit not applied in controllers | high | فاز ۶ |
+| D-2-7 | schema.sql و install.sql واحد | medium | فاز ۶ |
+| D-2-8 | install.php تعاملی | medium | فاز ۶ |
+| D-2-9 | seed migration پیش‌فرض | low | فاز ۶ |
+| D-3-1 | LicenseService پورت نشده | medium | فاز ۴ |
+| D-3-2 | PatternMatcher پورت نشده | medium | فاز ۴ |
+| D-3-3 | ApplicantSyncAdapter پورت نشده | medium | فاز ۴ |
+| D-3-4 | 5 PDO repository implementation | medium | فاز ۴ |
+| D-3-5 | NationalGateway routes خالی | low | فاز ۴ |
+| D-3-6 | 3 service به repository‌های وابسته | medium | فاز ۴ |
+| D-3-7 | RateLimiterService::wait() wire نشده به MojavecClient | medium | فاز ۴ |
+| D-3-8 | CircuitBreaker wire نشده به MojavecClient | medium | فاز ۴ |
+| D-3-9 | national_lookups seed | low | فاز ۴ |
+
+#### توصیه برای فاز ۴
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — D-1-1, D-1-2, D-3-1, D-3-2, D-3-3, D-3-4, D-3-7, D-3-8 همگی در فاز ۴ پرداخت می‌شوند چون جوهر فاز ۴ هستند.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ همه‌ی موارد بالا که فاز ۴ را هدف گرفته‌اند.
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ بالا — فاز ۴ بزرگ‌ترین فاز است (EventBus + JobQueue + Worker + LicenseService + PatternMatcher + ApplicantSyncAdapter + 5 PDO repository).
 
 ---
 
@@ -290,13 +348,13 @@ _(قالب همان فاز ۰)_
 |---|---|---|---|
 | critical | 0 | — | — |
 | high | 1 | 2026-11-17 | D-2-6 |
-| medium | 8 | 2026-11-17 | D-1-1, D-1-2, D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8 |
-| low | 8 | 2026-11-17 | D-1-6, D-1-7, D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, (D-1-3 resolved) |
+| medium | 16 | 2026-11-17 | D-1-1, D-1-2, D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8, D-3-1, D-3-2, D-3-3, D-3-4, D-3-6, D-3-7, D-3-8 |
+| low | 8 | 2026-11-17 | D-1-6, D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-3-5, D-3-9 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۲:** ۰ critical، ۱ high (rate limit — در فاز ۶ پرداخت می‌شود)، ۸ medium، ۸ low.
-فاز ۳ می‌تواند بدون پاکسازی debt ادامه یابد.
+**وضعیت پس از فاز ۳:** ۰ critical، ۱ high (rate limit — فاز ۶)، 16 medium (بیشتری در فاز ۴ پرداخت می‌شوند)، ۸ low.
+فاز ۴ بزرگ‌ترین فاز است و ۸ از 16 medium debt را پرداخت خواهد کرد.
 
 ---
 
