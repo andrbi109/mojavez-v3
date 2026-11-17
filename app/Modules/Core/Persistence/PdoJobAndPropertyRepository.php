@@ -41,16 +41,22 @@ final class PdoJobAndPropertyRepository extends PdoRepository implements JobAndP
 
     public function upsertPropertyDetail(int $applicantId, array $data): void
     {
+        // Phase 24 (v1.9.6 / D-5-5): include `township` column when
+        // present in $data. The migration 013 ALTER makes the column
+        // nullable, so older code paths that don't pass `township`
+        // write NULL — the matcher (ApplicantSyncAdapter) then falls
+        // back to `county` for backward compat.
         $this->execute(
             'INSERT INTO property_details
-                (applicant_id, ownership_status, province, county, city, district,
+                (applicant_id, ownership_status, province, county, township, city, district,
                  rural_district, village, electricity_bill_id, address_street,
                  address_alley, address_plaque)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                  ownership_status = VALUES(ownership_status),
                  province = VALUES(province),
                  county = VALUES(county),
+                 township = VALUES(township),
                  city = VALUES(city),
                  district = VALUES(district),
                  rural_district = VALUES(rural_district),
@@ -64,6 +70,7 @@ final class PdoJobAndPropertyRepository extends PdoRepository implements JobAndP
                 $data['ownership_status'] ?? 'شخص',
                 $data['province'] ?? '',
                 $data['county'] ?? '',
+                $data['township'] ?? null,
                 $data['city'] ?? '',
                 $data['district'] ?? null,
                 $data['rural_district'] ?? null,

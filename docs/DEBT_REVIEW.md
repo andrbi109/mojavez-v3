@@ -1419,6 +1419,39 @@ array دسترسی داشت (`$t['status']`) اما controller آبجکت‌ها
 
 ---
 
+### فاز ۲۴: low debt cleanup batch 1 (v1.9.6)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.6 (phase/24-low-debt-cleanup-1 branch, tag v1.9.6)
+
+#### Debt paid در این فاز
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-4-5 | `SseController::stream` در dev حالت JSON polling بدون هدر مشخص برمی‌گرداند | refactor به `streamDevMode()` با هدر `X-SSE-Mode: dev-polling` + بدنهٔ شامل `mode` + `message` + `events` + `last_id` + `poll_interval_ms = 5000`. تولید path هم هدر `X-SSE-Mode: production-stream` می‌گذارد. تست جدید `SseControllerTest` شکل dev را قفل می‌کند. |
+| D-5-1 | `seed_lookups.php` در sandbox بدون upstream کار نمی‌کرد — `--from-gateway` فقط شهرستان‌ها را از sub_organization می‌ساخت | فلگ جدید `--from-dev-seed` از seed داخلی (8 استان + 28 شهرستان + 4 سازمان) استفاده می‌کند. auto-fallback: اگر upstream fail کند یا 0 ردیف برگرداند، به seed داخلی برمی‌گردد. فایل جدید `scripts/seed_lookups_dev_data.php`. |
+| D-5-4 | `business_address` در `PatternMatcher` اغلب mismatch می‌زد چون upstream آدرس را با `*****` mask می‌کند و suffix آدرس محلی متفاوت است | متد جدید `matchAddress()`: ابتدا strict suffix را امتحان می‌کند (full confidence)، سپس fuzzy `contains` با نرمال‌سازی (lowercase، حذف نقطه‌گذاری، نرمال‌سازی ارقام فارسی) با confidence 0.7 (قابل تنظیم در `config/pattern_matcher.php`). `MatchResult::matchFuzzy` با `scoreMultiplier`. 7 assertion جدید در `PatternMatcherTest`. |
+| D-5-5 | `property_details.county` به matcher به‌عنوان `township` فرستاده می‌شد، ولی در v2/v3 county = township است | migration 013 ستون جدید `township VARCHAR(50) NULL` اضافه می‌کند. `RegistrationController` هر دو `county` و `township` را ذخیره می‌کند. `ApplicantSyncAdapter` به `township` اولویت می‌دهد و به `county` fallback می‌کند. |
+
+#### Debt introduced در این فاز
+
+هیچ.
+
+#### Debt carried forward به فاز ۲۵
+
+9 low debt (D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5) — 4 مورد کمتر از فاز ۲۳.
+
+#### توصیه برای فاز ۲۵
+
+- [ ] فاز ۲۵ (v1.9.7): low debt cleanup batch 2 (D-6-2, D-6-3, D-6-4, D-6-5, D-6-6)
+- [ ] فاز ۲۶ (v1.9.8): low debt cleanup batch 3 (D-8-1, D-8-2, D-8-3, D-8-5)
+- [ ] فاز ۲۷ (v1.9.9): final polish + tests
+- [ ] فاز ۲۸ (v1.9.10): آماده‌سازی v2.0.0
+- [ ] پس از تأیید کاربر → v2.0.0
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -1429,7 +1462,20 @@ array دسترسی داشت (`$t['status']`) اما controller آبجکت‌ها
 | critical | 0 | — | — |
 | high | 0 | — | — |
 | medium | 0 | — | — |
-| low | 13 | 2026-11-17 | D-4-5, D-5-1, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5, D-14-1, D-16-1 |
+| low | 9 | 2026-11-17 | D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5 |
+
+اگر critical > 0 یا high > 3، هشدار در CI.
+
+**وضعیت پس از فاز ۲۴ (low debt cleanup batch 1):**
+۰ critical، ۰ high، **۰ medium**، **9 low** (4 مورد کمتر از فاز ۲۳: D-4-5، D-5-1، D-5-4، D-5-5 پرداخت شد). فاز ۲۴ چهار low-debt را به‌صورت تمیز پرداخت:
+- D-4-5: SseController حالت dev با هدر `X-SSE-Mode: dev-polling` و بدنهٔ مستندسازی‌شده.
+- D-5-1: seed_lookups.php با فلگ `--from-dev-seed` و auto-fallback به seed داخلی (8 استان + 28 شهرستان + 4 سازمان).
+- D-5-4: PatternMatcher با `matchAddress()` فازی `contains` (confidence 0.7، قابل تنظیم در config).
+- D-5-5: ستون جدید `property_details.township` (migration 013) با fallback به `county` در matcher.
+
+پس از فاز ۲۴، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر» است. مهم‌ترین
+دستاورد فاز ۲۴: همهٔ 4 مورد low-debt پرداخت‌شده بدون debt جدید. لاگ تست
+546 assertions با 6 failure از پیش موجود (مربوط به environment state نه Phase 24).
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 

@@ -510,6 +510,15 @@ final class Module implements ModuleInterface
             // as required (idempotent UPDATE). Idempotent ALTER
             // (information_schema guard) so re-running is safe.
             '20261117_012_document_types_is_required_column.sql',
+            // Phase 24 (v1.9.6) — pays D-5-5. Adds a real `township`
+            // VARCHAR(50) NULL column to property_details so the
+            // registration wizard can store the resolved township
+            // title separately from `county`. The matcher
+            // (ApplicantSyncAdapter) prefers `township` if set and
+            // falls back to `county` for backward compat with rows
+            // written by older code. Idempotent ALTER
+            // (information_schema guard) so re-running is safe.
+            '20261117_013_property_details_township_column.sql',
         ];
     }
 

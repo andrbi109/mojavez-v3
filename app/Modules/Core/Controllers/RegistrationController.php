@@ -269,10 +269,20 @@ final class RegistrationController extends Controller
             $ownership = in_array($body['ownership_status'] ?? '', ['شخص', 'مستأجر', 'سرپرست'], true)
                 ? $body['ownership_status']
                 : 'شخص';
+            // Phase 24 (v1.9.6 / D-5-5): store the resolved township title
+            // in BOTH `county` (v2 backward-compat value) AND the new
+            // `township` column (the explicit "this is the township"
+            // value the matcher prefers). The two are equal here because
+            // the wizard's `township_id` select resolves to the same
+            // title for both. The split lets future wizard changes
+            // diverge them (e.g. when county and township legitimately
+            // differ for the upstream national gateway).
+            $township = $county;
             $this->jobAndProperty->upsertPropertyDetail($applicant->id, [
                 'ownership_status'   => $ownership,
                 'province'           => $province,
                 'county'             => $county,
+                'township'           => $township,
                 'city'               => Validator::sanitizeText($body['city'] ?? '', 50) ?: $county,
                 'district'           => Validator::sanitizeText($body['district'] ?? '', 50),
                 'rural_district'     => Validator::sanitizeText($body['rural_district'] ?? '', 50),
