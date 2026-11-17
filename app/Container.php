@@ -6,6 +6,7 @@ namespace App;
 use App\Http\Router;
 use App\Http\Session;
 use App\Http\Csrf;
+use App\Http\IpRateLimiter;
 use App\Modules\ModuleLoader;
 use App\Shared\Persistence\Connection;
 use App\Shared\Persistence\MigrationRunner;
@@ -152,6 +153,14 @@ final class Container
         // Csrf depends on Session.
         $this->factories[Csrf::class] = fn(): Csrf => new Csrf(
             $this->make(Session::class)
+        );
+
+        // IpRateLimiter — IP + session based HTTP rate limiter (§12.6).
+        // Depends on Connection, Session, and Logger.
+        $this->factories[IpRateLimiter::class] = fn(): IpRateLimiter => new IpRateLimiter(
+            $this->make(Connection::class),
+            $this->make(Session::class),
+            $this->logger
         );
 
         // Router depends on Logger.

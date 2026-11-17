@@ -421,11 +421,66 @@
 
 ### فاز ۶: امنیت، تست، استقرار
 
-**تاریخ تکمیل:** ____________
-**Maintainer:** ____________
-**نسخهٔ منتشرشده:** ____________
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 0.1.0 (phase/6-security-tests-deploy branch)
 
-_(قالب همان فاز ۰)_
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-6-1 | smoke-test.sh HTTP checks در sandbox قابل اجرا نیست (sandbox نمی‌تواند port bind کند). در production با BASE_URL اجرا می‌شود. CI job `smoke` آن را اجرا می‌کند. | `tests/smoke-test.sh` CAN_HTTP=0 path | low | در فاز ۷ با deploy واقعی در محیط تولید، HTTP checks فعال خواهند شد. |
+| D-6-2 | static_analysis.py 10 warning false-positive دارد (EventBus/Module/Worker به‌اشتباه controller شناخته می‌شوند، layout views برای `<?= $content ?>`، Connection.php SET NAMES). heuristic تشخیص بیش از حد ساده‌گیرانه است. | `tools/static_analysis.py` | low | در فاز ۷ با بهبود heuristic‌ها (exclude list برای non-controller classes). |
+| D-6-3 | test_track_scraper.py نیاز به fixture واقعی HTML از qr.mojavez.ir دارد که فقط از داخل ایران قابل دسترس است. fixture فعلی موجود نیست. | `tests/fixtures/track_page.html` | low | در فاز ۷ با deploy در ایران و ذخیرهٔ HTML واقعی. |
+| D-6-4 | install.php خودکار delete می‌کند ولی اگر unlink fail شود (permissions)، فایل باقی می‌ماند. باید یک lock file `storage/.installed` هم چک شود. | `deploy/shared-hosting/install.php` | low | در فاز ۷ با lock-file check. |
+| D-6-5 | deploy/docker/.env.example secrets خالی است — کاربر باید `openssl rand -hex 32` دستی اجرا کند. می‌توان یک اسکریپت generate-secrets.sh ساخت. | `deploy/docker/.env.example` | low | در فاز ۷. |
+| D-6-6 | CI job `smoke` نیاز به MariaDB service ندارد ولی smoke-test.sh migration‌ها را اجرا می‌کند — در CI ممکن است fail شود اگر .env درست set نباشد. | `.github/workflows/ci.yml` job smoke | low | در فاز ۷ با تست کامل CI در GitHub Actions واقعی. |
+
+#### Debt paid
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-2-6 | rate limit مبتنی بر IP نشست قابل دور زدن | `App\Http\IpRateLimiter` (dual mechanism: session + IP در DB) + `RateLimitConfig` (7 rule) + `rate_limit_buckets` migration 006 + enforcement در `public/index.php` با 429 + X-RateLimit headers. IpRateLimiterTest (22 assertion). |
+| D-1-4 | install.php و check.php | `deploy/shared-hosting/install.php` (نصب‌کنندهٔ وب دو مرحله‌ای با تولید خودکار secrets + self-delete) + `check.php` (بررسی پیش‌نیازها). |
+| D-2-8 | install.php تعاملی | install.php حالا یک فرم وب دو مرحله‌ای است (GET form → POST write .env + run migrations + create admin → self-delete). |
+| D-4-8 | SyncAdminController requireRole guard | audit نشان داد requireRole(['admin','sync_operator']) در __construct قبلاً موجود بود — D-4-8 یک non-issue بود. |
+
+#### Debt carried forward به فاز ۷
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-1-8 | static_analysis fail-on-warning | low | فاز ۷ (D-6-2 overlap) |
+| D-1-9 | writable storage assumptions | low | فاز ۷ |
+| D-2-1 | Viewهای بدون Bootstrap/Vazirmatn | medium | فاز ۷ |
+| D-2-2 | AdminController فقط ۴ متد | medium | فاز ۷ |
+| D-2-3 | کنترلرهای باقی‌مانده | medium | فاز ۷ |
+| D-2-4 | FeeCalculatorService reads income_decile directly | low | فاز ۷ |
+| D-2-5 | AutoCancelService::updatePriorities slow | low | فاز ۷ |
+| D-2-7 | schema.sql و install.sql واحد | medium | فاز ۷ |
+| D-2-9 | seed migration پیش‌فرض | low | فاز ۷ |
+| D-4-1 | SMS ارسال واقعی نشده | medium | فاز ۷ |
+| D-4-4 | Worker::run(1) کند در poor man's cron | low | فاز ۷ (systemd timers در deploy/linux حل می‌کند) |
+| D-4-5 | SSE تست واقعی نیاز به Apache | low | فاز ۷ |
+| D-4-6 | License::fromArray anchor‌ها را پر نمی‌کند | low | فاز ۷ |
+| D-4-7 | OperatorFlag notification به admin | low | فاز ۷ |
+| D-5-1 | seed_lookups sandbox fallback محدود | low | فاز ۷ |
+| D-5-2 | جداول جانبی v2 در migration نیستند | low | فاز ۷ (deploy واقعی) |
+| D-5-3 | result_count در jobs migration نیست | low | فاز ۷ |
+| D-5-4 | business_address suffix-mask محدودیت | low | فاز ۷ |
+| D-5-5 | county = township assumption | low | فاز ۷ |
+| D-5-6 | tests/setup_v2_source.php دستی | low | فاز ۷ (CI آن را اجرا می‌کند) |
+| D-6-1 | smoke-test HTTP sandbox limitation | low | فاز ۷ |
+| D-6-2 | static_analysis false-positive warnings | low | فاز ۷ |
+| D-6-3 | test_track_scraper fixture missing | low | فاز ۷ |
+| D-6-4 | install.php lock-file fallback | low | فاز ۷ |
+| D-6-5 | docker secrets manual generation | low | فاز ۷ |
+| D-6-6 | CI smoke job needs .env | low | فاز ۷ |
+
+#### توصیه برای فاز ۷
+
+- [ ] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ بله — فاز ۷ نهایی‌سازی است و باید D-2-1 (Views بدون Bootstrap/Vazirmatn) و D-2-3 (کنترلرهای باقی‌مانده) و D-2-7 (schema.sql واحد) را پرداخت کند چون به یکدست‌سازی UI/کد وابسته‌اند.
+- [ ] اگر بله، کدام debt‌ها باید پرداخت شوند؟ D-2-1 (medium، UI یکدست)، D-2-2 (medium، AdminController کامل)، D-2-3 (medium، کنترلرهای باقی‌مانده)، D-2-7 (medium، schema یکپارچه)، D-4-1 (medium، SMS gateway واقعی). 5 debt medium.
+- [ ] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ متوسط — فاز ۷ شامل نهایی‌سازی طراحی + Rollout مرحلهٔ ۱ است. حدود ۲-۳ جلسه کاری.
 
 ---
 
@@ -457,14 +512,14 @@ _(قالب همان فاز ۰)_
 | شدت | تعداد | قدیمی‌ترین | شناسه‌ها |
 |---|---|---|---|
 | critical | 0 | — | — |
-| high | 1 | 2026-11-17 | D-2-6 |
-| medium | 7 | 2026-11-17 | D-1-4, D-2-1, D-2-2, D-2-3, D-2-7, D-2-8, D-4-1, D-4-8 |
-| low | 16 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-4, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-3, D-5-4, D-5-5, D-5-6 |
+| high | 0 | — | — |
+| medium | 5 | 2026-11-17 | D-2-1, D-2-2, D-2-3, D-2-7, D-4-1 |
+| low | 21 | 2026-11-17 | D-1-8, D-1-9, D-2-4, D-2-5, D-2-9, D-4-4, D-4-5, D-4-6, D-4-7, D-5-1, D-5-2, D-5-3, D-5-4, D-5-5, D-5-6, D-6-1, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۵:** ۰ critical، ۱ high (rate limit — فاز ۶)، 7 medium (همگی به فاز ۶ موکول)، 16 low.
-فاز ۵ ۲ debt (D-4-2، D-4-3) را پرداخت کرد و ۶ debt جدید (D-5-1 تا D-5-6) اضافه کرد که همه low هستند. golden-link quorum حالا ۶ فیلد مچ می‌کند (قبلاً ۳). مهاجرت داده از هر دو منبع (v2 MySQL + gateway SQLite) کار می‌کند.
+**وضعیت پس از فاز ۶:** ۰ critical، ۰ high، 5 medium (همگی به فاز ۷ موکول)، 21 low.
+فاز ۶ ۴ debt (D-2-6 high، D-1-4، D-2-8، D-4-8) را پرداخت کرد و ۶ debt جدید (D-6-1 تا D-6-6) اضافه کرد که همه low هستند. امنیت کامل (CSRF متمرکز + security headers + IpRateLimiter دو مکانیزمی)، تست‌ها (17 PHP test 361 assertion + smoke 41 PASS + static analysis 0 FAIL + CI workflow)، استقرار (Docker + Apache + Nginx + Linux systemd + Windows + shared-hosting با install.php)، و مستندات (20 سند فارسی) همگی آماده‌اند.
 
 ---
 

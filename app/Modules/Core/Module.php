@@ -205,6 +205,7 @@ final class Module implements ModuleInterface
             '20261117_003_payments_and_license_access.sql',
             '20261117_004_wizard_form_fields_and_sms.sql',
             '20261117_005_user_accounts_fees_and_lookup_tables.sql',
+            '20261117_006_rate_limit_buckets.sql',
         ];
     }
 

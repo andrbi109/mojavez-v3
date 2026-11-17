@@ -1,0 +1,40 @@
+# mojavez-v3 — public/.htaccess (Apache, shared-hosting compatible).
+# Per docs/00-MASTER.md §16.5.
+#
+# All rules wrapped in <IfModule> so the file is a no-op (not a 500) if a
+# module is missing — critical for shared hosting where mod_php config varies.
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Route everything to index.php (front controller) except real files.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# --- Security headers (defense in depth — app also emits them via PHP) ---
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Robots-Tag "noindex, nofollow, noarchive, nosnippet"
+    # Cache-Control for dynamic content.
+    Header always set Cache-Control "no-store, no-cache, must-revalidate"
+</IfModule>
+
+# --- Disable directory listing ---
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# --- Block dotfiles (except .well-known) ---
+<FilesMatch "^\.(?!well-known)">
+    Require all denied
+</FilesMatch>
+
+# --- Upload size limit (2 MiB docs, 5 MiB CSV — 8 MiB ceiling) ---
+<IfModule mod_php.c>
+    php_value upload_max_filesize 8M
+    php_value post_max_size 8M
+</IfModule>

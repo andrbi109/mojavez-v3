@@ -246,6 +246,34 @@ if (!$skipMigration) {
 try {
     $matched = $router->match($request->method(), $request->path());
 
+    // Rate limiting (§12.6) — check BEFORE CSRF so a flood of bad CSRF
+    // tokens is also throttled. The first matching rule wins; if no rule
+    // matches, no rate limit applies.
+    $rlRule = \App\Http\RateLimitConfig::match($request->method(), $request->path());
+    if ($rlRule !== null) {
+        $rateLimiter = $container->make(\App\Http\IpRateLimiter::class);
+        $allowed = $rateLimiter->hit(
+            $rlRule['key'],
+            $rlRule['max'],
+            $rlRule['window'],
+            $rlRule['type']
+        );
+        if (!$allowed) {
+            $response = $request->isAjax()
+                ? Response::json([
+                    'success' => false,
+                    'error' => ['code' => 'rate_limited', 'message' => 'تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد تلاش کنید.'],
+                ], 429)
+                : Response::html('<!doctype html><meta charset="utf-8"><h1>۴۲۹</h1><p>تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد تلاش کنید.</p>', 429);
+            $remaining = $rateLimiter->remaining($rlRule['key'], $rlRule['max'], $rlRule['window'], $rlRule['type']);
+            $response = $response->withHeader('X-RateLimit-Limit', (string)$rlRule['max'])
+                                 ->withHeader('X-RateLimit-Remaining', (string)$remaining)
+                                 ->withHeader('Retry-After', (string)$rlRule['window']);
+            $response->send();
+            exit(0);
+        }
+    }
+
     // CSRF verification on mutating requests.
     if ($request->isMutating()) {
         $csrf = $container->make(Csrf::class);
