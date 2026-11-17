@@ -78,10 +78,12 @@ final class Module implements ModuleInterface
 
     public function migrations(): array
     {
-        // Phase 1 ships only the bootstrap marker migration.
-        // Phase 2 will add 002_init_core_tables.sql, 003_init_payments.sql, etc.
         return [
             '20261117_001_bootstrap_marker.sql',
+            '20261117_002_core_identity_and_applicant_tables.sql',
+            '20261117_003_payments_and_license_access.sql',
+            '20261117_004_wizard_form_fields_and_sms.sql',
+            '20261117_005_user_accounts_fees_and_lookup_tables.sql',
         ];
     }
 
