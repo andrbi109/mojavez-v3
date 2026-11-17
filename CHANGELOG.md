@@ -9,6 +9,75 @@ header all read from a single source of truth — this file's latest release tag
 This is the fix for the version three-way split seen in v2 (see
 `docs/03-strategy-and-risk.md` §2.3).
 
+## [1.1.0] — 2026-11-17
+
+Phase 8 — Rollout Stage 2 (two-way sync). The infrastructure for pushing v3
+state changes back to the upstream national gateway is now in place. Stage 2
+is NOT auto-enabled — it requires a human (admin) to review the
+Stage2ReadinessChecker report and flip `sync_direction='two_way'` +
+`sync_two_way_enabled='1'` via the settings panel (runtime, no deploy).
+
+Per `docs/00-MASTER.md §29.1` (Stage 2) + `§29.2` (4 readiness conditions)
++ `§29.3` (fallback kill-switch).
+
+### Added — Phase 8 (Rollout Stage 2)
+
+- **`integration_log` table** — the canonical two-way sync audit trail.
+  Every interaction with upstream (both inbound reads and outbound writes)
+  is logged with `direction`, `operation`, `idempotency_key`, request/response
+  payloads, `http_status`, `outcome`, `source_of_truth` (v3|upstream),
+  `conflict_resolution` (last_write_wins|v3_wins|upstream_wins|manual_review),
+  `upstream_updated_at`, `latency_ms`. 16 columns, 6 indexes, FK to
+  applicants. Auto-generated into `database/schema.sql` (now 42 tables).
+- **`OutboundSyncService`** — pushes v3 state changes to upstream.
+  `pushStatusChange()` + `pushDocument()` build the payload, check
+  idempotency (SHA-256 of operation+applicant_id+payload), detect conflicts
+  (compares upstream_updated_at from last inbound fetch against v3's
+  applicants.updated_at — if upstream newer, push is 'conflict' with
+  source_of_truth='upstream'), perform the push (currently a stub — upstream
+  has no writable endpoint yet per §19.8), and log to integration_log.
+  **Kill-switch**: on 3 consecutive 5xx failures, auto-flips
+  `sync_two_way_enabled→'0'` + `sync_direction→'inbound'` — no deploy
+  needed (§29.3 fallback).
+- **`Stage2ReadinessChecker`** — evaluates the 4 §29.2 conditions:
+  1. Stage 1 stable ≥ 90 days (from first integration_log inbound entry).
+  2. AutoConfirmed false-positive rate < 0.1% (auto_confirmed later
+     operator_rejected, from sync_audit_log).
+  3. Circuit-breaker open rate < 5% in last 30 days (distinct days with
+     server_error in integration_log inbound).
+  4. Contract tests exist in `tests/Contract/`.
+  Returns `{ready: bool, conditions: {...4 conditions with passed/value/detail...}, summary}`. Never auto-enables — only reports.
+- **Contract tests** (`tests/Contract/`) — verify the two-way sync contract:
+  payload shape, idempotency key format, integration_log audit fields,
+  conflict resolution labels. 21 assertions. Dedicated runner
+  `tests/contract.php`. Added to CI workflow.
+- **`NationalSyncOrchestrator` Stage 2 path** — after the inbound matching
+  loop, if `sync_two_way_enabled='1'` AND `sync_direction='two_way'`,
+  queries applicants matched during the cycle window and pushes their status
+  changes to upstream via `OutboundSyncService::pushStatusChange()`. Cycle
+  summary now includes `outbound_pushed`, `outbound_conflicts`,
+  `outbound_skipped`, `two_way_enabled`.
+
+### Stage 2 activation path (§29.1 + §29.3)
+
+1. `Stage2ReadinessChecker::check()` reports `ready=true` (all 4 conditions
+   pass — 3 months stable, false-positive < 0.1%, circuit-breaker < 5%,
+   contract tests exist).
+2. Admin flips `sync_direction='two_way'` + `sync_two_way_enabled='1'` via
+   `SettingsController` (runtime, no deploy).
+3. Next cron tick: orchestrator's `runCycle()` now pushes outbound.
+4. If upstream returns 3 consecutive 5xx, `OutboundSyncService` auto-disables
+   two-way → reverts to Stage 1 (kill-switch).
+
+### Known debt (live, post-v1.1.0)
+
+- 0 critical, 0 high, 4 medium (D-2-2, D-2-3, D-7-1, D-8-4 — admin UI for
+  readiness report), 25 low (4 new: D-8-1 stub push, D-8-2 contract test
+  execution, D-8-3 dedup set, D-8-4 readiness admin UI).
+- See `docs/DEBT_REVIEW.md` for the full list + the v1.2 (Phase 9) plan.
+
+---
+
 ## [1.0.0] — 2026-11-17
 
 First stable release of mojavez-v3 — the unified successor to Mojavez-v2
