@@ -519,6 +519,18 @@ final class Module implements ModuleInterface
             // written by older code. Idempotent ALTER
             // (information_schema guard) so re-running is safe.
             '20261117_013_property_details_township_column.sql',
+            // Phase 27 (v1.9.9) — pays D-14-2 (the structural follow-up
+            // to D-14-1 from Phase 22). Makes
+            // `user_notifications.user_account_id` nullable so the
+            // NotificationService::notifyAdmins() can insert a
+            // notification row even when an admin has no matching
+            // user_account (the bridge by username came up empty).
+            // Idempotent ALTER (information_schema guard on
+            // IS_NULLABLE) so re-running is safe. The existing FK to
+            // user_accounts(id) ON DELETE CASCADE is preserved (FKs
+            // allow NULL — InnoDB skips the FK check when the column
+            // is NULL).
+            '20261117_014_user_notifications_nullable_user_account.sql',
         ];
     }
 

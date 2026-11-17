@@ -107,30 +107,30 @@ final class NotificationService
      * sync_audit_log page; the SMS/email channels are reserved for
      * applicant-facing notifications on confirmed matches).
      *
-     * Schema note: `user_notifications.user_account_id` is NOT NULL with
-     * a FK to `user_accounts`, but admins live in the separate `users`
-     * table. We bridge by looking up a matching `user_accounts` row by
-     * `username` — admins who ALSO have a user_account (e.g. a superuser
-     * who uses both the admin realm `/admin/login` and the user realm
-     * `/login`) see the notification in their user panel. Admins who
-     * don't have a user_account are simply skipped (logged per-admin
-     * as a warning since Phase 22, so a misconfigured admin gets
-     * noticed) — the sync_audit_log row is still there for the admin
-     * panel to surface directly (which is the primary admin-facing
-     * channel).
+     * Schema note: `user_notifications.user_account_id` is now nullable
+     * (Phase 27, migration 014 — pays D-14-2). Admins live in the
+     * separate `users` table; we bridge by looking up a matching
+     * `user_accounts` row by `username` — admins who ALSO have a
+     * user_account (e.g. a superuser who uses both the admin realm
+     * `/admin/login` and the user realm `/login`) see the notification
+     * in their user panel. Admins who don't have a user_account get a
+     * notification row with `user_account_id = NULL` — the row exists
+     * (queryable, dismissible) for a future admin-notifications view;
+     * the sync_audit_log row remains the primary admin-facing channel
+     * today. The previous behavior (Phase 22, D-14-1) was to skip +
+     * log a warning — the row didn't exist, so a future admin view had
+     * nothing to surface.
      *
-     * Phase 22 (v1.9.4): pays D-14-1. Previously the per-admin skip was
-     * silent (only an aggregate `skipped` count was logged). Now each
-     * skipped admin gets its own `warning` log entry with the username,
-     * so a misconfigured admin (no user_account bridge) is visible in
-     * the log without re-running the sync. The structural fix (separate
-     * `admin_notifications` table OR a nullable `user_id` column on
-     * `user_notifications`) is intentionally deferred — it requires a
-     * schema migration + an admin-notifications view, both out of
-     * scope for Phase 22.
+     * Phase 22 (v1.9.4) paid D-14-1: per-admin warning log for skipped
+     * admins. Phase 27 (v1.9.9) pays D-14-2: the row is now created
+     * (with NULL user_account_id) instead of skipped.
      *
-     * Idempotency: dedupes on (user_account_id, type, title) so a
-     * re-dispatch (e.g. re-running the sync cycle) doesn't spam admins.
+     * Idempotency: dedupes on (user_account_id, type, title) — note
+     * that NULL user_account_id dedupes with a `user_account_id IS
+     * NULL` predicate (so multiple orphan admins share one
+     * notification row for the same title, which is the desired
+     * behavior — the row is a "for-any-admin" notification, not
+     * per-admin).
      *
      * @param string $title  Short Persian headline.
      * @param string $body   Short Persian body summarizing the match.
@@ -153,6 +153,7 @@ final class NotificationService
 
         $notified = 0;
         $skipped = 0;
+        $orphanNotified = false; // shared NULL-row dedup across all orphan admins
         foreach ($admins as $admin) {
             $username = (string)($admin['username'] ?? '');
             if ($username === '') {
@@ -165,19 +166,42 @@ final class NotificationService
                 [$username]
             );
             if ($account === null) {
-                // Admin has no user_account — can't insert into
-                // user_notifications (NOT NULL FK). Skip; the
-                // sync_audit_log row is still there for the admin panel.
-                // Phase 22 (v1.9.4): log a per-admin warning so a
-                // misconfigured admin (no user_account bridge) is
-                // visible in the log without re-running the sync.
-                $this->logger->warning('notifyAdmins: admin has no user_account bridge, skipping in-app notification', [
+                // Admin has no user_account bridge. Phase 27 (D-14-2):
+                // instead of skipping (Phase 22 behavior), insert a
+                // notification row with user_account_id = NULL so the
+                // notification exists for a future admin-notifications
+                // view. The schema was made nullable in migration 014.
+                //
+                // Dedup: one shared NULL row per (type, title) — once
+                // any orphan admin has triggered it for this title,
+                // don't re-insert for other orphan admins (they share
+                // the same admin-facing notification surface).
+                if ($orphanNotified) {
+                    $skipped++;
+                    continue;
+                }
+                $existing = $this->conn->one(
+                    'SELECT id FROM user_notifications WHERE user_account_id IS NULL AND type = ? AND title = ? LIMIT 1',
+                    ['operator_flag', $title]
+                );
+                if ($existing !== null) {
+                    $orphanNotified = true;
+                    $skipped++;
+                    continue;
+                }
+                $this->conn->execute(
+                    'INSERT INTO user_notifications (user_account_id, applicant_id, type, title, body, is_read, created_at) '
+                    . 'VALUES (NULL, NULL, ?, ?, ?, 0, NOW())',
+                    ['operator_flag', $title, $body]
+                );
+                $orphanNotified = true;
+                $notified++;
+                $this->logger->info('notifyAdmins: admin has no user_account bridge, inserted NULL-account notification row', [
                     'admin_username' => $username,
                     'admin_id'       => (int)($admin['id'] ?? 0),
-                    'title'           => $title,
-                    'hint'            => 'Create a user_account with the same username, or wait for the admin_notifications table migration (D-14-1 follow-up).',
+                    'title'          => $title,
+                    'hint'           => 'Create a user_account with the same username to receive notifications in the user panel.',
                 ]);
-                $skipped++;
                 continue;
             }
             $userAccountId = (int)$account['id'];
