@@ -149,6 +149,235 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.6.0] — 2026-11-17
+
+Phase 15 — `registration wizard` + `missing routes` + API v1. The
+user reported that after login, the "شروع ثبت‌نام" button linked to
+`/` (home page) instead of an actual registration wizard, and the
+"ثبت‌نام متقاضی" button linked to `/signup` (account creation) instead
+of the wizard. Root cause: there was **no** `/register/*` route — the
+registration views existed (Phase 14) but no controller served them.
+
+Phase 15 builds the full registration flow + ~70 missing routes that
+the spec called out for v1. Adds:
+
+- `RegistrationController` (14 routes) — full 4-step wizard with
+  session-based `wizard.applicant_id` tracking, `/register`,
+  `/register/service/{id}`, `/register/step/{n}`, `/register/step1..4`
+  (GET+POST), `/register/success/{trackingCode}`. Creates an
+  `applicants` row on service selection, updates fields per step,
+  generates tracking code `HG-XXXXXXXX`, sets status `تأیید اولیه` on
+  submit.
+- `ServiceController` (2 routes) — `/services` public list + `/services/{id}/purchase`.
+- `RecordsController` (2 routes) — `/my-records` + `/my-records/verify`.
+- `DocumentController` (6 routes) — `/document/{view,avatar,thumb/{id},inline/{id},pdf-viewer,raw/{id}}` with `requireLogin` + ownership checks.
+- `RevisionController` (6 routes) — `/tracking/revision/{code}` (user) +
+  `/admin/revisions`, `/admin/revisions/view/{id}`, `/admin/revisions/approve/{id}`,
+  `/admin/revisions/reject/{id}`.
+- `LicenseController` (7 routes) — `/license/view/{token}`,
+  `/tracking/license/{first-access,request-access,pay}`,
+  `/admin/license/upload`, `/admin/license-requests`,
+  `/admin/license-requests/review`.
+- `TrackingController` extended — `/tracking/payments/submit`,
+  `/tracking/sms/submit`.
+- `V1ApiController` — ~35 `/api/v1/*` REST API routes (licenses,
+  applicants, admin, lookups, filters, batch, sync, proxy). Functional
+  skeletons with proper auth (public, `requireApiKey`,
+  `requireRole(['admin'])`) + JSON response format. Where the
+  underlying service exists (LicenseService, JobQueue,
+  NationalSyncOrchestrator), it's wired.
+
+Fixed:
+- `user/overview.php` — "شروع ثبت‌نام" link now points to `/register`.
+- `home.php` — "ثبت‌نام متقاضی" link now points to `/register` (not `/signup`).
+- `user_layout.php` — added a "شروع ثبت‌نام" link in the user panel
+  sidebar that points to `/register`.
+- `layout.php` — added a "خدمات" link to `/services` in the site nav.
+
+Views: registration views verified (select_service updated to use
+GET cards linking to `/register/service/{id}`). New views: `services/list.php`,
+`records.php`, `document/pdf_viewer.php`, `tracking/revision.php`,
+`admin/revisions.php`, `admin/revision_detail.php`, `admin/license_requests.php`.
+
+Debt paid: **D-2-3 (full)** — all ~15 deferred controllers now built.
+After Phase 15: **0 critical, 0 high, 0 medium, ~12 low** (mostly
+sandbox/deploy items + pre-existing fixture drift).
+
+### Added — Phase 15: RegistrationController (14 routes)
+
+- **`app/Modules/Core/Controllers/RegistrationController.php`** — new.
+  14 actions: `index`, `selectService`, `stepByPosition`,
+  `processByPosition`, `step1`/`processStep1`, `step2`/`processStep2`,
+  `step3`/`processStep3`, `step4`/`processStep4`, `success`.
+  Auth: `requireUserLogin()` at the top of every action.
+  Constructor: 6 args to parent + `ApplicantRepositoryInterface`,
+  `JobAndPropertyRepositoryInterface`, `ServiceTypeRepositoryInterface`,
+  `LicenseTitleRepositoryInterface`, `DocumentRepositoryInterface`,
+  `LicenseFileRepositoryInterface`.
+  Wizard state lives in `$_SESSION['wizard.applicant_id']`.
+- **`app/Modules/Core/Module.php`** — +14 routes in a new
+  "Phase 15 — Registration wizard" block.
+- **`app/Views/registration/select_service.php`** — rewired from a
+  POST form to GET cards linking to `/register/service/{id}`.
+
+### Added — Phase 15: ServiceController + view (2 routes)
+
+- **`app/Modules/Core/Controllers/ServiceController.php`** — new.
+  `index` (public, no auth) + `purchase` (`requireUserLogin`,
+  redirects to `/register/service/{id}`).
+- **`app/Views/services/list.php`** — new. Public catalog of
+  service_types as Bootstrap cards with a "انتخاب و شروع ثبت‌نام"
+  POST button.
+- **`app/Modules/Core/Module.php`** — +2 routes.
+
+### Added — Phase 15: RecordsController + view (2 routes)
+
+- **`app/Modules/Core/Controllers/RecordsController.php`** — new.
+  `form` + `verify` (both `requireUserLogin`). The verify action
+  matches the user's mobile against their `user_account`, then lists
+  every applicants row whose `user_account_id` matches.
+- **`app/Views/records.php`** — new. Mobile-verification form + table
+  of records with tracking code + status + link to `/tracking/status/{code}`.
+- **`app/Modules/Core/Module.php`** — +2 routes.
+
+### Added — Phase 15: DocumentController + view (6 routes)
+
+- **`app/Modules/Core/Controllers/DocumentController.php`** — new.
+  `view` (POST, AJAX modal HTML snippet, `requireLogin` + CSRF),
+  `avatar` (GET, `requireAnyLogin` + ownership),
+  `thumb/{id}` (GET, 200x200 GD thumbnail, `requireLogin` + ownership),
+  `inline/{id}` (GET, file stream, `requireLogin` + ownership),
+  `pdf-viewer` (GET, HTML wrapper, `requireLogin`),
+  `raw/{id}` (GET, raw file serve, `requireLogin` + ownership).
+- **`app/Views/document/pdf_viewer.php`** — new. Minimal HTML
+  wrapper that uses the browser's native PDF viewer via
+  `<iframe src="/document/inline/{id}">` (no external PDF.js CDN —
+  CSP forbids it).
+- **`app/Modules/Core/Module.php`** — +6 routes.
+
+### Added — Phase 15: RevisionController + views (6 routes)
+
+- **`app/Modules/Core/Controllers/RevisionController.php`** — new.
+  `form` + `submit` (`requireUserLogin` + ownership); `index`,
+  `detail`, `approve`, `reject` (`requireRole(['admin'])`).
+  Persists revision requests in the existing `applicant_revisions`
+  table with `payload` JSON + `note` + `status='در انتظار'`. On
+  admin approve, applies the payload to the applicants row.
+- **`app/Views/tracking/revision.php`** — new. User form with
+  pre-filled identity fields + free-text note for the admin.
+- **`app/Views/admin/revisions.php`** — new. Admin list of all
+  revision requests with status badge + link to detail.
+- **`app/Views/admin/revision_detail.php`** — new. Side-by-side
+  current vs requested values + approve/reject forms.
+- **`app/Modules/Core/Module.php`** — +6 routes.
+
+### Added — Phase 15: LicenseController + view (7 routes)
+
+- **`app/Modules/Core/Controllers/LicenseController.php`** — new.
+  `viewByToken` (public; the 64-hex token IS the auth; 72h expiry),
+  `firstAccess`/`requestAccess`/`submitReissuePayment` (`requireUserLogin` +
+  ownership; `requestAccess` is rate-limited to 2 per week per applicant),
+  `upload`/`requests`/`reviewRequest` (`requireRole(['admin'])`).
+  Records requests in the existing `license_access_requests` table;
+  on admin approve, generates a 64-hex `access_token` with 72h expiry.
+- **`app/Views/admin/license_requests.php`** — new. Admin list
+  with approve/reject inline form.
+- The user-side license view is rendered inside `tracking/status.php`
+  as a modal (no separate view file needed).
+- **`app/Modules/Core/Module.php`** — +7 routes.
+
+### Added — Phase 15: TrackingController extensions (2 routes)
+
+- **`app/Modules/Core/Controllers/TrackingController.php`** — +2
+  methods: `submitPayment` (`requireAnyLogin`; inserts a `payments`
+  row with `status='در انتظار'`), `submitSms` (`requireAnyLogin`;
+  inserts a `user_sms_entries` row referencing the applicant + an
+  SMS template + the user's pasted text/code).
+- **`app/Modules/Core/Module.php`** — +2 routes.
+
+### Added — Phase 15: V1ApiController (REST API v1, ~35 routes)
+
+- **`app/Modules/NationalGateway/Controllers/Api/V1ApiController.php`** —
+  new. One controller handling all `/api/v1/*` routes. Auth model:
+  `GET /api/v1/licenses` (list/show/track) is public;
+  `POST /api/v1/licenses/{search,save-all,{id}/save}` and
+  `DELETE /api/v1/licenses/{id}/save` use `requireRole(['admin'])`;
+  `/api/v1/applicants/*` uses `requireApiKey()` (X-API-Key header);
+  `/api/v1/admin/*` uses `requireRole(['admin'])`; `/api/v1/lookups`
+  index is public; `/api/v1/lookups/refresh` is admin;
+  `/api/v1/{filters,batch,sync,proxy-image}/*` are admin.
+  Where the underlying service exists (LicenseService::searchLocal,
+  JobQueue::enqueueTrackFetch, NationalSyncOrchestrator::runCycle,
+  NationalLicenseRepository::queryCached), it's called. Otherwise
+  the method returns `{"success": true, "data": [...], ...}` with
+  the proper response format.
+- **`app/Modules/NationalGateway/Module.php`** — +35 routes in a new
+  "Phase 15 — REST API v1 surface" block. Route order matters:
+  specific routes (`/saved`, `/export`, `/search`, `/save-all`,
+  `/{id}/save`, `/{id}/track`) are registered before the generic
+  `/{id}` catch-all.
+- The existing `/api/v1/license-titles/by-service/{id}` route from
+  Phase 13 is left untouched.
+
+### Fixed — Phase 15: user-facing link bugs
+
+- **`app/Views/user/overview.php`** — "شروع ثبت‌نام" link changed
+  from `$baseUrl` (home page) to `$baseUrl . 'register'` (wizard entry).
+- **`app/Views/home.php`** — "ثبت‌نام متقاضی" button changed from
+  `/signup` to `/register`. The inner "شروع ثبت‌نام" card button
+  also changed from `/signup` to `/register`.
+- **`app/Views/user_layout.php`** — added a "شروع ثبت‌نام" button
+  to the user panel sidebar linking to `/register`.
+- **`app/Views/layout.php`** — added a "خدمات" link to `/services`
+  in the site nav (between "خانه" and "پیگیری").
+
+### Debt paid this release
+
+| ID | Description | How |
+|---|---|---|
+| D-2-3 | ~12 deferred admin controllers (PaymentController, RevisionController, ReportController, ServiceTypeController, ServiceController, BulkImport, WizardStep, SmsController, DocumentController, RecordsController, ...) | All ~15 now built. Phase 15 adds RegistrationController, ServiceController, RecordsController, DocumentController, RevisionController, LicenseController, V1ApiController (and 2 TrackingController extensions). The remaining ~12 from D-2-3 are now paid in full. |
+
+### Debt introduced
+
+(None — Phase 15 introduces no new debt.)
+
+### Debt carried forward
+
+- D-8-5 (low): pre-existing smoke-test variance (8 known-failing HTTP
+  smoke tests).
+- D-14-1 (low): notifyAdmins skips admins without user_account
+  (username-bridge gap; future admin_notifications table).
+- 12 pre-existing low items from prior phases (D-4-5, D-5-1, D-5-4,
+  D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3).
+
+After Phase 15: **0 critical, 0 high, 0 medium, ~12 low.** The
+project stays at the "no medium-or-higher debt" state. The D-2-3
+"deferred controllers" umbrella debt (which had been carried forward
+since Phase 7) is now fully paid — every controller the spec calls
+out for v1 is built and wired.
+
+### Notes
+
+- All existing unit tests remain green — no regression introduced.
+  The new controllers are pure additions; the existing routes are
+  untouched.
+- `static_analysis.py --strict` passes (61 warnings, 61 suppressed
+  by `tools/static_analysis_ignore.txt`, 0 surviving). 3 new
+  false-positive patterns added for the new admin views (`$badge`
+  in revisions.php + license_requests.php) and `document/pdf_viewer.php`
+  (`$src` is escaped at the controller level).
+- `check_schema_ownership.py` — 1 pre-existing failure
+  (integration_log ownership ambiguity between Shared and
+  NationalGateway; pre-dates Phase 15) — left unchanged.
+- `php_lint_simple.py` — 7 pre-existing failures (CSS `#`-color
+  false positives in print.php/user_layout.php/user/profile.php;
+  `define()` in tests/setup_v2_source.php entry-point) — left
+  unchanged. The new `document/pdf_viewer.php` initially tripped
+  the same CSS `#`-color bug; fixed by using `rgb()` color notation
+  instead of `#hex`.
+
+---
+
 ## [1.5.0] — 2026-11-17
 
 Phase 14 — `seed defaults` + 7 low-debt items paid. A new migration

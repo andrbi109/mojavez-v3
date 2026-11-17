@@ -8,10 +8,10 @@
         <h1 class="display-5 fw-bold mb-3"><?= htmlspecialchars((string)$siteName, ENT_QUOTES, 'UTF-8') ?></h1>
         <p class="lead text-muted col-lg-7 mx-auto mb-4"><?= htmlspecialchars((string)$siteDescription, ENT_QUOTES, 'UTF-8') ?></p>
         <div class="d-flex justify-content-center gap-2 flex-wrap">
-            <a href="/signup" class="btn btn-primary btn-lg">
+            <a href="<?= htmlspecialchars($baseUrl ?? '/', ENT_QUOTES) ?>register" class="btn btn-primary btn-lg">
                 <i class="bi bi-pencil-square"></i> ثبت‌نام متقاضی
             </a>
-            <a href="/tracking" class="btn btn-outline-primary btn-lg">
+            <a href="<?= htmlspecialchars($baseUrl ?? '/', ENT_QUOTES) ?>tracking" class="btn btn-outline-primary btn-lg">
                 <i class="bi bi-search"></i> پیگیری پرونده
             </a>
         </div>
@@ -27,7 +27,7 @@
                     <i class="bi bi-pencil-square display-6 text-brand mb-3"></i>
                     <h3 class="h5 card-title">ثبت‌نام متقاضی</h3>
                     <p class="card-text text-muted">فرم ویزارد ۴ مرحله‌ای — هویت، محل کسب، اطلاعات شغل و مدارک.</p>
-                    <a href="/signup" class="btn btn-outline-primary btn-sm">شروع ثبت‌نام</a>
+                    <a href="<?= htmlspecialchars($baseUrl ?? '/', ENT_QUOTES) ?>register" class="btn btn-outline-primary btn-sm">شروع ثبت‌نام</a>
                 </div>
             </div>
         </div>

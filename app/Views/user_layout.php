@@ -118,7 +118,10 @@ $nav = [
             <?php endforeach; ?>
         </nav>
         <div class="p-3 border-top border-secondary border-opacity-25">
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>" class="btn btn-sm btn-outline-light w-100">
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>register" class="btn btn-sm btn-primary w-100">
+                <i class="bi bi-plus-lg"></i> شروع ثبت‌نام
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>" class="btn btn-sm btn-outline-light w-100 mt-2">
                 <i class="bi bi-house"></i> بازگشت به سایت
             </a>
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>logout" class="btn btn-sm btn-outline-danger w-100 mt-2">

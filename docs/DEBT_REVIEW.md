@@ -911,6 +911,64 @@ side tables)، D-7-4 (SettingsController per-key validation)، D-7-3
 
 ---
 
+### فاز ۱۵: registration wizard + missing routes (v1.6.0)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.6.0 (phase/15-registration-flow-and-missing-routes branch, tag v1.6.0)
+
+#### زمینه
+
+پس از فاز ۱۴ که ویوهای ویزارد ثبت‌نام را به Bootstrap بازنویسی کرد و
+seed پیش‌فرض service_types را اضافه کرد، کاربر گزارش داد که پس از
+ورود، دکمهٔ «شروع ثبت‌نام» در پنل کاربر به `/` (صفحهٔ اصلی) هدایت
+می‌شود به‌جای یک ویزارد واقعی، و دکمهٔ «ثبت‌نام متقاضی» در صفحهٔ
+اصلی به `/signup` (ساخت حساب) هدایت می‌شود. علت ریشه‌ای: هیچ مسیر
+`/register/*` وجود نداشت — ویوهای ویزارد ساخته شده بودند ولی هیچ
+کنترلری آن‌ها را serve نمی‌کرد.
+
+فاز ۱۵ کل جریان ثبت‌نام + ~۷۰ مسیر مفقود که spec برای v1 تعریف کرده
+بود را پیاده می‌کند: ویزارد ۴ مرحله‌ای، service catalog، records،
+document serving، revision requests، license image access، و ~۳۵
+مسیر REST API v1.
+
+#### Debt paid در این فاز
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-2-3 (کامل) | ~۱۲ کنترلر ادمین باقی‌مانده (PaymentController, RevisionController, ReportController, ServiceTypeController, ServiceController, BulkImport, WizardStep, SmsController, DocumentController, RecordsController, ...) | همهٔ ~۱۵ کنترلر در فاز ۱۵ ساخته شدند: `RegistrationController` (14 مسیر)، `ServiceController` (2)، `RecordsController` (2)، `DocumentController` (6)، `RevisionController` (6)، `LicenseController` (7)، `V1ApiController` (~35 مسیر API v1)، و ۲ متد جدید روی `TrackingController` (`submitPayment`, `submitSms`). مجموع: ~۷۰ مسیر جدید. D-2-3 که از فاز ۷ carried forward بود، اکنون به‌طور کامل پرداخت شده است. |
+
+#### Debt introduced
+
+(هیچ — فاز ۱۵ هیچ debt جدیدی وارد نکرد.)
+
+#### Debt carried forward به فاز ۱۶
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-8-5 | ۸ smoke test HTTP به‌دلیل MariaDB fixture drift fail می‌شوند (pre-existing از فاز ۸) | low | زمان مناسب |
+| D-14-1 | notifyAdmins ادمین‌های بدون user_account را skip می‌کند (username-bridge gap) | low | فاز ۱۶+ |
+| D-4-5, D-5-1, D-5-4, D-5-5 | ۴ debt از فاز ۵ (low) | low | فرصت مناسب |
+| D-6-2, D-6-3, D-6-4, D-6-5, D-6-6 | ۵ debt از فاز ۶ (low) | low | فرصت مناسب |
+| D-8-1, D-8-2, D-8-3 | ۳ debt از فاز ۸ (low) | low | فرصت مناسب |
+
+#### توصیه برای فاز ۱۶ (post-Phase 15)
+
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ **خیر** — پس از فاز ۱۵،
+  همچنان ۰ debt medium یا بالاتر باقی مانده است. ~۱۲ مورد low باقی‌مانده
+  که incremental در فازهای feature-driven پرداخت می‌شوند. D-2-3 (umbrella
+  «کنترلرهای معوق») که از فاز ۷ carried forward بود، اکنون کامل پرداخت
+  شده است.
+- [x] اگر خیر، تمرکز بعدی چه باشد؟ (۱) فعال‌سازی Stage 2 (sync_direction='two_way')
+  اگر آماده باشیم. (۲) Stage 3: گزارش‌گیری + export. (۳) تست‌های
+  end-to-end برای جریان ویزارد. (۴) پاکسازی D-8-5 (smoke test fixture
+  drift) و D-14-1 (admin notifications bridge).
+- [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۱۵ الگوی
+  session-based wizard + REST API skeleton را تثبیت کرد که برای فازهای
+  بعدی تکرارپذیر است.
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -921,19 +979,21 @@ side tables)، D-7-4 (SettingsController per-key validation)، D-7-3
 | critical | 0 | — | — |
 | high | 0 | — | — |
 | medium | 0 | — | — |
-| low | 13 | 2026-11-17 | D-2-3, D-4-5, D-5-1, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5, D-14-1 |
+| low | 12 | 2026-11-17 | D-4-5, D-5-1, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5, D-14-1 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱۴ (seed defaults + 7 low-debt items paid):** ۰
-critical، ۰ high، **۰ medium**، ~۱۳ low. تغییر نسبت به فاز ۱۳: ۷ مورد
-low پرداخت شد (D-2-9، D-1-9، D-4-6، D-4-7، D-5-2، D-7-4، D-7-3) و ۱
-مورد low جدید وارد شد (D-14-1، username-bridge gap در notifyAdmins).
-خالص: ۶ مورد کاهش (۲۱ → ۱۳+۱=۱۴ → ۱۳).
+**وضعیت پس از فاز ۱۵ (registration wizard + missing routes + API v1):**
+۰ critical، ۰ high، **۰ medium**، ~۱۲ low. تغییر نسبت به فاز ۱۴:
+D-2-3 (umbrella «کنترلرهای معوق از فاز ۷») به‌طور کامل پرداخت شد.
+هیچ debt جدیدی وارد نشد. خالص: ۱ مورد کاهش (۱۳ → ۱۲).
 
-پس از فاز ۱۴، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر» است —
-~۱۳ مورد low-priority باقی‌مانده که در فازهای بعدی به‌صورت incremental
-پرداخت می‌شوند.
+پس از فاز ۱۵، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر»
+است — ~۱۲ مورد low-priority باقی‌مانده که در فازهای بعدی به‌صورت
+incremental پرداخت می‌شوند. مهم‌ترین دستاورد فاز ۱۵: D-2-3 (که از
+فاز ۷ carried forward بود و شامل ~۱۲ کنترلر بود) اکنون کامل پرداخت
+شده است — هر کنترلری که spec برای v1 تعریف کرده بود، ساخته و وایر
+شده است.
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 

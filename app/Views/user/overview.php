@@ -60,7 +60,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             <div class="card-body">
                 <?php if ($latestApp === null): ?>
                     <p class="text-muted mb-0">هنوز درخواستی ثبت نکرده‌اید.</p>
-                    <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>" class="btn btn-primary mt-3">
+                    <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>register" class="btn btn-primary mt-3">
                         <i class="bi bi-plus-lg"></i> شروع ثبت‌نام
                     </a>
                 <?php else: ?>
