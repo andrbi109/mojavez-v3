@@ -53,8 +53,12 @@ $container->boot(ROOT_PATH);
 $router = $container->make(Router::class);
 $migrationRunner = $container->make(MigrationRunner::class);
 
-// EventBus — real class (Phase 1 placeholder, will be fleshed out in Phase 4).
-$eventBus = new EventBus();
+// EventBus — wired with Logger + Connection so events persist to the events
+// table. The Connection is built lazily on first use (Container memoizes it),
+// so passing it here doesn't open a DB connection unless an event fires.
+use App\Shared\Persistence\Connection as DbConnection;
+$connection = $container->make(DbConnection::class);
+$eventBus = new EventBus($logger, $connection);
 
 $moduleLoader = new ModuleLoader(
     $container,

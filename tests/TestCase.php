@@ -83,6 +83,14 @@ class TestCase
         }
     }
 
+    public function assertGreaterThanOrEqual(mixed $expected, mixed $actual, string $message = ''): void
+    {
+        $this->assertions++;
+        if (!is_numeric($actual) || !is_numeric($expected) || $actual < $expected) {
+            $this->recordFailure($message ?: sprintf('expected >= %s, got %s', var_export($expected, true), var_export($actual, true)));
+        }
+    }
+
     public function assertCount(int $expected, array $actual, string $message = ''): void
     {
         $this->assertions++;
