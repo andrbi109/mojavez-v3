@@ -148,11 +148,39 @@ final class ModuleLoader
     {
         foreach ($this->modules as $module) {
             foreach ($module->migrations() as $relativePath) {
-                $absolute = $modulesRoot . '/' . ucfirst($module->name())
-                          . '/migrations/' . $relativePath;
+                // Module name is snake_case ('national_gateway'); the directory
+                // is PascalCase ('NationalGateway'). Convert via the same map
+                // the discover() boot order uses.
+                $dirName = $this->moduleDirectory($module->name());
+                $absolute = $modulesRoot . '/' . $dirName . '/migrations/' . $relativePath;
                 $this->migrationRunner->enqueue($absolute, $module->name());
             }
         }
+    }
+
+    /**
+     * Map a snake_case module name to its PascalCase directory name.
+     *
+     * The MODULE_BOOT_ORDER constant lists the directory names directly
+     * (PascalCase). We look up the module name there to find the directory;
+     * this avoids hand-rolling a snake→Pascal converter that might mishandle
+     * edge cases.
+     */
+    private function moduleDirectory(string $moduleName): string
+    {
+        // Build a name→directory map from the boot order. Module names are
+        // derived from the directory via lcfirst(str_replace('_', '', ...))
+        // — but we don't actually do that derivation. Instead we trust that
+        // the discover() loop already validated the directory exists, so we
+        // can reverse by searching the boot order for a matching lcfirst.
+        foreach (self::MODULE_BOOT_ORDER as $dirName) {
+            $expectedName = strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $dirName) ?? $dirName);
+            if ($expectedName === $moduleName) {
+                return $dirName;
+            }
+        }
+        // Fallback: ucfirst (works for single-word modules like 'core').
+        return ucfirst($moduleName);
     }
 
     /**
