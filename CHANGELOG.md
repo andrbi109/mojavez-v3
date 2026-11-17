@@ -149,6 +149,227 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.9] — 2026-11-17
+
+### Phase 27: final polish + comprehensive test sweep — zero debt confirmed
+
+Phase 27 (v1.9.9) — the final polish + comprehensive test sweep.
+Three test fixes (one per environment-dependent failure class) plus
+route sweep + favicon/version/404/print verification. No new
+feature work; no critical/high/medium debt introduced. After Phase
+27, the project remains at **ZERO debt** — 0 critical, 0 high,
+0 medium, **0 low** — and is **ready for v2.0.0** (Phase 28, awaiting
+user approval).
+
+### Test fixes (3 classes, 6 failures → 0 failures)
+
+#### `LicenseTitleTest` — 1 failure → 0 (test pattern issue)
+
+**Files:** `tests/Unit/LicenseTitleTest.php`
+
+**Problem:** the test's `run()` invoked
+`testCreate → testRead → testUpdate → testToggle → testByService →
+testDelete` in that order. `testToggle()` flips `is_active` from 1
+to 0 (its whole point). `testByService()` then runs the
+controller's `byService` query — which filters by `is_active = 1`
+(per the LicenseTitleController action). With `is_active = 0`
+(after testToggle), the query returned no rows and the
+`in_array($this->title, $titles, true)` assertion failed with
+"byService باید رکورد ما را برگرداند".
+
+**Fix:** reorder `run()` so `testByService` runs BEFORE `testToggle`
+(the query then sees `is_active = 1` and the row is returned). The
+test methods themselves are unchanged — only their execution
+order. Documented inline with a Phase 27 comment so the
+ordering constraint isn't accidentally re-broken.
+
+#### `OperatorFlagNotificationTest` — 4 failures → 0 (D-14-2 —
+NULL user_account_id bridge)
+
+**Files:** `app/Modules/Core/Services/NotificationService.php`,
+`app/Modules/Core/migrations/20261117_014_user_notifications_nullable_user_account.sql`
+(new), `app/Modules/Core/Module.php`, `tests/Unit/OperatorFlagNotificationTest.php`
+
+**Problem:** `NotificationService::notifyAdmins()` bridges admins
+(in the `users` table, role='admin') to `user_accounts` by
+username. Admins with no matching user_account were silently
+skipped — no notification row was created. Phase 22 (v1.9.4,
+D-14-1) added a per-admin warning log so a misconfigured admin
+was visible, but the structural fix (the row never existing) was
+deferred. The test expected the row NOT to exist (assertion:
+`orphan admin (no user_account) → no notification row`) — but
+the test ALSO had three more assertions in step 5 (subscriber-
+direct dispatch) that silently broke when the subscriber's
+fixed-title dedup (added in the same Phase 14 that introduced
+notifyAdmins) meant the subscriber-direct call was a no-op for
+the bridged admin. The test was looking for a notification
+titled `'نیازمند بررسی اپراتور (subscriber-direct)'` — but the
+subscriber ALWAYS uses the fixed title `'نیازمند بررسی اپراتور'`.
+Step 5 had been wrong since Phase 14 but masked by step 1's
+notification already existing (so the dedup skip was the only
+"effect" of step 5's call).
+
+**Fix (Phase 27 / D-14-2):** the structural follow-up to D-14-1.
+The row is now CREATED (not skipped) with `user_account_id = NULL`
+when the admin has no matching user_account.
+
+1. **Migration 014** (new) makes
+   `user_notifications.user_account_id` nullable
+   (`ALTER TABLE ... MODIFY COLUMN ... INT NULL DEFAULT NULL`).
+   Idempotent (information_schema guard on IS_NULLABLE). The
+   existing FK to `user_accounts(id)` ON DELETE CASCADE is
+   preserved (FKs allow NULL — InnoDB skips the FK check when
+   the column is NULL).
+2. **`NotificationService::notifyAdmins()`** now inserts a row
+   with `user_account_id = NULL` for orphan admins. Dedup is on
+   `(type, title)` for NULL rows — multiple orphan admins share
+   ONE NULL row for the same (type, title) (they share the
+   same admin-facing notification surface). The info log line
+   replaces the Phase 22 warning (the row IS now created, so
+   "skipped" is no longer the right framing).
+3. **Test updated** to verify the new behavior:
+   - Step 3 (orphan): now asserts the NULL-row IS created
+     (Phase 22's "no row" assertion is inverted). Asserts
+     `user_account_id IS NULL`, title, body, idempotency
+     (re-call → still 1 NULL row), and that the bridged admin
+     ALSO got its own row (separate from the NULL row).
+   - Step 5 (subscriber-direct): now deletes the bridged
+     admin's existing notification before calling
+     `subscriber->handle()` so the dedup doesn't fire, then
+     queries for the actual subscriber title
+     (`'نیازمند بررسی اپراتور'`, NOT a synthetic suffix) and
+     verifies the body has the new RN + license title.
+
+#### `MigrateFromGatewayTest` — 1 failure → 0 SKIP (v2 gateway source not available)
+
+**Files:** `tests/Unit/MigrateFromGatewayTest.php`
+
+**Problem:** the test builds a synthetic SQLite source DB whose
+schema is loaded from the v2 gateway repo at
+`/home/z/my-project/src_repos/mojavez-gateway/app/Persistence/Migrations/001_init.sql`.
+That source repo isn't cloned in every environment (only on the
+developer's machine where v2 is side-by-side). When the file was
+missing, the test threw a `file_get_contents(): failed to open
+stream` warning + a `PDO::exec(): Argument #1 ($statement) must
+be of type string, false given` fatal — which the test runner
+counted as 1 failure plus a PHP warning polluting the output.
+
+**Fix:** `setUp()` now checks `is_file($gatewaySchema)` BEFORE
+trying to load it; if missing, calls
+`$this->markTestSkipped('v2 gateway source not available
+(mojavez-gateway repo not cloned)')` and returns cleanly. The
+runner prints `MigrateFromGatewayTest (v2 gateway source not
+ava) SKIP` instead of crashing the run. When the v2 repo IS
+cloned (developer's machine), the test runs normally.
+
+### Bonus fix — `IpRateLimiterTest` flake (1 intermittent failure)
+
+**Files:** `app/Http/IpRateLimiter.php`
+
+**Problem:** the `IpRateLimiter::hitIp()` method's lazy-prune
+call was `pruneStale($cutoff * 2)` where `$cutoff = $now -
+$window`. The multiplication produced a huge integer
+(`2 * (1731800000 - 60) = 3463599880` → year 2079), so the
+prune predicate `updated_at < FROM_UNIXTIME(?)` matched EVERY
+row in the table (every bucket's `updated_at` is before 2079).
+The lazy prune then deleted ALL buckets, including the one
+just created by the same `hitIp()` call. The prune only fires
+on `random_int(1, 50) === 1` (~2% per call); the test made 12
+`hit()` calls, so the probability of at least one prune firing
+was `1 - (49/50)^12 ≈ 21%`. The test passed ~79% of the time
+and flaked the other ~21%, throwing "Trying to access array
+offset on null" at line 107 (the `$row['hits_json']` access
+when `$row` was null because the bucket was deleted).
+
+**Fix:** `pruneStale($cutoff - $window)` (which equals
+`$now - 2 * $window`, the docstring's intended "older than
+window × 2" threshold). Inline comment added explaining the
+bug + the math so it isn't re-broken.
+
+### Route sweep — 144 PASS, 0 FAIL, 56 SKIP (Task 1)
+
+**Files:** `scripts/phase27_route_sweep.php` (new)
+
+A new self-contained PHP script that introspects every
+registered route via reflection, hits each one via curl
+(unauthenticated), and reports the HTTP status. Routes are
+categorized by acceptable status-code ranges:
+- **GET:** 200 (public page) OR 302 (redirect to login for
+  protected pages).
+- **POST:** 200/302 (form processed) OR 419 (CSRF blocked
+  without token — expected).
+
+Path-param routes (`/tracking/{code}`, `/admin/edit/{id}`,
+etc.) are SKIPped (would need real IDs). Cron routes
+(`/check-cancel`, `/check-sync`) and the SSE endpoint
+(`/api/v1/stream`) are SKIPped (require secret / would block).
+
+**Result:** 144 PASS, 0 FAIL, 56 SKIP out of 200 unique
+(method, path) routes. All 144 non-path-param routes return
+an acceptable status code unauthenticated.
+
+The 404 page renders correctly (HTTP 404 for an unmapped
+path) AND is wrapped in `layout.php` (the site nav is
+present in the response body). The 500-handler test is
+SKIPped — v3 ships only the 404 error view (`errors/404.php`,
+added in Phase 10); a 500 view is not yet part of the
+codebase (the front controller catches exceptions and falls
+back to a bare error string).
+
+### UI polish verification (Task 3)
+
+- **Favicon:** verified that all 3 layouts (`layout.php`,
+  `admin_layout.php`, `user_layout.php`) emit the
+  `<link rel="icon" type="image/svg+xml" href="...assets/favicon.svg">`
+  tag. The favicon asset (`public/assets/favicon.svg`)
+  serves HTTP 200 with `Content-Type: image/svg+xml`.
+  Self-contained pages (`admin/login.php`, `print.php`) use
+  `layout='none'` and don't include the favicon — out of
+  scope (they're not "layouts", they're complete HTML
+  documents).
+- **404 page:** renders with the site nav (verified by the
+  route sweep — the response body contains "سامانهٔ مجوز"
+  and `moj-header`).
+- **Version display:** `admin_layout.php` footer shows
+  `نسخهٔ 1.9.9` (verified by logging in as the default
+  admin and reading the dashboard HTML — the footer span
+  contains the version read from `Environment::version()`,
+  which reads the `VERSION` file at the project root).
+- **Print page:** `/tracking/print/{trackingCode}` returns
+  HTTP 200 for a real applicant's tracking code; the body
+  contains the print-container, کد رهگیری, and نسخهٔ چاپی
+  text. `print.php` is a complete HTML document (its own
+  `<html>/<head>/<body>` + inline print-specific CSS) so it
+  uses `layout='none'` (Phase 10 fix #5).
+
+### Documentation (Task 4 + Task 5)
+
+- **README.md:** header version 1.9.8 → 1.9.9; status
+  updated from "در حال توسعه (فاز ۲۶)" to "نهایی (فاز ۲۷ —
+  final polish + comprehensive test sweep — zero debt)".
+  Added a "وضعیت نهایی" line summarizing the final state:
+  200 unique routes, 27 controllers, 42 tables, ZERO debt —
+  ready for v2.0.0.
+- **VERSION:** 1.9.8 → 1.9.9.
+- **CHANGELOG.md:** this `## [1.9.9] — 2026-11-17` section
+  above the `## [1.9.8]` section.
+- **docs/DEBT_REVIEW.md:** new
+  `### فاز ۲۷: final polish + tests (v1.9.9)` section before
+  `## ۵. خلاصهٔ live debt`. Confirms zero debt carried
+  forward to Phase 28. Live-debt summary table is unchanged
+  (still all zeros).
+- **docs/PHASE_27_FINAL_POLISH.md** (new): comprehensive
+  test report + polish summary.
+
+### After Phase 27
+
+- **0 critical, 0 high, 0 medium, 0 low** — **ZERO DEBT**.
+- Project is ready for **v2.0.0** (Phase 28 — awaiting user
+  approval). No code changes from v1.9.9 → v2.0.0 (just the
+  version bump + the user's sign-off).
+
+---
+
 ## [1.9.8] — 2026-11-17
 
 ### Phase 26: low debt cleanup batch 3 — zero debt

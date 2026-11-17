@@ -1517,6 +1517,56 @@ array دسترسی داشت (`$t['status']`) اما controller آبجکت‌ها
 
 ---
 
+### فاز ۲۷: final polish + tests (v1.9.9)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.9 (phase/27-final-polish-tests branch, tag v1.9.9)
+
+#### Debt paid در این فاز
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-14-2 | `NotificationService::notifyAdmins()` برای admin بدون `user_account` matching، notification را silently skip می‌کرد (فقط warning log در فاز ۲۲). structural fix deferred بود: schema `user_notifications.user_account_id` NOT NULL بود و FK به `user_accounts(id)` داشت. وقتی admin در `users` table بود ولی username-bridge به `user_accounts` خالی بود، هیچ notification row ساخته نمی‌شد. | (۱) Migration 014 (`20261117_014_user_notifications_nullable_user_account.sql`): `ALTER TABLE user_notifications MODIFY COLUMN user_account_id INT NULL DEFAULT NULL` با information_schema guard (IS_NULLABLE). FK CASCADE حفظ شد (FK با NULL کار می‌کند — InnoDB وقتی ستون NULL است FK check را skip می‌کند). (۲) `NotificationService::notifyAdmins()` حالا برای admin بدون user_account، یک row با `user_account_id = NULL` insert می‌کند. dedup روی `(type, title)` برای row های NULL — چند admin بدون user_account یک NULL-row به‌ازای هر `(type, title)` share می‌کنند. info log جایگزین warning شد (row ساخته می‌شود، "skip" دیگر درست نیست). (۳) `OperatorFlagNotificationTest` به‌روزرسانی شد: assertion فاز ۲۲ ("orphan → no row") معکوس شد به "orphan → NULL-row ساخته شد" + assertion برای `user_account_id IS NULL`، title، body، idempotency، و اینکه bridged admin جدا row خودش را می‌گیرد. step 5 (subscriber-direct) نیز fix شد: قبل از `handle()` row قبلی bridged admin حذف می‌شود (تا dedup فعال نشود)، بعد با title واقعی `'نیازمند بررسی اپراتور'` (نه suffix synthetic) query می‌شود. |
+| D-27-1 (bonus) | `IpRateLimiter::hitIp()` lazy-prune اشتباه بود: `pruneStale($cutoff * 2)` که در آن `$cutoff = $now - $window`. این multiplication یک عدد بزرگ می‌ساخت (`2 * (1731800000 - 60) = 3463599880` → سال ۲۰۷۹)، پس predicate `updated_at < FROM_UNIXTIME(?)` با EVERY row در table مطابقت می‌کرد (همهٔ `updated_at` ها قبل از ۲۰۷۹ هستند). prune همهٔ bucket ها (از جمله همان bucket که توسط همین `hitIp()` call ساخته شد) را حذف می‌کرد. prune فقط در `random_int(1, 50) === 1` (~۲٪ per call) فعال می‌شود؛ test ۱۲ `hit()` call می‌کرد، پس probability فعال‌شدن حداقل یک prune `1 - (49/50)^12 ≈ 21٪` بود. test ~۷۹٪ PASS می‌شد و ~۲۱٪ flake می‌کرد. | `pruneStale($cutoff - $window)` (که برابر است با `$now - 2 * $window` — docstring's intended "older than window × 2" threshold). inline comment اضافه شد که bug + math را توضیح می‌دهد. |
+
+#### Test fixes (۶ failure از فاز قبلی → ۰ failure)
+
+سه class از failure از پیش موجود (همگی environment-dependent) در فاز ۲۷ fix شدند:
+
+| Test | Failure قبل | وضعیت بعد | راهکار |
+|---|---|---|---|
+| `LicenseTitleTest` | ۱ | ۰ | ترتیب `run()` تغییر کرد: `testByService` قبل از `testToggle` اجرا می‌شود. `byService` query `is_active = 1` را filter می‌کند؛ `testToggle` مقدار `is_active` را ۱→۰ flip می‌کند. با ترتیب قدیمی، `testByService` بعد از toggle اجرا می‌شد و row با `is_active = ۰` در نتیجه نبود. |
+| `OperatorFlagNotificationTest` | ۴ | ۰ | D-14-2 ( Structural fix — بالا). |
+| `MigrateFromGatewayTest` | ۱ (exception) | ۰ (SKIP) | `setUp()` حالا `is_file($gatewaySchema)` را قبل از load چک می‌کند؛ اگر فایل نبود `markTestSkipped('v2 gateway source not available (mojavez-gateway repo not cloned)')` صدا می‌زند. وقتی v2 repo side-by-side کلون شده باشد، test عادی اجرا می‌شود. |
+
+#### Bonus fix — IpRateLimiterTest flake
+
+همان D-27-1 در جدول بالا. این test قبلاً flaky بود (~۷۹٪ PASS، ~۲۱٪ flake). بعد از fix، test پایدار PASS می‌شود.
+
+#### Route sweep — ۱۴۴ PASS، ۰ FAIL، ۵۶ SKIP
+
+اسکریپت جدید `scripts/phase27_route_sweep.php` همهٔ ۲۰۰ route یکتا (method, path) را introspect و curl می‌کند (unauthenticated). ۱۴۴ route غیر-path-param همه یک status code قابل‌قبول (GET 200/302 یا POST 200/302/419) برمی‌گردانند. ۵۶ route با path-param (e.g. `/tracking/{code}`) SKIP می‌شوند چون نیاز به ID واقعی دارند. ۴۰۴ page با site layout (layout.php) render می‌شود. 500-handler test SKIP — v3 فقط 404 view دارد (`errors/404.php`، فاز ۱۰).
+
+#### Debt introduced در این فاز
+
+هیچ.
+
+#### Debt carried forward به فاز ۲۸
+
+**صفر.** پروژه همچنان در **ZERO debt** است — ۰ critical، ۰ high، ۰ medium، **۰ low**. فاز ۲۸ فقط version bump + sign-off کاربر است؛ هیچ code change ای نیست.
+
+#### توصیه برای فاز ۲۸
+
+- [x] فاز ۲۶ (v1.9.8): low debt cleanup batch 3 — **تکمیل شد**
+- [x] فاز ۲۷ (v1.9.9): final polish + comprehensive test sweep — **تکمیل شد**
+- [ ] فاز ۲۸ (v2.0.0): version bump + user sign-off
+- [ ] پس از تأیید کاربر → v2.0.0
+
+---
+
+
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -1528,6 +1578,11 @@ array دسترسی داشت (`$t['status']`) اما controller آبجکت‌ها
 | high | 0 | — | — |
 | medium | 0 | — | — |
 | low | 0 | — | — |
+
+اگر critical > 0 یا high > 3، هشدار در CI.
+
+**وضعیت پس از فاز ۲۷ (final polish + tests):**
+۰ critical، ۰ high، **۰ medium**، **۰ low** (بدون تغییر در شمارش — فاز ۲۷ هیچ debt جدید وارد نکرد، و D-14-2 + D-27-1 را پرداخت کرد که هر دو از پیش deferred بودند). فاز ۲۷ آخرین فاز polish بود: ۳ test fix (۶ failure → ۰)، route sweep کامل (۱۴۴ PASS / ۰ FAIL / ۵۶ SKIP)، favicon/version/404/print verification، documentation cleanup. مهم‌ترین دستاورد فاز ۲۷: D-14-2 (Structural fix برای admin notifications بدون user_account) و D-27-1 (IpRateLimiter lazy-prune bug که test را flaky می‌کرد). پروژه آمادهٔ فاز ۲۸ (v2.0.0 version bump + sign-off کاربر) است.
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 

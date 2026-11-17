@@ -722,7 +722,7 @@ CREATE TABLE IF NOT EXISTS `user_accounts` (
 
 CREATE TABLE IF NOT EXISTS `user_notifications` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_account_id` int(11) NOT NULL,
+  `user_account_id` int(11) DEFAULT NULL,
   `applicant_id` int(11) DEFAULT NULL,
   `type` varchar(50) NOT NULL,
   `title` varchar(200) NOT NULL,

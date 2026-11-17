@@ -1,8 +1,10 @@
 # mojavez-v3
 
-> **نسخهٔ پایه:** 1.9.8 · **وضعیت:** در حال توسعه (فاز ۲۶ — low-debt cleanup batch 3 — zero debt)
+> **نسخهٔ پایه:** 1.9.9 · **وضعیت:** نهایی (فاز ۲۷ — final polish + comprehensive test sweep — zero debt)
 > **فلسفه:** PHP 8.2 خالص، بدون Composer، بدون فریم‌ورک.
 > **مخزن‌های مرجع:** [`andrbi109/Mojavez-v2`](https://github.com/andrbi109/Mojavez-v2) (سامانهٔ صدور مجوز صنایع دستی) و [`andrbi108/mojavez-gateway`](https://github.com/andrbi108/mojavez-gateway) (scraper درگاه ملی).
+
+> **وضعیت نهایی:** ۲۰۰ مسیر یکتا (Core 157 + NationalGateway 43) + ۲۷ کنترلر + ۴۲ جدول + **ZERO debt** — آمادهٔ v2.0.0 (فاز ۲۸، در انتظار تأیید کاربر).
 
 **mojavez-v3** جانشین یکپارچهٔ دو پروژهٔ پیشین است که از صفر و در یک پایگاه کد واحد بازنویسی می‌شود. این پروژه دو زنجیرهٔ مجزا را به یک سامانهٔ واحد پیوند می‌زند:
 
