@@ -241,6 +241,50 @@ final class Module implements ModuleInterface
             // ----- Phase 2 admin panel routes -----
             ['method' => 'GET', 'path' => '/admin/dashboard', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'dashboard'],
             ['method' => 'GET', 'path' => '/admin/applications', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'applications'],
+
+            // ----- Phase 17 admin: AdminController extensions (12 routes) -----
+            // Order: specific routes (/register, /edit/{id}, /postal-requests,
+            // /my-tasks, /add-document, /delete-document, /request-payment,
+            // /license-state, /postal-requests/approve, /postal-requests/reject,
+            // /update) are registered BEFORE the catch-all /admin/view/{id}
+            // (first-match router — the {id} placeholder matches [^/]+, so
+            // a generic /admin/{id} would catch /admin/register etc.).
+            ['method' => 'GET',  'path' => '/admin/register',                  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'registerForm'],
+            ['method' => 'POST', 'path' => '/admin/register',                  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'registerProcess'],
+            ['method' => 'GET',  'path' => '/admin/edit/{id}',                 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'editApplication'],
+            ['method' => 'POST', 'path' => '/admin/update',                    'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'updateApplication'],
+            ['method' => 'POST', 'path' => '/admin/add-document',              'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'addDocument'],
+            ['method' => 'POST', 'path' => '/admin/delete-document',          'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'deleteDocument'],
+            ['method' => 'POST', 'path' => '/admin/request-payment',          'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'requestPayment'],
+            ['method' => 'POST', 'path' => '/admin/license-state',            'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'updateLicenseState'],
+            ['method' => 'GET',  'path' => '/admin/postal-requests',          'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'postalRequests'],
+            ['method' => 'POST', 'path' => '/admin/postal-requests/approve',  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'approvePostalRequest'],
+            ['method' => 'POST', 'path' => '/admin/postal-requests/reject',   'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'rejectPostalRequest'],
+            ['method' => 'GET',  'path' => '/admin/my-tasks',                  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'myTasks'],
+
+            // ----- Phase 17 admin: ServiceType CRUD (3 routes) -----
+            ['method' => 'GET',  'path' => '/admin/service-types',         'handler' => \App\Modules\Core\Controllers\ServiceTypeController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/service-types/save',    'handler' => \App\Modules\Core\Controllers\ServiceTypeController::class, 'action' => 'save'],
+            ['method' => 'POST', 'path' => '/admin/service-types/delete', 'handler' => \App\Modules\Core\Controllers\ServiceTypeController::class, 'action' => 'delete'],
+
+            // ----- Phase 17 admin: WizardStep CRUD (5 routes) -----
+            // toggle/{id} uses a path param; save/delete/move use body fields.
+            // /move must be registered before /save (no conflict — different
+            // paths) and before any catch-all on /admin/wizard-steps.
+            ['method' => 'GET',  'path' => '/admin/wizard-steps',            'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/save',       'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'save'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/toggle/{id}', 'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'toggle'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/delete',     'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'delete'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/move',       'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'move'],
+
+            // ----- Phase 17 admin: Sms CRUD + entry review (4 routes) -----
+            ['method' => 'GET',  'path' => '/admin/sms',                     'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/sms/save-template',       'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'saveTemplate'],
+            ['method' => 'POST', 'path' => '/admin/sms/delete-template',     'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'deleteTemplate'],
+            ['method' => 'POST', 'path' => '/admin/sms/review-entry',       'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'reviewEntry'],
+
+            // Catch-all: view a single applicant (must come AFTER the new
+            // /admin/{action} routes so they don't get swallowed by {id}).
             ['method' => 'GET', 'path' => '/admin/view/{id}', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'viewApplication'],
             ['method' => 'POST', 'path' => '/admin/change-status', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'changeStatus'],
 

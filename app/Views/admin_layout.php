@@ -53,6 +53,9 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/applications" class="nav-link">
                 <i class="bi bi-folder2-open"></i> درخواست‌ها
             </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/my-tasks" class="nav-link">
+                <i class="bi bi-list-task"></i> وظایف من
+            </a>
 
             <h6>مدیریت</h6>
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/users" class="nav-link">
@@ -67,8 +70,25 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/license-titles" class="nav-link">
                 <i class="bi bi-award"></i> عناوین مجوز
             </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/service-types" class="nav-link">
+                <i class="bi bi-briefcase"></i> انواع خدمت
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/wizard-steps" class="nav-link">
+                <i class="bi bi-diagram-3"></i> مراحل ویزارد
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sms" class="nav-link">
+                <i class="bi bi-chat-dots"></i> پیامک
+            </a>
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/settings" class="nav-link">
                 <i class="bi bi-gear"></i> تنظیمات
+            </a>
+
+            <h6>درخواست‌ها</h6>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/postal-requests" class="nav-link">
+                <i class="bi bi-mailbox"></i> درخواست‌های کد پستی
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/register" class="nav-link">
+                <i class="bi bi-person-plus"></i> ثبت‌نام دستی
             </a>
 
             <?php if ($adminRole === 'admin' || $adminRole === 'sync_operator'): ?>

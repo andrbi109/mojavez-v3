@@ -149,6 +149,133 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.8.0] — 2026-11-17
+
+### Added — Phase 17: complete admin panel — 12 AdminController methods + 3 new controllers
+
+Phase 17 ports the missing admin functionality from v2. The
+`AdminController` had only 5 methods (dashboard, applications,
+viewApplication, changeStatus + 3 stubs from Phase 11) plus the
+registration flow was missing the manual-registration-by-admin path.
+Phase 17 adds 12 new `AdminController` methods and 3 new controllers
+(`ServiceTypeController`, `WizardStepController`, `SmsController`) with
+their views, plus the 6 missing admin views.
+
+**AdminController — 12 new methods (was 5, now 17):**
+
+- `registerForm` / `registerProcess` (`GET/POST /admin/register`) —
+  manual registration by admin. Creates a new `applicants` row with
+  `current_status = 'تأیید اولیه'` (admin-created starts at first
+  approval, not draft) and a generated tracking code. Redirects to
+  `/admin/view/{id}` on success.
+- `editApplication` (`GET /admin/edit/{id}`) — render the
+  `admin/edit_application.php` view with all applicant data (applicants +
+  property_details + job_details + documents) in editable form. Require
+  role `admin` or `expert`.
+- `updateApplication` (`POST /admin/update`) — validate and update the
+  applicant row + related rows. Redirect back to `/admin/view/{id}`.
+- `addDocument` (`POST /admin/add-document`) — accept file upload +
+  `applicant_id` + `doc_type`. Save file under
+  `storage/uploads/applicants/{id}/`, insert a `documents` row. Require
+  role `admin` or `expert`.
+- `deleteDocument` (`POST /admin/delete-document`) — hard-delete the
+  `documents` row + unlink the file. Require role `admin` or `expert`.
+- `requestPayment` (`POST /admin/request-payment`) — set
+  `applicants.payment_required = 1` + `payment_requested_at = NOW()` +
+  a `status_log` entry. Return JSON.
+- `updateLicenseState` (`POST /admin/license-state`) — accept
+  `applicant_id` + `new_state` (in `['جاری', 'صادر شده', 'باطل']`).
+  Update `applicants.license_state`. Return JSON.
+- `postalRequests` (`GET /admin/postal-requests`) — render
+  `admin/postal_requests.php` listing pending `postal_code_changes`
+  rows joined with applicants. Require role `admin` or `expert`.
+- `approvePostalRequest` (`POST /admin/postal-requests/approve`) —
+  accept `request_id`. Set `postal_code_changes.status = 'تأیید'`,
+  update `applicants.postal_code`, insert a `status_log` entry. Return
+  JSON.
+- `rejectPostalRequest` (`POST /admin/postal-requests/reject`) —
+  accept `request_id` + `reason`. Set `postal_code_changes.status = 'رد'`
+  + `reject_reason`. Return JSON.
+- `myTasks` (`GET /admin/my-tasks`) — render `admin/applications.php`
+  with a role-filtered query (admin sees all in-progress; expert sees
+  only `بررسی کارشناسی رشته`; document_uploader sees those needing
+  documents).
+
+**New controllers (3):**
+
+- `ServiceTypeController` (3 routes: `/admin/service-types`, `/save`,
+  `/delete`) — full CRUD for `service_types`.
+- `WizardStepController` (5 routes: `/admin/wizard-steps`, `/save`,
+  `/toggle/{id}`, `/delete`, `/move`) — full CRUD + reorder for
+  `wizard_steps`.
+- `SmsController` (4 routes: `/admin/sms`, `/save-template`,
+  `/delete-template`, `/review-entry`) — SMS template management +
+  review of `user_sms_entries`.
+
+**New views (6):**
+
+- `app/Views/admin/register.php` — manual registration form.
+- `app/Views/admin/edit_application.php` — full edit form (applicant +
+  property + job + documents + add-document form).
+- `app/Views/admin/postal_requests.php` — pending postal-code change
+  requests with approve/reject buttons.
+- `app/Views/admin/service_types.php` — service_types CRUD table.
+- `app/Views/admin/wizard_steps.php` — wizard_steps CRUD table with
+  up/down arrows.
+- `app/Views/admin/sms.php` — two cards: SMS templates + recent user
+  SMS entries with review form.
+
+**Routes:** +24 new admin routes (12 AdminController + 3 ServiceType
++ 5 WizardStep + 4 Sms). Total Core routes: 102 → 126.
+
+**`admin_layout.php` sidebar extended** — added links under "اصلی":
+`/admin/my-tasks` (وظایف من); under "مدیریت": `/admin/service-types`
+(انواع خدمت), `/admin/wizard-steps` (مراحل ویزارد), `/admin/sms`
+(پیامک); under a new "درخواست‌ها" block: `/admin/postal-requests`
+(درخواست‌های کد پستی), `/admin/register` (ثبت‌نام دستی).
+
+### Files changed (Phase 17)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/Controllers/AdminController.php` | +12 new methods (registerForm, registerProcess, editApplication, updateApplication, addDocument, deleteDocument, requestPayment, updateLicenseState, postalRequests, approvePostalRequest, rejectPostalRequest, myTasks) |
+| `app/Modules/Core/Controllers/ServiceTypeController.php` | new — 3 actions (index, save, delete) |
+| `app/Modules/Core/Controllers/WizardStepController.php` | new — 5 actions (index, save, toggle, delete, move) |
+| `app/Modules/Core/Controllers/SmsController.php` | new — 4 actions (index, saveTemplate, deleteTemplate, reviewEntry) |
+| `app/Modules/Core/Module.php` | +24 routes (12 AdminController + 3 ServiceType + 5 WizardStep + 4 Sms) |
+| `app/Views/admin/register.php` | new — manual registration form |
+| `app/Views/admin/edit_application.php` | new — full edit form |
+| `app/Views/admin/postal_requests.php` | new — pending postal-code changes |
+| `app/Views/admin/service_types.php` | new — service_types CRUD |
+| `app/Views/admin/wizard_steps.php` | new — wizard_steps CRUD |
+| `app/Views/admin/sms.php` | new — SMS templates + entries review |
+| `app/Views/admin_layout.php` | +6 sidebar links (my-tasks, service-types, wizard-steps, sms, postal-requests, register) |
+| `tools/static_analysis_ignore.txt` | +new false-positive patterns from the new views |
+| `VERSION` | `1.7.0` → `1.8.0` |
+| `README.md` | header version `1.7.0`/فاز ۱۶ → `1.8.0`/فاز ۱۷ |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 17 section + live-debt summary update |
+| `docs/PHASE_17_ADMIN_PANEL_COMPLETE.md` | new — Phase 17 documentation |
+
+### Notes
+
+- All 12 new `AdminController` methods follow the existing pattern:
+  `requireRole(['admin'])` or `requireRole(['admin', 'expert'])` at the
+  top, late-bound `Connection` via `$this->container->make()`, JSON
+  responses for AJAX actions, HTML for page views.
+- The 3 new controllers are autowired by the Container (no explicit
+  binding in `Module.php` needed — same as UsersController).
+- `postal_code_changes` is hard-deleted after approve/reject is set to
+  the new status; the `applicants.postal_code` is updated only on
+  approve.
+- The admin can now do everything v2 allowed: register a new applicant
+  manually, edit any applicant's full data, upload/delete documents on
+  their behalf, request payment, change license state, approve/reject
+  postal-code changes, see their role-filtered task list.
+- Static-analysis strict mode passes (0 surviving warnings).
+
+---
+
 ## [1.7.0] — 2026-11-17
 
 ### Added — Phase 16: seed document_types + admin default + real document upload

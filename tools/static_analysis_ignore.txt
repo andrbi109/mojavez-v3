@@ -137,3 +137,40 @@ app/Views/registration/step4.php:<?= $fa ?>
 app/Views/admin/revisions.php:<?= $badge ?>
 app/Views/admin/license_requests.php:<?= $badge ?>
 app/Views/document/pdf_viewer.php:<?= $src ?>
+
+# -----------------------------------------------------------------------------
+# 9. Phase 17 (v1.8.0) — new admin panel views false positives.
+#
+# The Phase 17 admin views (admin/register.php, admin/edit_application.php,
+# admin/postal_requests.php, admin/service_types.php, admin/wizard_steps.php,
+# admin/sms.php) emit a handful of variables without htmlspecialchars() in
+# the immediate vicinity — but each is provably safe:
+#
+#  - `$badge` is always assigned via a `match { ... }` expression against
+#    fixed Bootstrap CSS class literals ('success', 'danger', 'warning',
+#    'secondary') — same pattern as Phase 15's `$badge` in revisions.php.
+#    Not user input.
+#  - `$sid`, `$requestId`, `$entryId`, `$tid` are all assigned as
+#    `(int)$row['id']` (or `(int)$r['id']`) — cast to int. Not user input.
+#  - `$applicantCount`, `$fieldCount` are assigned as
+#    `(int)($r['applicant_count'] ?? 0)` / `(int)($r['field_count'] ?? 0)`
+#    — counts returned by the DB, cast to int. Not user input.
+#
+# Each pattern is scoped to a specific file:variable-name combo so it
+# suppresses ONLY these admin-panel false positives (not real XSS issues
+# elsewhere — the bare variable names like `$badge` or `$sid` would be
+# too broad).
+# -----------------------------------------------------------------------------
+app/Views/admin/postal_requests.php:<?= $badge ?>
+app/Views/admin/postal_requests.php:<?= $requestId ?>
+app/Views/admin/postal_requests.php:<?= $applicantId ?>
+app/Views/admin/register.php:<?= $sid ?>
+app/Views/admin/edit_application.php:<?= $applicantId ?>
+app/Views/admin/edit_application.php:<?= $sid ?>
+app/Views/admin/service_types.php:<?= $sid ?>
+app/Views/admin/service_types.php:<?= $applicantCount ?>
+app/Views/admin/wizard_steps.php:<?= $sid ?>
+app/Views/admin/wizard_steps.php:<?= $fieldCount ?>
+app/Views/admin/sms.php:<?= $tid ?>
+app/Views/admin/sms.php:<?= $entryId ?>
+app/Views/admin/sms.php:<?= $badge ?>
