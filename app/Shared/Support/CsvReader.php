@@ -31,10 +31,22 @@ final class CsvReader
         }
         $file = new \SplFileObject($path, 'r');
         $file->setFlags(\SplFileObject::READ_CSV | \SplFileObject::READ_AHEAD | \SplFileObject::SKIP_EMPTY | \SplFileObject::DROP_NEW_LINE);
+        // PHP 8.4: SplFileObject::fgetcsv() emits an E_DEPRECATED when the
+        // $escape parameter is not explicitly set (the default is changing
+        // from "\\" to "" in PHP 9). The front controller's error handler
+        // converts E_DEPRECATED into ErrorException, so without this
+        // explicit setCsvControl() the read() throws on the first row
+        // and downstream callers (e.g. BulkImportController::upload)
+        // catch it as a hard error. Set the control once with the
+        // legacy default escape ("\\") so existing CSVs parse identically.
+        $file->setCsvControl(',', '"', '\\');
 
-        // Read & strip BOM from the header row.
+        // Read & strip BOM from the header row. fgetcsv() returns null,
+        // false, or [null] (depending on PHP version + flags) for an
+        // empty file or a row it can't parse. Treat all of those as "no
+        // header" so an empty CSV yields zero rows instead of a TypeError.
         $header = $file->fgetcsv();
-        if ($header === null) {
+        if ($header === null || $header === false || $header === [null] || $header === []) {
             return;
         }
         $header = $this->stripBomFromRow($header);
@@ -45,7 +57,7 @@ final class CsvReader
         $lineNo = 1;
         while (!$file->eof()) {
             $row = $file->fgetcsv();
-            if ($row === null || $row === [null] || $row === []) {
+            if ($row === null || $row === false || $row === [null] || $row === []) {
                 continue;
             }
             $lineNo++;

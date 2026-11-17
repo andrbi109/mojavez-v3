@@ -79,6 +79,12 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sms" class="nav-link">
                 <i class="bi bi-chat-dots"></i> پیامک
             </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/payments" class="nav-link">
+                <i class="bi bi-credit-card"></i> پرداخت‌ها
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/bulk-import" class="nav-link">
+                <i class="bi bi-cloud-upload"></i> ایمپورت دسته‌جمعی
+            </a>
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/settings" class="nav-link">
                 <i class="bi bi-gear"></i> تنظیمات
             </a>
@@ -89,6 +95,29 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             </a>
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/register" class="nav-link">
                 <i class="bi bi-person-plus"></i> ثبت‌نام دستی
+            </a>
+
+            <h6>گزارش‌ها</h6>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/reports/by-province" class="nav-link">
+                <i class="bi bi-geo-alt"></i> گزارش استان
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/reports/by-license" class="nav-link">
+                <i class="bi bi-award"></i> گزارش عنوان مجوز
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/reports/by-date" class="nav-link">
+                <i class="bi bi-calendar"></i> گزارش روزانه
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/output/general" class="nav-link">
+                <i class="bi bi-file-bar-graph"></i> خروجی عمومی
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/output/grouped" class="nav-link">
+                <i class="bi bi-table"></i> خروجی گروه‌بندی
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/report/csv" class="nav-link">
+                <i class="bi bi-filetype-csv"></i> خروجی CSV
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/report/pdf" class="nav-link">
+                <i class="bi bi-filetype-pdf"></i> خروجی PDF
             </a>
 
             <?php if ($adminRole === 'admin' || $adminRole === 'sync_operator'): ?>

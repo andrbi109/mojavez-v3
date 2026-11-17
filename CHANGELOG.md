@@ -149,6 +149,168 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.0] — 2026-11-17
+
+### Added — Phase 18: payment + bulk-import + report controllers
+
+Phase 18 ports the three remaining big admin controllers from v2 to v3.
+Together with Phase 17 (admin panel), this closes the bulk of the
+admin-side v2→v3 feature gap. The remaining gap is the License/Document/
+Revision/Tracking controllers, scheduled for Phases 19-20.
+
+**New controllers (3):**
+
+- `PaymentController` (5 routes: `/admin/payments`, `/admin/payments/review`,
+  `/admin/payments/csv`, `/admin/payment-channels/save`,
+  `/admin/payment-channels/delete`). List payments joined with
+  applicants (paginated 20/page), approve/reject pending receipts
+  (writes a `payment_audit_log` row + updates `payments.status`), CSV
+  export with BOM + formula-injection protection, and CRUD on
+  `payment_channels`. Adapts the v3 `payment_channels` schema (id,
+  title, channel_type, is_active, sort_order — no `account_info`
+  column like v2).
+- `BulkImportController` (8 routes: `/admin/bulk-import{,upload,preview,
+  execute,result,missing-docs,documents/{code},documents/{code}/save}`).
+  CSV upload + parse via `App\Shared\Support\CsvReader` (BOM-stripped,
+  associative). Required header columns:
+  `national_code, first_name, last_name, mobile, service_type_id,
+  postal_code`. Per-row validation in the session; preview shows the
+  first 100 rows. Execute INSERTs each valid row as a new `applicants`
+  row at `current_status='تأیید اولیه'` with a CSPRNG tracking code
+  (`Hash::generateTrackingCode()`). Result page shows inserted / failed
+  / skipped counts + per-row table. `missingDocs` lists applicants with
+  zero documents (capped at 500). `uploadDocs` + `saveDocs` let the
+  admin upload documents for one applicant via the existing
+  `FileStorage` service.
+- `ReportController` (11 routes: `/admin/reports/by-{province,city,
+  village,license,date}`, `/admin/output/general`,
+  `/admin/output/single/{trackingCode}`, `/admin/output/grouped` (GET
+  form + POST result), `/admin/report/csv`, `/admin/report/pdf`). Five
+  `by*` actions share a single `admin/report_stats.php` view that takes
+  a `$report` array (title, group_label, total, rows[label,count,
+  percentage]). `csvReport` exports all applicants with their joined
+  service_type, job_details, property_details — UTF-8 BOM +
+  formula-injection protection. `pdfReport` renders a printable A4
+  landscape HTML page (no external PDF library — the user uses the
+  browser's "Save as PDF" dialog). `singleApplicantReport` reuses the
+  existing `print.php` view with layout='none'.
+
+**New views (9):**
+
+- `app/Views/admin/payments.php` — payments table + 4 stat cards +
+  revenue-by-channel sidebar + payment_channels CRUD form (add/edit +
+  delete).
+- `app/Views/admin/bulk_import.php` — CSV upload form.
+- `app/Views/admin/bulk_preview.php` — first 100 parsed rows + per-row
+  valid/invalid badges + confirm-execute button.
+- `app/Views/admin/bulk_result.php` — summary (inserted/failed/skipped
+  counts) + per-row table with tracking codes.
+- `app/Views/admin/bulk_missing_docs.php` — applicants with zero
+  documents + per-row "upload docs" link.
+- `app/Views/admin/bulk_upload_docs.php` — applicant summary + existing
+  docs grouped by doc_type + new-doc upload form.
+- `app/Views/admin/report_stats.php` — generic stats table (group label
+  + count + percentage progress bar). Used by the 5 `by*` actions +
+  the grouped-report result.
+- `app/Views/admin/output_general.php` — overall stats dashboard
+  (total + by-status + by-license-state + by-service-type + 12-month
+  trend) + CSV/PDF export buttons.
+- `app/Views/admin/output_grouped_form.php` — grouped-report form
+  (group_by dropdown for 7 dimensions) + inline results (when posted).
+
+**Routes:** +24 new admin routes (5 Payment + 8 BulkImport + 11 Report).
+Total Core routes: 126 → 150.
+
+**`admin_layout.php` sidebar extended** — added links under a new
+"گزارش‌ها" section: `/admin/reports/by-province` (گزارش استان, bi-geo-alt),
+`/admin/reports/by-license` (گزارش عنوان مجوز, bi-award),
+`/admin/reports/by-date` (گزارش روزانه, bi-calendar),
+`/admin/output/general` (خروجی عمومی, bi-file-bar-graph),
+`/admin/output/grouped` (خروجی گروه‌بندی, bi-table),
+`/admin/report/csv` (خروجی CSV, bi-filetype-csv),
+`/admin/report/pdf` (خروجی PDF, bi-filetype-pdf). Added under "مدیریت":
+`/admin/payments` (پرداخت‌ها, bi-credit-card),
+`/admin/bulk-import` (ایمپورت دسته‌جمعی, bi-cloud-upload).
+
+**Container:** the 3 new controllers are autowired by the Container (no
+explicit bindings needed — same pattern as `UsersController`,
+`ServiceTypeController`, etc.). All their constructor dependencies
+(`Connection`, `ApplicantRepositoryInterface`,
+`DocumentRepositoryInterface`, `ServiceTypeRepositoryInterface`,
+`StatusLogRepositoryInterface`, `FileStorage`, `Hash`) are already
+bound in `app/Modules/Core/Module.php::register()` or as Container
+singletons.
+
+### Files changed (Phase 18)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/Controllers/PaymentController.php` | new — 5 actions (index, review, csv, saveChannel, deleteChannel) |
+| `app/Modules/Core/Controllers/BulkImportController.php` | new — 8 actions (index, upload, preview, execute, result, missingDocs, uploadDocs, saveDocs) |
+| `app/Modules/Core/Controllers/ReportController.php` | new — 11 actions (byProvince, byCity, byVillage, byLicense, byDate, generalReport, singleApplicantReport, groupedReportForm, groupedReportResult, csvReport, pdfReport) |
+| `app/Modules/Core/Module.php` | +24 routes (5 Payment + 8 BulkImport + 11 Report) |
+| `app/Views/admin/payments.php` | new — payments + channels table |
+| `app/Views/admin/bulk_import.php` | new — CSV upload form |
+| `app/Views/admin/bulk_preview.php` | new — first 100 parsed rows + confirm |
+| `app/Views/admin/bulk_result.php` | new — inserted/failed/skipped summary + table |
+| `app/Views/admin/bulk_missing_docs.php` | new — applicants with zero docs |
+| `app/Views/admin/bulk_upload_docs.php` | new — doc upload form for one applicant |
+| `app/Views/admin/report_stats.php` | new — generic stats table (label + count + percentage) |
+| `app/Views/admin/output_general.php` | new — overall stats dashboard |
+| `app/Views/admin/output_grouped_form.php` | new — grouped report form + results |
+| `app/Views/admin_layout.php` | +9 sidebar links (7 under new "گزارش‌ها" section + 2 under "مدیریت") |
+| `app/Shared/Support/CsvReader.php` | PHP 8.4 fix — explicit `setCsvControl(',', '"', '\\')` + handle `fgetcsv()` returning `false` |
+| `tools/static_analysis_ignore.txt` | +3 new false-positive patterns ($cnt, $count in the new report views) |
+| `VERSION` | `1.8.0` → `1.9.0` |
+| `README.md` | header version `1.8.0`/فاز ۱۷ → `1.9.0`/فاز ۱۸ |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 18 section + live-debt summary update |
+| `docs/PHASE_18_PAYMENT_BULK_REPORT.md` | new — Phase 18 documentation |
+
+### Notes
+
+- All 24 new routes require `requireRole(['admin'])` (super-admin only).
+- All CSV exports (payments + applicants) use UTF-8 BOM
+  (`\xEF\xBB\xBF`) for Excel + formula-injection protection (cells
+  starting with `=`, `+`, `-`, `@` are prefixed with a single quote).
+- The `payment_audit_log` table is written on every approve/reject
+  (payment_id, user_id, action, field_changed, old_value, new_value,
+  note) inside a DB transaction so the status update + audit log are
+  atomic.
+- The BulkImport execute path uses `set_time_limit(0)` +
+  `memory_limit=512M` to handle large CSVs (per-row INSERT + tracking
+  code generation can be slow).
+- Static-analysis strict mode passes (0 surviving warnings after
+  adding the 3 new false-positive patterns).
+
+### Bug fix: `CsvReader` PHP 8.4 compatibility
+
+Phase 18 is the first phase to exercise `App\Shared\Support\CsvReader`
+in a runtime path (Phase 1 shipped it but no controller used it). On
+PHP 8.4.23, `SplFileObject::fgetcsv()` emits an E_DEPRECATED when the
+`$escape` parameter is not explicitly set (the default is changing
+from `"\\"` to `""` in PHP 9). The front controller's `set_error_handler`
+converts E_DEPRECATED into `ErrorException`, so `CsvReader::read()`
+threw on the first row and downstream callers caught it as a hard
+error.
+
+Fix: `CsvReader::read()` now calls `$file->setCsvControl(',', '"', '\\')`
+once after `setFlags()` to explicitly set the legacy default escape.
+Also handles `fgetcsv()` returning `false` (not just `null`) for
+unparseable rows on PHP 8.4.
+
+This bug was latent since Phase 1 but only surfaced now because Phase
+18's `BulkImportController::upload` is the first caller.
+
+### Debt paid (Phase 18)
+
+- **D-2-3 (partial)** — 3 more controllers built: PaymentController,
+  BulkImportController, ReportController. Remaining: License,
+  Document, Revision, Tracking (Phases 19-20). After Phase 18: 0
+  critical, 0 high, 0 medium, ~13 low.
+
+---
+
 ## [1.8.0] — 2026-11-17
 
 ### Added — Phase 17: complete admin panel — 12 AdminController methods + 3 new controllers
