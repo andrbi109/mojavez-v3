@@ -969,6 +969,63 @@ document serving، revision requests، license image access، و ~۳۵
 
 ---
 
+### فاز ۱۶: seed document_types + admin default + real document upload (v1.7.0)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.7.0 (phase/16-document-types-and-admin-controllers branch, tag v1.7.0)
+
+#### زمینه
+
+فاز ۱۵.۱ (v1.6.1) برای قابل‌تست‌کردن ویزارد، HTML5 `required` را از
+ورودی‌های فایل مرحلهٔ ۴ حذف کرد چون جدول `document_types` در نصب
+پیش‌فرض خالی بود و `required` مانع submit می‌شد. این فاز حلقه را
+می‌بندد: ۶ `document_types` پیش‌فرض seed می‌شوند، `required` به‌صورت
+دینامیک بر اساس `is_required` محاسبه‌شده (از `doc_type_key`) فعال
+می‌شود، و یک admin پیش‌فرض seed می‌شود تا نصب تازه بلافاصله قابل
+استفاده باشد.
+
+#### Debt paid در این فاز
+
+| ID (از فاز قبلی) | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-7-3 (partial) | viewهای ویزارد ثبت‌نام (registration/) bare HTML بودند — فاز ۱۴ Bootstrap را اضافه کرد ولی ویزارد همچنان doc_types واقعی نداشت (step 4 hard-coded بود) | migration 010 شامل ۶ document_type پیش‌فرض + `requiredDocs()` کنترلر از DB می‌خواند + `step4.php` با `is_required` دینامیک به `required` تنظیم می‌شود. حالا ویزارد ۵ ورودی فایل نشان می‌دهد (۲ اجباری، ۳ اختیاری). |
+
+#### Debt introduced
+
+| ID | توضیح | موقعیت | شدت | راهکار پیشنهادی |
+|---|---|---|---|---|
+| D-16-1 | `document_types` ستون `is_required` ندارد؛ `RegistrationController::requiredDocs()` آن را از `doc_type_key` محاسبه می‌کند (`national_id` و `personal_photo` اجباری). اگر admin بخواهد per-doctor آن را toggle کند، ستون واقعی لازم است. | `app/Modules/Core/Controllers/RegistrationController.php::requiredDocs` + `database/schema.sql` (جدول `document_types`) | low | در فاز ۱۷+ که کنترلر admin برای document_types ساخته می‌شود، ستون `is_required TINYINT(1) NOT NULL DEFAULT 0` اضافه شود و query از CASE به ستون واقعی تغییر کند. |
+
+#### Debt carried forward به فاز ۱۷
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-8-5 | ۸ smoke test HTTP به‌دلیل MariaDB fixture drift fail می‌شوند (pre-existing از فاز ۸) | low | زمان مناسب |
+| D-14-1 | notifyAdmins ادمین‌های بدون user_account را skip می‌کند (username-bridge gap) | low | فاز ۱۷+ |
+| D-16-1 | `document_types.is_required` ستون واقعی نیست (در controller از doc_type_key محاسبه می‌شود) | low | فاز ۱۷+ (هنگام ساخت admin UI برای doc_types) |
+| D-4-5, D-5-1, D-5-4, D-5-5 | ۴ debt از فاز ۵ (low) | low | فرصت مناسب |
+| D-6-2, D-6-3, D-6-4, D-6-5, D-6-6 | ۵ debt از فاز ۶ (low) | low | فرصت مناسب |
+| D-8-1, D-8-2, D-8-3 | ۳ debt از فاز ۸ (low) | low | فرصت مناسب |
+
+#### توصیه برای فاز ۱۷ (post-Phase 16)
+
+- [x] آیا فاز بعدی باید شامل «پاکسازی debt» باشد؟ **خیر** — پس از فاز ۱۶،
+  همچنان ۰ debt medium یا بالاتر باقی مانده است. ~۱۳ مورد low باقی‌مانده
+  که incremental در فازهای feature-driven پرداخت می‌شوند. مهم‌ترین
+  گام بعدی فاز ۱۷ (کنترلرهای admin کامل) است که D-16-1 را هم می‌تواند
+  همراه بیاورد (هنگام ساخت admin UI برای doc_types، ستون `is_required`
+  واقعی اضافه شود).
+- [x] اگر خیر، تمرکز بعدی چه باشد؟ (۱) فاز ۱۷: کنترلرهای admin کامل
+  (AdminController, ServiceType, WizardStep, Sms) با ۳۵+ مسیر.
+  (۲) افزودن ستون `is_required` واقعی به `document_types` همراه با
+  admin UI. (۳) پاکسازی D-8-5 و D-14-1.
+- [x] تأثیر روی زمان‌بندی فاز بعدی چقدر است؟ کم — فاز ۱۶ الگوی
+  seed-migration + read-from-DB را تثبیت کرد که برای فاز ۱۷ (CRUD admin)
+  تکرارپذیر است.
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
@@ -979,21 +1036,21 @@ document serving، revision requests، license image access، و ~۳۵
 | critical | 0 | — | — |
 | high | 0 | — | — |
 | medium | 0 | — | — |
-| low | 12 | 2026-11-17 | D-4-5, D-5-1, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5, D-14-1 |
+| low | 13 | 2026-11-17 | D-4-5, D-5-1, D-5-4, D-5-5, D-6-2, D-6-3, D-6-4, D-6-5, D-6-6, D-8-1, D-8-2, D-8-3, D-8-5, D-14-1, D-16-1 |
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 
-**وضعیت پس از فاز ۱۵ (registration wizard + missing routes + API v1):**
-۰ critical، ۰ high، **۰ medium**، ~۱۲ low. تغییر نسبت به فاز ۱۴:
-D-2-3 (umbrella «کنترلرهای معوق از فاز ۷») به‌طور کامل پرداخت شد.
-هیچ debt جدیدی وارد نشد. خالص: ۱ مورد کاهش (۱۳ → ۱۲).
+**وضعیت پس از فاز ۱۶ (seed document_types + admin default + real document upload):**
+۰ critical، ۰ high، **۰ medium**، ~۱۳ low. تغییر نسبت به فاز ۱۵:
+D-7-3 (partial) پرداخت شد (ویزارد step 4 حالا ۵ ورودی فایل واقعی نشان می‌دهد).
+D-16-1 جدید وارد شد (`document_types.is_required` ستون واقعی نیست — در
+controller از `doc_type_key` محاسبه می‌شود). خالص: ۱ مورد افزایش (۱۲ → ۱۳).
 
-پس از فاز ۱۵، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر»
-است — ~۱۲ مورد low-priority باقی‌مانده که در فازهای بعدی به‌صورت
-incremental پرداخت می‌شوند. مهم‌ترین دستاورد فاز ۱۵: D-2-3 (که از
-فاز ۷ carried forward بود و شامل ~۱۲ کنترلر بود) اکنون کامل پرداخت
-شده است — هر کنترلری که spec برای v1 تعریف کرده بود، ساخته و وایر
-شده است.
+پس از فاز ۱۶، پروژه همچنان در وضعیت «بدون debt medium یا بالاتر»
+است — ~۱۳ مورد low-priority باقی‌مانده. مهم‌ترین دستاورد فاز ۱۶:
+حلقهٔ فاز ۱۵.۱ بسته شد — ویزارد حالا ۵ ورودی فایل واقعی با ۲ اجباری
+نشان می‌دهد (به‌جای hard-code ۳ ردیف)، و نصب تازه با admin پیش‌فرض
+بلافاصله قابل استفاده است.
 
 اگر critical > 0 یا high > 3، هشدار در CI.
 

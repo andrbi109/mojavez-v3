@@ -377,6 +377,20 @@ final class Module implements ModuleInterface
             // (INSERT ... ON DUPLICATE KEY UPDATE on the UNIQUE
             // constraints).
             '20261117_009_seed_default_service_types.sql',
+            // Phase 16 (v1.7.0) — pays part of D-7-3. Seeds the 6 default
+            // document_types (national_id, personal_photo, ownership_deed,
+            // skill_cert, business_license, avatar) so the wizard's step 4
+            // has real document-type definitions to render against, and
+            // the controller can require national_id + personal_photo
+            // dynamically. Idempotent (INSERT ... ON DUPLICATE KEY UPDATE
+            // on UNIQUE doc_type_key).
+            '20261117_010_seed_document_types_default.sql',
+            // Phase 16 (v1.7.0) — seeds the default admin user
+            // (username=admin, password=admin123 — change on first
+            // login!) so a fresh install is immediately usable.
+            // Idempotent (INSERT ... WHERE NOT EXISTS — skips if any
+            // admin row exists, so password rotation is preserved).
+            '20261117_011_seed_admin_default.sql',
         ];
     }
 

@@ -577,18 +577,33 @@ final class RegistrationController extends Controller
     }
 
     /**
-     * The required documents for step 4 (placeholder list — admin can
-     * configure via document_types in a later phase).
+     * The required documents for step 4 — read from the document_types
+     * table so the wizard reflects what's actually seeded/configured.
+     *
+     * Phase 16 (v1.7.0): pays part of D-7-3. Previously this method
+     * returned a hard-coded 3-row array; now it queries the
+     * document_types lookup table that migration 010 seeds with the 6
+     * default rows (national_id, personal_photo, ownership_deed,
+     * skill_cert, business_license, avatar). The avatar row is
+     * filtered out (it is used by AvatarService elsewhere, not by the
+     * wizard). `is_required` is computed from doc_type_key for now
+     * (national_id and personal_photo are required; the rest are
+     * optional) — a real `is_required` column may be added in a later
+     * phase if the admin UI needs per-doctor toggling.
+     *
+     * The returned rows have keys: doc_type, label, is_active, is_required.
      *
      * @return array<int,array<string,mixed>>
      */
     private function requiredDocs(): array
     {
-        return [
-            ['doc_type' => 'national_id', 'label' => 'تصویر کارت ملی', 'is_required' => 1],
-            ['doc_type' => 'photo',       'label' => 'عکس پرسنلی',     'is_required' => 1],
-            ['doc_type' => 'business_ownership', 'label' => 'سند مالکیت محل کسب', 'is_required' => 0],
-        ];
+        return $this->connection()->all(
+            "SELECT doc_type_key AS doc_type, label, is_active,
+                    CASE WHEN doc_type_key IN ('national_id', 'personal_photo') THEN 1 ELSE 0 END AS is_required
+               FROM document_types
+              WHERE is_active = 1 AND doc_type_key != 'avatar'
+              ORDER BY sort_order ASC"
+        );
     }
 
     /**
@@ -624,6 +639,29 @@ final class RegistrationController extends Controller
 
     /**
      * Handle file uploads for the documents array ($_FILES['docs']).
+     *
+     * Phase 16 (v1.7.0): real file upload pipeline. For each uploaded
+     * file keyed by `doc_type_key` in `$_FILES['docs']`:
+     *
+     *   1. Skip files with `UPLOAD_ERR_NO_FILE` (the user didn't pick
+     *      one for that doc_type — fine for optional docs).
+     *   2. Delegate to `FileStorage::storeUpload()` which runs the
+     *      7-layer secure-upload pipeline (UPLOAD_ERR_OK, filename
+     *      normalisation, extension extraction, MIME-based fallback,
+     *      size check ≤ 2 MiB by default, real MIME detection via
+     *      finfo, ext↔MIME consistency check), generates a safe
+     *      filename `{tracking_code}/{doc_type}_{rand6}.ext` under
+     *      `uploads/` (server-generated — no user-controlled path;
+     *      path-traversal defended by `FileStorage::getFullPath()`),
+     *      moves the file via `move_uploaded_file()`, re-encodes
+     *      images via GD (defeats polyglot payloads), and chmod 0640.
+     *   3. On success, insert a row into `documents` with
+     *      `applicant_id`, `doc_type = $doc_type_key`,
+     *      `file_name`, `original_name`, `file_path`.
+     *   4. On any error, log via `$this->logger` and continue — a
+     *      single failed upload must NOT fail the whole submission
+     *      (the wizard's other docs still get processed, and the
+     *      applicant row still transitions to "تأیید اولیه").
      *
      * @param array<string,mixed> $files
      */
