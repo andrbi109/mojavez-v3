@@ -10,7 +10,7 @@ final class PdoStatusLogRepository extends PdoRepository implements StatusLogRep
 {
     public function findByApplicantId(int $applicantId): array
     {
-        $rows = $this->all(
+        $rows = $this->fetchAll(
             'SELECT * FROM status_log WHERE applicant_id = ? ORDER BY created_at ASC',
             [$applicantId]
         );
@@ -19,7 +19,7 @@ final class PdoStatusLogRepository extends PdoRepository implements StatusLogRep
 
     public function getStatusDate(int $applicantId, string $statusName): ?string
     {
-        $row = $this->one(
+        $row = $this->fetchOne(
             'SELECT created_at FROM status_log WHERE applicant_id = ? AND status_name = ? ORDER BY created_at DESC LIMIT 1',
             [$applicantId, $statusName]
         );
@@ -39,7 +39,7 @@ final class PdoStatusLogRepository extends PdoRepository implements StatusLogRep
 
     public function recentAutoSync(int $limit = 50): array
     {
-        $rows = $this->all(
+        $rows = $this->fetchAll(
             'SELECT * FROM status_log WHERE triggered_by = ? ORDER BY created_at DESC LIMIT ?',
             ['auto_sync', $limit]
         );

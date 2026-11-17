@@ -9,17 +9,17 @@ final class PdoUserRepository extends PdoRepository implements UserRepositoryInt
 {
     public function findByUsername(string $username): ?array
     {
-        return $this->one('SELECT * FROM users WHERE username = ? LIMIT 1', [$username]);
+        return $this->fetchOne('SELECT * FROM users WHERE username = ? LIMIT 1', [$username]);
     }
 
     public function findById(int $id): ?array
     {
-        return $this->one('SELECT * FROM users WHERE id = ? LIMIT 1', [$id]);
+        return $this->fetchOne('SELECT * FROM users WHERE id = ? LIMIT 1', [$id]);
     }
 
     public function getAll(): array
     {
-        return $this->all('SELECT * FROM users ORDER BY created_at DESC');
+        return $this->fetchAll('SELECT * FROM users ORDER BY created_at DESC');
     }
 
     public function create(array $data): int
@@ -59,7 +59,7 @@ final class PdoUserRepository extends PdoRepository implements UserRepositoryInt
 
     public function countByRole(string $role): int
     {
-        return (int)$this->scalar('SELECT COUNT(*) FROM users WHERE role = ?', [$role]);
+        return (int)$this->fetchScalar('SELECT COUNT(*) FROM users WHERE role = ?', [$role]);
     }
 
     public function verifyPassword(string $password, string $hash): bool

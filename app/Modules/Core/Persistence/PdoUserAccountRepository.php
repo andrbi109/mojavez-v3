@@ -9,17 +9,17 @@ final class PdoUserAccountRepository extends PdoRepository implements UserAccoun
 {
     public function findById(int $id): ?array
     {
-        return $this->one('SELECT * FROM user_accounts WHERE id = ? LIMIT 1', [$id]);
+        return $this->fetchOne('SELECT * FROM user_accounts WHERE id = ? LIMIT 1', [$id]);
     }
 
     public function findByMobile(string $mobile): ?array
     {
-        return $this->one('SELECT * FROM user_accounts WHERE mobile = ? LIMIT 1', [$mobile]);
+        return $this->fetchOne('SELECT * FROM user_accounts WHERE mobile = ? LIMIT 1', [$mobile]);
     }
 
     public function findByPersonId(int $personId): ?array
     {
-        return $this->one('SELECT * FROM user_accounts WHERE person_id = ? LIMIT 1', [$personId]);
+        return $this->fetchOne('SELECT * FROM user_accounts WHERE person_id = ? LIMIT 1', [$personId]);
     }
 
     public function create(array $data): int
@@ -38,7 +38,7 @@ final class PdoUserAccountRepository extends PdoRepository implements UserAccoun
 
     public function verifyPassword(int $accountId, string $password): bool
     {
-        $row = $this->one('SELECT password FROM user_accounts WHERE id = ? LIMIT 1', [$accountId]);
+        $row = $this->fetchOne('SELECT password FROM user_accounts WHERE id = ? LIMIT 1', [$accountId]);
         if ($row === null) {
             // Run a dummy verify to keep timing uniform.
             password_verify($password, password_hash('dummy', PASSWORD_DEFAULT));
@@ -81,7 +81,7 @@ final class PdoUserAccountRepository extends PdoRepository implements UserAccoun
 
     public function isLocked(int $accountId): bool
     {
-        $row = $this->one(
+        $row = $this->fetchOne(
             'SELECT locked_until FROM user_accounts WHERE id = ? LIMIT 1',
             [$accountId]
         );
@@ -93,7 +93,7 @@ final class PdoUserAccountRepository extends PdoRepository implements UserAccoun
 
     public function getApplications(int $accountId): array
     {
-        return $this->all(
+        return $this->fetchAll(
             'SELECT * FROM applicants WHERE user_account_id = ? AND deleted_at IS NULL ORDER BY created_at DESC',
             [$accountId]
         );
@@ -101,7 +101,7 @@ final class PdoUserAccountRepository extends PdoRepository implements UserAccoun
 
     public function getPayments(int $accountId): array
     {
-        return $this->all(
+        return $this->fetchAll(
             'SELECT * FROM payments WHERE user_account_id = ? ORDER BY created_at DESC',
             [$accountId]
         );
