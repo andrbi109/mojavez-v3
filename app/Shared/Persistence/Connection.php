@@ -144,8 +144,16 @@ final class Connection
      */
     private function bootSession(): void
     {
-        $this->pdo->exec("SET NAMES {$this->charset} COLLATE utf8mb4_unicode_ci");
-        $this->pdo->exec("SET time_zone = '{$this->timezone}'");
+        // charset + timezone come from Environment (not user input), but we
+        // whitelist them defensively so a misconfigured .env can't inject SQL.
+        $allowedCharsets = ['utf8mb4' => true, 'utf8' => true, 'latin1' => true];
+        $charset = isset($allowedCharsets[$this->charset]) ? $this->charset : 'utf8mb4';
+        // timezone must be a fixed offset like '+00:00' or a IANA name.
+        $tz = preg_match('/^[A-Za-z_\/]+(\+|-)\d{2}:\d{2}$/', $this->timezone)
+            ? $this->timezone
+            : '+00:00';
+        $this->pdo->exec("SET NAMES {$charset} COLLATE utf8mb4_unicode_ci");
+        $this->pdo->exec("SET time_zone = '{$tz}'");
         $this->pdo->exec("SET sql_mode = 'STRICT_ALL_TABLES,NO_ENGINE_SUBSTITUTION'");
     }
 
