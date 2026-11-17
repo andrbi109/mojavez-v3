@@ -155,6 +155,33 @@ final class Module implements ModuleInterface
                 $container->make(\App\Modules\NationalGateway\Services\RateLimiterService::class)
             )
         );
+
+        // ApplicantSyncAdapter (ACL) — the golden-link bridge to Core.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\ApplicantSyncAdapter::class,
+            fn () => new \App\Modules\NationalGateway\Services\ApplicantSyncAdapter(
+                $container->make(\App\Modules\NationalGateway\Services\PatternMatcher::class),
+                $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\PersonRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
+                $container->make(\App\Events\EventBus::class),
+                $container->logger
+            )
+        );
+
+        // NationalSyncOrchestrator — drives the full golden-link cycle.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\NationalSyncOrchestrator::class,
+            fn () => new \App\Modules\NationalGateway\Services\NationalSyncOrchestrator(
+                $container->make(\App\Modules\NationalGateway\Services\LicenseService::class),
+                $container->make(\App\Modules\NationalGateway\Services\ApplicantSyncAdapter::class),
+                $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\SyncAuditLogRepositoryInterface::class),
+                $container->make(\App\Events\EventBus::class),
+                $container->logger
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void
