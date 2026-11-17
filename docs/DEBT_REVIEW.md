@@ -1298,6 +1298,74 @@ print.php، و افزودن favicon. پس از فاز ۲۰، فاز ۲۱ (v1.9.3
 
 ---
 
+### فاز ۲۲: رفع نشست + چرخه ۱۸ وضعیت + low debt (v1.9.4)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.4 (phase/22-session-fix-status-cycle branch, tag v1.9.4)
+
+#### مشکل حیاتی برطرف‌شده
+
+**نشست ورود در مرورگر ذخیره نمی‌شد** — ریشه: flag `secure` در session
+cookie بر اساس `APP_ENV=production` تنظیم می‌شد. مرورگرها cookie
+`secure` را روی HTTP ذخیره نمی‌کنند. سرور توسعه روی HTTP بود، پس نشست
+در هر navigation حذف می‌شد.
+
+**رفع:** `Session::__construct()` حالا `?bool $secure = null` می‌پذیرد.
+وقتی null، از `$_SERVER['HTTPS']` به‌صورت خودکار تشخیص می‌دهد. `.env.example`
+به `APP_ENV=development` تغییر کرد.
+
+**تأیید:** agent-browser flow: admin login → navigate to `/` → back to
+`/admin/dashboard` → session persists (no re-login). ✅
+
+#### Debt paid
+
+| ID | توضیح | چگونه پرداخت شد |
+|---|---|---|
+| D-16-1 | document_types فاقد is_required column | migration 012: ALTER TABLE + UPDATE. RegistrationController::requiredDocs() حالا از DB می‌خواند. |
+| D-14-1 | notifyAdmins username-bridge gap | NotificationService::notifyAdmins() حالا warning لاگ می‌کند (به‌جای silent skip). |
+
+#### چرخه ۱۸ وضعیت
+
+همه ۱۸ وضعیت (۱۴ مشترک + ۴ مخصوص مشاغل خانگی) در config/statuses.php +
+ApplicantStatus enum + config/workflow.php تأیید شد. تغییر وضعیت
+دستی (admin/expert) و سیستمی (autoProgress + autoCancel) پیاده‌سازی شد.
+صفحه `/admin/status-cycle` برای نمایش نمودار اضافه شد.
+
+#### Debt introduced
+
+هیچ.
+
+#### Debt carried forward به فاز ۲۳
+
+| ID | توضیح | شدت | مهلت رفع |
+|---|---|---|---|
+| D-4-5 | SSE تست واقعی نیاز به Apache | low | فاز ۲۸+ |
+| D-5-1 | seed_lookups sandbox fallback محدود | low | فاز ۲۸+ |
+| D-5-4 | business_address suffix-mask محدودیت | low | فاز ۲۸+ |
+| D-5-5 | county = township assumption | low | فاز ۲۸+ |
+| D-6-2 | static_analysis false-positive warnings | low | فاز ۲۸+ |
+| D-6-3 | test_track_scraper fixture missing | low | فاز ۲۸+ |
+| D-6-4 | install.php lock-file fallback | low | فاز ۲۸+ |
+| D-6-5 | docker secrets manual generation | low | فاز ۲۸+ |
+| D-6-6 | CI smoke job needs .env | low | فاز ۲۸+ |
+| D-8-1 | OutboundSyncService stub | low | v2.0+ |
+| D-8-2 | Stage2ReadinessChecker::checkContractTests | low | فاز ۲۸+ |
+| D-8-3 | NationalSyncOrchestrator dedup set | low | فاز ۲۸+ |
+| D-8-5 | smoke-test sandbox variance | low | فاز ۲۸+ |
+
+#### توصیه برای فاز ۲۳
+
+- [ ] فاز ۲۳ (v1.9.5): تکمیل CRUD views باقی‌مانده + فعال‌سازی همه
+- [ ] فاز ۲۴ (v1.9.6): low debt cleanup batch 1
+- [ ] فاز ۲۵ (v1.9.7): low debt cleanup batch 2
+- [ ] فاز ۲۶ (v1.9.8): low debt cleanup batch 3
+- [ ] فاز ۲۷ (v1.9.9): final polish + tests
+- [ ] فاز ۲۸ (v1.9.10): آماده‌سازی v2.0.0
+- [ ] پس از تأیید کاربر → v2.0.0
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود

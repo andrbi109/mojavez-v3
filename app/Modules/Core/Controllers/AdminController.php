@@ -87,9 +87,13 @@ final class AdminController extends Controller
         try {
             $cancelled = $this->autoCancel->cancelExpired();
             $prioritised = $this->autoCancel->updatePriorities();
+            // Phase 22 (v1.9.4) — auto-progress applicants stuck in a
+            // pre-issue status for more than app.auto_progress_days.
+            $progressed = $this->autoCancel->autoProgress();
         } catch (\Throwable $e) {
             $cancelled = 0;
             $prioritised = 0;
+            $progressed = 0;
             $this->logger->warning('AutoCancel failed on dashboard view', [
                 '_module' => 'core', 'error' => $e->getMessage(),
             ]);
@@ -110,6 +114,7 @@ final class AdminController extends Controller
         return $this->render('admin/dashboard', [
             'cancelled'         => $cancelled,
             'prioritised'       => $prioritised,
+            'progressed'        => $progressed,
             'totalApplicants'   => $totalApplicants,
             'pendingReview'     => $pendingReview,
             'issuedThisMonth'   => $issuedThisMonth,
@@ -860,6 +865,57 @@ final class AdminController extends Controller
             'page'     => 1,
             'pageSize' => 100,
             'filters'  => ['current_status' => $statuses],
+        ]);
+    }
+
+    /**
+     * GET /admin/status-cycle — visual reference of the 18-status workflow.
+     *
+     * Phase 22 (v1.9.4) — completes the 18-status workflow cycle. This
+     * is a documentation view: it renders the full 18 statuses (14 shared
+     * + 4 household-only) as Bootstrap cards, grouped by phase
+     * (pre-issue vs post-issue, shared vs household), with their order,
+     * badge color, manual/auto flag, and pre_issue flag. Arrows between
+     * cards show the manual + automatic transitions.
+     *
+     * Auth: requireRole(['admin']) — only super-admins see the full
+     * workflow reference. Experts/operators only see their own task
+     * list (via /admin/my-tasks), not the workflow diagram.
+     *
+     * Reads from config/statuses.php (the Single Source of Truth for
+     * status definitions). No DB queries — purely a view of config.
+     */
+    public function statusCycle(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $statuses = (array)Config::get('statuses.statuses', []);
+        $terminal = (array)Config::get('statuses.terminal', []);
+        $preIssue = (array)Config::get('statuses.pre_issue', []);
+
+        // Split into shared (14) + household-only (4) — the household-only
+        // entries have the 'services' => [2] flag.
+        $shared = [];
+        $household = [];
+        foreach ($statuses as $slug => $meta) {
+            $services = $meta['services'] ?? [];
+            if ($services === [2] || (is_array($services) && in_array(2, $services, true))) {
+                $household[$slug] = $meta;
+            } else {
+                $shared[$slug] = $meta;
+            }
+        }
+
+        // Sort by order (asc).
+        $byOrder = static fn (array $a, array $b): int => ($a['order'] ?? 0) <=> ($b['order'] ?? 0);
+        uasort($shared, $byOrder);
+        uasort($household, $byOrder);
+
+        return $this->render('admin/status_cycle', [
+            'title'      => 'چرخهٔ ۱۸ وضعیت',
+            'shared'      => $shared,
+            'household'   => $household,
+            'terminal'    => $terminal,
+            'preIssue'    => $preIssue,
         ]);
     }
 

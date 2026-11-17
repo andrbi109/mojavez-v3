@@ -586,10 +586,16 @@ final class RegistrationController extends Controller
      * default rows (national_id, personal_photo, ownership_deed,
      * skill_cert, business_license, avatar). The avatar row is
      * filtered out (it is used by AvatarService elsewhere, not by the
-     * wizard). `is_required` is computed from doc_type_key for now
-     * (national_id and personal_photo are required; the rest are
-     * optional) — a real `is_required` column may be added in a later
-     * phase if the admin UI needs per-doctor toggling.
+     * wizard).
+     *
+     * Phase 22 (v1.9.4): pays D-16-1. `is_required` is now read from
+     * the real `document_types.is_required` column (added by migration
+     * 012) instead of computed from `doc_type_key` with a CASE list.
+     * The migration marks national_id + personal_photo as required;
+     * future admin UI can toggle per-type requiredness without a code
+     * change here. The `is_required` column is TINYINT(1) NOT NULL
+     * DEFAULT 0 — PDO returns it as int 0/1, which PHP truthy/falsy
+     * handles directly.
      *
      * The returned rows have keys: doc_type, label, is_active, is_required.
      *
@@ -598,8 +604,7 @@ final class RegistrationController extends Controller
     private function requiredDocs(): array
     {
         return $this->connection()->all(
-            "SELECT doc_type_key AS doc_type, label, is_active,
-                    CASE WHEN doc_type_key IN ('national_id', 'personal_photo') THEN 1 ELSE 0 END AS is_required
+            "SELECT doc_type_key AS doc_type, label, is_active, is_required
                FROM document_types
               WHERE is_active = 1 AND doc_type_key != 'avatar'
               ORDER BY sort_order ASC"

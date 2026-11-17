@@ -16,6 +16,16 @@ namespace App\Http;
  *
  * Two realms (admin / user) use distinct session key prefixes — both can
  * be active in the same browser simultaneously without interfering.
+ *
+ * Phase 22 (v1.9.4) — CRITICAL session-persistence fix:
+ * The `secure` cookie flag is no longer bound to `APP_ENV=production`.
+ * Browsers refuse to persist `secure` cookies over HTTP — so the previous
+ * `secure: isProduction()` default dropped the session on every navigation
+ * when the dev server ran on HTTP (which it always does in development).
+ * The fix: `secure` is now nullable. When null, the start() method
+ * auto-detects from `$_SERVER['HTTPS']` at runtime — true only when the
+ * current request is actually over HTTPS. This makes the cookie persist
+ * over HTTP dev AND HTTPS prod without configuration.
  */
 final class Session
 {
@@ -23,11 +33,45 @@ final class Session
 
     private bool $started = false;
 
+    /**
+     * @param bool|null $secure  Null (default) = auto-detect from $_SERVER['HTTPS']
+     *                           at start() time. Pass an explicit bool to force.
+     * @param int       $lifetime Cookie lifetime in seconds.
+     * @param string    $name    Cookie name (MOJAVEZSESSID by default).
+     */
     public function __construct(
-        private readonly bool $secure = false,
+        private readonly ?bool $secure = null,
         private readonly int $lifetime = 86400,
         private readonly string $name = 'MOJAVEZSESSID'
     ) {}
+
+    /**
+     * Resolve the `secure` flag for the current request.
+     *
+     * Returns the explicitly-supplied value if non-null; otherwise
+     * auto-detects from `$_SERVER['HTTPS']` and `SERVER_PORT`. Mirrors
+     * the standard `is_https()` heuristic used by Symfony and others:
+     *   - `$_SERVER['HTTPS']` set to a non-empty, non-'off' value, OR
+     *   - `$_SERVER['SERVER_PORT']` == 443.
+     *
+     * This is intentionally NOT gated by `APP_ENV` — a production app
+     * behind a TLS-terminating proxy that talks HTTP to PHP-FPM should
+     * also get `secure: false`, because the *browser* sees HTTPS but
+     * PHP sees HTTP. (Reverse-proxy trust is a separate concern handled
+     * by `Request::$trustProxy`.)
+     */
+    private function resolveSecure(): bool
+    {
+        if ($this->secure !== null) {
+            return $this->secure;
+        }
+        $https = $_SERVER['HTTPS'] ?? '';
+        if ($https !== '' && strtolower($https) !== 'off') {
+            return true;
+        }
+        $port = $_SERVER['SERVER_PORT'] ?? '';
+        return (string)$port === '443';
+    }
 
     public function start(): void
     {
@@ -50,7 +94,7 @@ final class Session
             'lifetime' => $this->lifetime,
             'path'     => '/',
             'httponly' => true,
-            'secure'   => $this->secure,
+            'secure'   => $this->resolveSecure(),
             'samesite' => 'Lax',
         ]);
         @ini_set('session.use_strict_mode', '1');

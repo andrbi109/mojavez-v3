@@ -57,6 +57,9 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/my-tasks" class="nav-link">
                 <i class="bi bi-list-task"></i> وظایف من
             </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/status-cycle" class="nav-link">
+                <i class="bi bi-diagram-3"></i> چرخهٔ ۱۸ وضعیت
+            </a>
 
             <h6>مدیریت</h6>
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/users" class="nav-link">
