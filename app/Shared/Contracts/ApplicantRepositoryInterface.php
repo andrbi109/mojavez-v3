@@ -108,6 +108,30 @@ interface ApplicantRepositoryInterface
     public function updatePriority(int $id, bool $priority): void;
 
     /**
+     * Bulk-set priority=1 for all applicants whose
+     * registration_completed_at is older than $days days and that are
+     * still in a pre-issue status (mirror of
+     * ApplicantStatus::isPreIssue()).
+     *
+     * Phase 13 (v1.4.0): pays D-2-5. The previous AutoCancelService
+     * implementation used `paginate()` (1000 rows at a time) and
+     * iterated in PHP, calling `updatePriority(id, true)` per row.
+     * For large volumes that was slow (one UPDATE per row). This
+     * method issues a single UPDATE ... WHERE ... statement so the
+     * database does the work in one shot.
+     *
+     * Filters applied (must match the previous PHP-loop semantics):
+     *   - deleted_at IS NULL (skip soft-deleted)
+     *   - priority = 0 (skip already-prioritised)
+     *   - registration_completed_at IS NOT NULL (skip never-completed)
+     *   - registration_completed_at < DATE_SUB(NOW(), INTERVAL $days DAY)
+     *   - current_status IN (pre-issue statuses)
+     *
+     * @return int The number of rows updated.
+     */
+    public function bulkSetPriorityForPreIssueOlderThan(int $days): int;
+
+    /**
      * Soft-delete (set deleted_at = NOW()). Never hard-delete.
      */
     public function softDelete(int $id): void;

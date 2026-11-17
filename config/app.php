@@ -23,6 +23,15 @@ return [
     'locale'       => 'fa_IR',
     'base_url'     => $_ENV['BASE_URL']  ?? '/',
 
+    // Trust proxy headers (X-Forwarded-For, X-Forwarded-Proto, ...).
+    // Phase 13 (v1.4.0): pays D-1-3. Was hard-coded `false` in
+    // `public/index.php` (TODO comment). Set to `true` ONLY when this
+    // app sits behind a trusted reverse proxy (nginx, Caddy, Cloudflare,
+    // ...). The default `false` is the safe choice — when in doubt,
+    // don't trust the client's X-Forwarded-* headers (they can be
+    // spoofed). Override per-environment via .env: APP_TRUST_PROXY=true.
+    'trust_proxy'  => ($_ENV['APP_TRUST_PROXY'] ?? 'false') === 'true',
+
     // Pagination
     'default_page_size' => 20,
     'max_page_size'      => 100,

@@ -221,6 +221,20 @@ final class FormFieldController extends Controller
      * Swaps sort_order with the adjacent row in the requested direction,
      * then redirects to the index. Falls through silently if the field
      * is already at the boundary (no row to swap with).
+     *
+     * Phase 13 (v1.4.0): pays D-11-2. The neighbour-selection SQL is
+     * deterministic under sort_order ties: when multiple rows share the
+     * same `sort_order`, the tie-break is by `id` (ASC for "down", DESC
+     * for "up"). The WHERE clause uses `sort_order < ? OR (sort_order = ?
+     * AND id < ?)` (and the symmetrical `> ?` form for "down") so that
+     * the swap target is unambiguous even when several rows have the
+     * same sort_order. The `ORDER BY sort_order <dir>, id <dir> LIMIT 1`
+     * then selects the unique nearest neighbour.
+     *
+     * Without this tie-break, two rows with the same sort_order would
+     * produce an ambiguous neighbour selection — the swap could land
+     * on either row, leading to non-deterministic ordering. This rule
+     * is documented here (was implicit before Phase 13).
      */
     public function move(Request $request, array $params = []): Response
     {

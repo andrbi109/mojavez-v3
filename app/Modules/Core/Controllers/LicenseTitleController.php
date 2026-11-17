@@ -221,6 +221,37 @@ final class LicenseTitleController extends Controller
     }
 
     /**
+     * GET /api/v1/license-titles/by-service/{id} — public JSON list
+     * filtered by service_type_id. Same payload shape as the admin
+     * `byService` action but with NO `requireRole(['admin'])` guard and
+     * WITHOUT the internal `sort_order` field (so the public surface
+     * is just `{id, title, category, is_active}` — the wizard only
+     * needs those four fields to populate a dropdown).
+     *
+     * Phase 13 (v1.4.0): pays D-11-1. The registration wizard's
+     * job-detail step calls this from the public side (before the
+     * applicant is logged in) to dynamically fetch the
+     * service-type-specific license titles.
+     *
+     * No auth required. The data is not sensitive (license titles are
+     * a public catalog used to populate a dropdown — same visibility
+     * as the service_types table).
+     */
+    public function byServicePublic(Request $request, array $params = []): Response
+    {
+        $serviceTypeId = (int)($params['id'] ?? 0);
+        $rows = $this->conn->all(
+            'SELECT id, title, category, is_active
+               FROM license_titles
+              WHERE service_type_id = ?
+                AND is_active = 1
+              ORDER BY sort_order, id',
+            [$serviceTypeId]
+        );
+        return $this->jsonSuccess($rows);
+    }
+
+    /**
      * @return array<string,mixed>
      */
     private function blankTitle(): array

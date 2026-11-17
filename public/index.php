@@ -182,7 +182,12 @@ $session->start();
 // 10. Build the Request — pass BASE_URL so paths are normalized.
 // ============================================================
 $baseUrl = $environment->baseUrl;
-Request::$trustProxy = false; // TODO: wire from config('app.trust_proxy')
+// Phase 13 (v1.4.0) — pays D-1-3. trust_proxy now reads from
+// config('app.trust_proxy') instead of being hard-coded. The config
+// value itself defaults to false and can be overridden via the
+// APP_TRUST_PROXY env var (see config/app.php). Only enable it behind
+// a trusted reverse proxy.
+Request::$trustProxy = (bool)\App\Shared\Support\Config::get('app.trust_proxy', false);
 $request = Request::fromGlobals($baseUrl);
 
 // ============================================================

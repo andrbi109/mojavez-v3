@@ -197,6 +197,16 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/check-sync', 'handler' => \App\Modules\Core\Controllers\CronController::class, 'action' => 'sync'],
             ['method' => 'GET', 'path' => '/api/v1/stream', 'handler' => \App\Modules\Core\Controllers\SseController::class, 'action' => 'stream'],
 
+            // ----- Phase 13 public API: license-titles by service (pays D-11-1) -----
+            // Used by the registration wizard's job-detail step to dynamically
+            // fetch the license-title dropdown options for a chosen
+            // service_type. NO auth required (license titles are public
+            // catalog data). The payload surface is restricted to
+            // {id, title, category, is_active} — no internal fields like
+            // sort_order. The admin variant (byService) stays admin-only
+            // and returns the full set.
+            ['method' => 'GET', 'path' => '/api/v1/license-titles/by-service/{id}', 'handler' => \App\Modules\Core\Controllers\LicenseTitleController::class, 'action' => 'byServicePublic'],
+
             // ----- Phase 2 public routes -----
             ['method' => 'GET', 'path' => '/', 'handler' => \App\Modules\Core\Controllers\HomeController::class, 'action' => 'index'],
             ['method' => 'GET', 'path' => '/guide', 'handler' => \App\Modules\Core\Controllers\HomeController::class, 'action' => 'guide'],
@@ -299,6 +309,7 @@ final class Module implements ModuleInterface
             '20261117_005_user_accounts_fees_and_lookup_tables.sql',
             '20261117_006_rate_limit_buckets.sql',
             '20261117_007_seed_avatar_document_type.sql',
+            '20261117_008_user_accounts_email_display_name.sql',
         ];
     }
 

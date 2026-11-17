@@ -220,6 +220,47 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
         );
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * Phase 13 (v1.4.0): pays D-2-5. Single SQL UPDATE that mirrors the
+     * previous PHP-loop semantics in AutoCancelService::updatePriorities.
+     *
+     * The pre-issue status list is mirrored from
+     * ApplicantStatus::isPreIssue(). Kept as a SQL literal (not as a
+     * sub-call to isPreIssue) because MariaDB can't peek into PHP. If
+     * the enum changes, this list must be kept in sync — same coupling
+     * as findExpiredApplications/findAutoSyncEligible which hard-code
+     * their own status lists.
+     */
+    public function bulkSetPriorityForPreIssueOlderThan(int $days): int
+    {
+        // The pre-issue statuses (mirror of ApplicantStatus::isPreIssue()
+        // — 10 statuses). If the enum changes, update this list too.
+        $preIssueStatuses = [
+            'پیش‌نویس',                       // Draft
+            'تکمیل اطلاعات',                  // InfoComplete
+            'احراز نشانی',                    // AddressVerification
+            'بررسی کارشناسی رشته',            // FieldExpertReview
+            'ثبت درخواست صدور',               // IssueRequest
+            'بارگذاری مدارک به سازمان',       // DocUploadToOrg
+            'درخواست اصلاح مدارک',            // DocCorrectionRequest
+            'تأیید اولیه',                    // InitialApproval
+            'تأیید نهایی',                    // FinalApproval
+            'تطبیق آدرس با ثبت احوال',         // AddressSabtAhvalMatch
+        ];
+        $placeholders = implode(', ', array_fill(0, count($preIssueStatuses), '?'));
+        $sql = "UPDATE applicants
+                   SET priority = 1, updated_at = NOW()
+                 WHERE deleted_at IS NULL
+                   AND priority = 0
+                   AND registration_completed_at IS NOT NULL
+                   AND registration_completed_at < DATE_SUB(NOW(), INTERVAL ? DAY)
+                   AND current_status IN ({$placeholders})";
+        $params = array_merge([$days], $preIssueStatuses);
+        return $this->execute($sql, $params);
+    }
+
     public function softDelete(int $id): void
     {
         $this->execute(
