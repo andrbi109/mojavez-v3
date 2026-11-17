@@ -283,6 +283,12 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/sms/delete-template',     'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'deleteTemplate'],
             ['method' => 'POST', 'path' => '/admin/sms/review-entry',       'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'reviewEntry'],
 
+            // ----- Phase 22 (v1.9.4): 18-status workflow diagram -----
+            // Documentation-only view (requireRole(['admin'])) showing all
+            // 18 statuses (14 shared + 4 household-only) as cards with
+            // order, color, manual/auto flag, pre_issue flag.
+            ['method' => 'GET',  'path' => '/admin/status-cycle',            'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'statusCycle'],
+
             // Catch-all: view a single applicant (must come AFTER the new
             // /admin/{action} routes so they don't get swallowed by {id}).
             ['method' => 'GET', 'path' => '/admin/view/{id}', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'viewApplication'],
@@ -496,6 +502,14 @@ final class Module implements ModuleInterface
             // Idempotent (INSERT ... WHERE NOT EXISTS — skips if any
             // admin row exists, so password rotation is preserved).
             '20261117_011_seed_admin_default.sql',
+            // Phase 22 (v1.9.4) — pays D-16-1. Adds a real `is_required`
+            // TINYINT(1) column to the document_types lookup table so
+            // RegistrationController::requiredDocs() can read
+            // requiredness from the row instead of computing it from
+            // the doc_type_key string. Marks national_id + personal_photo
+            // as required (idempotent UPDATE). Idempotent ALTER
+            // (information_schema guard) so re-running is safe.
+            '20261117_012_document_types_is_required_column.sql',
         ];
     }
 

@@ -113,9 +113,21 @@ final class NotificationService
      * `username` — admins who ALSO have a user_account (e.g. a superuser
      * who uses both the admin realm `/admin/login` and the user realm
      * `/login`) see the notification in their user panel. Admins who
-     * don't have a user_account are simply skipped (logged) — the
-     * sync_audit_log row is still there for the admin panel to surface
-     * directly (which is the primary admin-facing channel).
+     * don't have a user_account are simply skipped (logged per-admin
+     * as a warning since Phase 22, so a misconfigured admin gets
+     * noticed) — the sync_audit_log row is still there for the admin
+     * panel to surface directly (which is the primary admin-facing
+     * channel).
+     *
+     * Phase 22 (v1.9.4): pays D-14-1. Previously the per-admin skip was
+     * silent (only an aggregate `skipped` count was logged). Now each
+     * skipped admin gets its own `warning` log entry with the username,
+     * so a misconfigured admin (no user_account bridge) is visible in
+     * the log without re-running the sync. The structural fix (separate
+     * `admin_notifications` table OR a nullable `user_id` column on
+     * `user_notifications`) is intentionally deferred — it requires a
+     * schema migration + an admin-notifications view, both out of
+     * scope for Phase 22.
      *
      * Idempotency: dedupes on (user_account_id, type, title) so a
      * re-dispatch (e.g. re-running the sync cycle) doesn't spam admins.
@@ -156,6 +168,15 @@ final class NotificationService
                 // Admin has no user_account — can't insert into
                 // user_notifications (NOT NULL FK). Skip; the
                 // sync_audit_log row is still there for the admin panel.
+                // Phase 22 (v1.9.4): log a per-admin warning so a
+                // misconfigured admin (no user_account bridge) is
+                // visible in the log without re-running the sync.
+                $this->logger->warning('notifyAdmins: admin has no user_account bridge, skipping in-app notification', [
+                    'admin_username' => $username,
+                    'admin_id'       => (int)($admin['id'] ?? 0),
+                    'title'           => $title,
+                    'hint'            => 'Create a user_account with the same username, or wait for the admin_notifications table migration (D-14-1 follow-up).',
+                ]);
                 $skipped++;
                 continue;
             }

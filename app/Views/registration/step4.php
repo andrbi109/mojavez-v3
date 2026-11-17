@@ -14,11 +14,14 @@
  * docs were uploaded. Kept the `*` asterisk for visual indication.
  *
  * Phase 16 (v1.7.0) — restored the `required` attribute dynamically
- * based on each document_type's computed `is_required` field
- * (national_id and personal_photo are required; the rest are
- * optional). `RegistrationController::requiredDocs()` now reads from
- * the document_types table seeded by migration 010, so the wizard
- * reflects what's actually configured.
+ * based on each document_type's `is_required` field. The
+ * `RegistrationController::requiredDocs()` reads the column seeded by
+ * migration 010, so the wizard reflects what's actually configured.
+ *
+ * Phase 22 (v1.9.4) — `is_required` is now read from the real
+ * `document_types.is_required` column (migration 012) instead of being
+ * computed from `doc_type_key`. The view is unchanged — it still reads
+ * `$doc['is_required']` (truthy/falsy int).
  *
  * Expected $data:
  *   $requiredDocs  array<int, array{doc_type, label, is_required}> —

@@ -149,6 +149,104 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.9.4] — 2026-11-17
+
+### Phase 22: session persistence fix + 18-status workflow cycle + low debt
+
+This phase fixes the **#1 user-reported bug** — sessions were not persisting
+in the browser across navigations, requiring re-login after every redirect.
+
+### Critical fix — Session persistence
+
+**Root cause:** The `Session` class set the cookie `secure` flag based on
+`Environment::isProduction()`. The shipped `.env.example` defaulted to
+`APP_ENV=production`, so a fresh clone had `secure: true`. Browsers do
+NOT persist `secure` cookies over HTTP — only HTTPS. The dev server runs
+on HTTP, so the session cookie was dropped on every navigation.
+
+**Fix:**
+- `Session::__construct()` now accepts `?bool $secure = null`. When null,
+  the `start()` method auto-detects HTTPS from `$_SERVER['HTTPS']` at
+  runtime. Production on HTTPS → `secure=true`; production on HTTP
+  (e.g., behind a TLS-terminating proxy) → `secure=false`; dev on HTTP →
+  `secure=false`; dev on HTTPS → `secure=true`.
+- `Container.php` passes `secure: null` (auto-detect) instead of
+  `$this->environment->isProduction()`.
+- `.env.example` now defaults to `APP_ENV=development` with a comment
+  explaining that production deployments should override.
+
+**Verification:** `curl -sS -D - http://127.0.0.1:8000/login | grep
+Set-Cookie` now shows `HttpOnly; SameSite=Lax` (no `secure` flag on HTTP).
+agent-browser flow: admin login → navigate to `/` (home) → navigate back
+to `/admin/dashboard` → session persists (no re-login redirect). ✅
+
+### 18-status workflow cycle
+
+Verified all 18 statuses in `config/statuses.php` + `ApplicantStatus` enum
++ `config/workflow.php` transition matrix:
+- 14 shared statuses (Draft → View/Print, Rejected, Cancelled)
+- 4 household-business-only statuses (service_type_id=2, from
+  smkh.mcls.gov.ir)
+
+`AdminController::changeStatus()` handles all 18 (manual transitions
+with `triggered_by = $role`). `AutoCancelService::autoProgress()` added
+for system-driven forward progression (`triggered_by = 'system'`).
+
+New `GET /admin/status-cycle` view shows the full 18-status diagram as
+Bootstrap cards with order, color, manual/auto flag, pre_issue flag.
+Sidebar link added.
+
+### Low debt paid
+
+- **D-16-1** (low) — `document_types.is_required` column added (migration
+  012). `RegistrationController::requiredDocs()` now reads from the column
+  instead of computing from `doc_type_key`. `step4.php` uses the DB value.
+- **D-14-1** (low) — `NotificationService::notifyAdmins()` now logs a
+  warning when an admin has no matching `user_account` (instead of
+  silently skipping). Documents the limitation for future
+  `admin_notifications` table.
+
+### Files changed (Phase 22)
+
+| File | Change |
+|---|---|
+| `app/Http/Session.php` | `__construct` accepts `?bool $secure = null`; auto-detect HTTPS in `start()` |
+| `app/Container.php` | Session factory passes `secure: null` (auto-detect) |
+| `.env.example` | `APP_ENV=production` → `APP_ENV=development` (with comment) |
+| `config/statuses.php` | verified — 18 statuses already defined |
+| `config/workflow.php` | transitions verified/extended for all 18 statuses |
+| `app/Modules/Core/Domain/Enums/ApplicantStatus.php` | verified — 18 enum cases |
+| `app/Modules/Core/Controllers/AdminController.php` | `changeStatus()` verified — handles all 18 |
+| `app/Modules/Core/Services/AutoCancelService.php` | +`autoProgress()` method (system-driven) |
+| `app/Modules/Core/Controllers/RegistrationController.php` | `requiredDocs()` reads `is_required` from DB |
+| `app/Views/registration/step4.php` | uses DB `is_required` value |
+| `app/Modules/Core/Services/NotificationService.php` | `notifyAdmins()` logs warning on no-match |
+| `app/Modules/Core/migrations/20261117_012_document_types_is_required_column.sql` | new — ALTER TABLE + UPDATE |
+| `app/Modules/Core/Module.php` | +1 migration entry (012) + status-cycle route |
+| `app/Views/admin/status_cycle.php` | new — 18-status diagram view |
+| `app/Views/admin_layout.php` | +1 sidebar link (status-cycle) |
+| `app/Views/admin/dashboard.php` | minor — references auto-progress |
+| `config/app.php` | minor — trust_proxy default |
+| `VERSION` | `1.9.3` → `1.9.4` |
+| `README.md` | header version + status |
+| `CHANGELOG.md` | this section |
+| `docs/DEBT_REVIEW.md` | Phase 22 section + live-debt summary |
+| `docs/PHASE_22_SESSION_STATUS_CYCLE.md` | new — Phase 22 documentation |
+
+### Notes
+
+- The session fix is the highest-impact change in this phase. It
+  converts a "must re-login after every redirect" experience into a
+  normal persistent-session experience.
+- The 18-status workflow is now fully implemented — manual (admin/expert)
+  + automatic (system auto-progress + auto-cancel). All transitions are
+  logged to `status_log` with `triggered_by`.
+- The `is_required` column on `document_types` makes the wizard's
+  required-docs logic data-driven (no more hard-coded `doc_type_key`
+  list).
+
+---
+
 ## [1.9.3] — 2026-11-17
 
 ### Phase 21: final test + v2.0.0 preparation

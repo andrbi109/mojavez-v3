@@ -1,6 +1,7 @@
 <?php
 /** @var int $cancelled */
 /** @var int $prioritised */
+/** @var int $progressed */
 /** @var int $totalApplicants */
 /** @var int $pendingReview */
 /** @var int $issuedThisMonth */
@@ -68,7 +69,18 @@
                 <a href="/admin/sync/status" class="btn btn-outline-primary">
                     <i class="bi bi-cloud-arrow-down"></i> وضعیت همگام‌سازی درگاه ملی
                 </a>
+                <a href="/admin/status-cycle" class="btn btn-outline-primary">
+                    <i class="bi bi-diagram-3"></i> چرخهٔ ۱۸ وضعیت
+                </a>
             </div>
         </div>
     </div>
 </div>
+<?php if ((int)($progressed ?? 0) > 0): ?>
+<div class="alert alert-info small">
+    <i class="bi bi-info-circle"></i>
+    پیشرفت خودکار: <?= htmlspecialchars((string)$progressed, ENT_QUOTES, 'UTF-8') ?>
+    پروندهٔ متوقف در وضعیت پیش از صدور، یک گام به جلو حرکت داده شد.
+</div>
+<?php endif;
+

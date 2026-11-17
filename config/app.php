@@ -48,6 +48,12 @@ return [
     // Workflow timings
     'auto_cancel_days'  => 14,   // from "ثبت درخواست صدور"
     'priority_days'     => 12,   // priority for registrations older than this
+    // Phase 22 (v1.9.4) — auto-progress threshold (days). AutoCancelService::
+    // autoProgress() advances applicants stuck in a pre-issue status for
+    // longer than this many days. Must be less than auto_cancel_days (14)
+    // so an applicant gets at least one auto-progress nudge before the
+    // 14-day auto-cancel kicks in. Set to 0 to disable auto-progress.
+    'auto_progress_days' => 7,
 
     // License image access token
     'license_access_token_hours' => 72,
