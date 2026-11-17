@@ -200,6 +200,17 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/admin/view/{id}', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'viewApplication'],
             ['method' => 'POST', 'path' => '/admin/change-status', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'changeStatus'],
 
+            // ----- Phase 7 admin: user + settings management -----
+            ['method' => 'GET',  'path' => '/admin/users',                'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/users/new',            'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'create'],
+            ['method' => 'POST', 'path' => '/admin/users',                'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'store'],
+            ['method' => 'GET',  'path' => '/admin/users/{id}/edit',      'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'edit'],
+            ['method' => 'POST', 'path' => '/admin/users/{id}',          'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'update'],
+            ['method' => 'POST', 'path' => '/admin/users/{id}/delete',    'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'destroy'],
+
+            ['method' => 'GET',  'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'update'],
+
             // ----- Phase 2 public tracking routes -----
             ['method' => 'GET', 'path' => '/tracking', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'search'],
             ['method' => 'POST', 'path' => '/tracking/search', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'find'],
