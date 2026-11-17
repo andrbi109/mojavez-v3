@@ -304,10 +304,42 @@ try {
     }
     $response->send();
 } catch (RouteNotFoundException $e) {
-    $response = Response::html(
-        '<!doctype html><meta charset="utf-8"><h1>۴۰۴</h1><p>صفحه یافت نشد.</p>',
-        404
-    );
+    // Phase 10: render a proper 404 page using the public layout instead of
+    // a bare "صفحه یافت نشد" string. The view `errors/404.php` is a content-only
+    // view (no <html>/<head>) that wraps cleanly inside layout.php's site nav.
+    // We construct a minimal Controller-like shim here because the front
+    // controller does not have a current Controller instance handy — the
+    // 404 path is reached BEFORE a controller is dispatched.
+    //
+    // Note: layout.php uses `$this->csrf->token()` inside `if (!empty($csrfField))`.
+    // From this global-scope require, `$this` is not defined, so we MUST set
+    // `$csrfField = ''` to skip that branch — otherwise the layout would fatal.
+    $viewsDir = ROOT_PATH . '/app/Views';
+    $viewPath = $viewsDir . '/errors/404.php';
+    $layoutPath = $viewsDir . '/layout.php';
+    $siteName = 'سامانهٔ مجوز';
+    $siteDescription = 'صدور مجوز کسب‌وکار خانگی';
+    $title = 'صفحه یافت نشد';
+    $baseUrl = $environment->baseUrl;
+    $csrfField = '';  // skip the csrf-token meta tag (no Controller $this available)
+    $content = '<!doctype html><meta charset="utf-8"><h1>۴۰۴</h1><p>صفحه یافت نشد.</p>';
+    if (is_file($viewPath) && is_file($layoutPath)) {
+        try {
+            ob_start();
+            require $viewPath;
+            $content = (string)ob_get_clean();
+            ob_start();
+            require $layoutPath;
+            $html = (string)ob_get_clean();
+            $response = Response::html($html, 404);
+        } catch (\Throwable $renderErr) {
+            // If the 404 view itself fails to render, fall back to the bare
+            // 404 message — never let the 404 page itself 500.
+            $response = Response::html($content, 404);
+        }
+    } else {
+        $response = Response::html($content, 404);
+    }
     $response->send();
 } catch (MethodNotAllowedException $e) {
     $response = Response::html(

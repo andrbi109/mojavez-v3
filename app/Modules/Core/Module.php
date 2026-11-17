@@ -220,6 +220,14 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/admin/view/{id}', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'viewApplication'],
             ['method' => 'POST', 'path' => '/admin/change-status', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'changeStatus'],
 
+            // ----- Phase 10 admin stubs — close 404s in the admin sidebar -----
+            // These three routes are linked from admin_layout.php's sidebar but
+            // the full controllers are deferred to v1.2 (DEBT_REVIEW D-7-1).
+            // The stubs render a "coming soon" view (HTTP 200) instead of 404.
+            ['method' => 'GET', 'path' => '/admin/form-fields',    'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'formFields'],
+            ['method' => 'GET', 'path' => '/admin/fee-tariff',      'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'feeTariff'],
+            ['method' => 'GET', 'path' => '/admin/license-titles',  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'licenseTitles'],
+
             // ----- Phase 7 admin: user + settings management -----
             ['method' => 'GET',  'path' => '/admin/users',                'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'index'],
             ['method' => 'GET',  'path' => '/admin/users/new',            'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'create'],

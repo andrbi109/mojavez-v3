@@ -9,6 +9,141 @@ header all read from a single source of truth — this file's latest release tag
 This is the fix for the version three-way split seen in v2 (see
 `docs/03-strategy-and-risk.md` §2.3).
 
+## [Unreleased]
+
+### Added — Phase 10: Route/View 404/500 prevention
+
+After Phase 9 closed the `/panel/*` 404-after-login, the user requested a
+broader audit of ALL routes and views to find every remaining 404 or hidden
+500 that would surface at run time. This is the result of that audit.
+
+**7 hidden runtime bugs fixed** (all present since Phase 7 but never caught
+because no test logs in as an admin and exercises the affected routes):
+
+1. **`UsersController` constructor signature mismatch** — called
+   `parent::__construct()` with only 4 args (container, session, csrf,
+   environment) while the base `Controller` requires 6 (the above + `Hash` +
+   `StructuredLogger`). Every `/admin/users*` route returned a fatal "Too few
+   arguments" 500. Fixed: both dependencies added to the constructor and
+   passed to `parent::__construct()`.
+2. **`SettingsController` constructor signature mismatch** — same bug. Every
+   `GET/POST /admin/settings` returned a fatal 500. Fixed.
+3. **`UsersController` / `SettingsController` render() third-arg misuse** —
+   passed a Persian title string as the third argument to `render()`, which
+   the base method interprets as the **layout name**. The layout resolver
+   then looked for `app/Views/مدیریت کاربران.php` (which doesn't exist),
+   silently fell back to "no layout", and the admin pages were rendered
+   without `admin_layout.php` — no sidebar, no header, no Bootstrap CSS.
+   Fixed: title is now passed via the `$data` array (`'title' => ...`),
+   and `render()` is called with the default layout (which auto-detects
+   `admin/*` views and uses `admin_layout`).
+4. **`admin/login.php` nested-HTML** — a complete HTML document
+   (`<html>/<head>/<body>`), but `render('admin/login', [])` auto-wrapped it
+   in `admin_layout.php` (which is also a full HTML document) → `<html>`
+   inside `<body>`. Fixed by adding a `'none'` sentinel to
+   `Controller::render()` that skips layout wrapping, and using it for the
+   login page (which is shown to unauthenticated users and should not have
+   the admin sidebar anyway).
+5. **`print.php` nested-HTML** — same as above for `/tracking/print/{code}`:
+   a full HTML document wrapped by `layout.php` (site nav + footer) — which
+   is also conceptually wrong for a printable A4 page. Fixed with
+   `render('print', ..., 'none')`.
+6. **`Container` self-registration missing** — the `Container` did not
+   register itself as a singleton, so when a controller was autowired with
+   a `Container` dependency, a fresh empty `Container` (no module bindings)
+   was constructed. Subsequent calls like
+   `$this->container->make(Connection::class)` then threw
+   `RuntimeException: Cannot autowire Connection: parameter $host has no
+   type` because the empty Container had no factory for `Connection`. This
+   meant `AdminController::dashboard()` (which uses
+   `$this->connection()->scalar(...)`) returned a 500 on the first
+   logged-in dashboard view. Fixed: `$this->singletons[self::class] = $this;`
+   in the `Container` constructor — autowired controllers now get the real,
+   fully wired Container.
+7. **404 page was bare HTML** — only `<h1>۴۰۴</h1><p>صفحه یافت نشد.</p>`,
+   no site layout, no nav, no recovery actions. Fixed: new
+   `app/Views/errors/404.php` content-only view wrapped in `layout.php`,
+   with buttons for "back to home", "tracking", and "guide". The front
+   controller renders this view when `RouteNotFoundException` is thrown,
+   with a try/catch fallback to the bare 404 string if the view itself
+   fails — so the 404 page never 500s.
+
+**3 missing admin routes added** (sidebar links that previously returned 404):
+
+- `GET /admin/form-fields` → `AdminController::formFields` — renders
+  `admin/stub_coming_soon.php` with a Persian "coming in v1.2" message.
+- `GET /admin/fee-tariff` → `AdminController::feeTariff` — same.
+- `GET /admin/license-titles` → `AdminController::licenseTitles` — same.
+
+These three routes are linked from `admin_layout.php`'s sidebar but had no
+matching controller/route — clicking any of them produced a 404. The stubs
+return HTTP 200 with a clear explanation that the full CRUD is deferred to
+v1.2 (DEBT_REVIEW D-7-1 + D-10-1), plus a back-to-dashboard link. This is
+intentionally a stub (not a 501, not a 404) so users can discover the
+planned sections without hitting a dead end.
+
+**Security fix:**
+
+- `SyncAdminController` (Phase 8) did NOT extend the base `Controller` class
+  and therefore bypassed `requireLogin()/requireRole()` entirely. The
+  docblock claimed the base class enforced auth, but the class didn't
+  extend it — so `/admin/sync/status`, `/admin/sync/pending`, and
+  `/admin/sync/run` were all reachable by unauthenticated users. Fixed:
+  `SyncAdminController` now extends `Controller` and calls
+  `requireRole(['admin', 'sync_operator'])` at the top of every action.
+  Unauthenticated users now get a 302 redirect to `/admin/login` (the
+  expected admin-area UX) instead of raw JSON.
+
+**`Controller::render()` API addition:**
+
+- New sentinel value `'none'` for the `$layout` parameter — renders the
+  view as-is with NO layout wrapping. Use this for views that are already
+  complete HTML documents (e.g. `admin/login.php`, `print.php`). Without
+  this, such views would be nested inside a layout, producing invalid HTML
+  (`<html>` inside `<body>`). See `Controller.php` docblock for details.
+
+**New view files:**
+
+- `app/Views/admin/stub_coming_soon.php` — shared "coming soon" view for
+  the three deferred admin sections. Parameterised by `$title`, `$icon`,
+  `$description`.
+- `app/Views/errors/404.php` — content-only 404 view wrapped by
+  `layout.php`, with site nav + footer + recovery buttons. Rendered by the
+  front controller on `RouteNotFoundException`.
+
+### Files changed (Phase 10)
+
+| File | Change |
+|---|---|
+| `app/Container.php` | +1 line: self-register as singleton in constructor |
+| `app/Modules/Core/Controllers/Controller.php` | +`'none'` layout sentinel in `render()` |
+| `app/Modules/Core/Controllers/AuthController.php` | `adminLoginForm` uses `render('admin/login', [], 'none')` |
+| `app/Modules/Core/Controllers/TrackingController.php` | `printView` uses `render('print', ..., 'none')` |
+| `app/Modules/Core/Controllers/UsersController.php` | Fix constructor (add `Hash` + `StructuredLogger`); fix `render()` calls (title via `$data`, no third arg) |
+| `app/Modules/Core/Controllers/SettingsController.php` | Same fix as UsersController |
+| `app/Modules/Core/Controllers/AdminController.php` | +3 stub actions: `formFields`, `feeTariff`, `licenseTitles` |
+| `app/Modules/NationalGateway/Controllers/SyncAdminController.php` | Now extends `Controller`; `requireRole()` in every action |
+| `app/Modules/Core/Module.php` | +3 stub routes: `/admin/form-fields`, `/admin/fee-tariff`, `/admin/license-titles` |
+| `public/index.php` | 404 handler now renders `errors/404.php` view inside `layout.php`, with fallback to bare HTML |
+| `app/Views/admin/stub_coming_soon.php` | new — shared "coming soon" view |
+| `app/Views/errors/404.php` | new — content-only 404 page with recovery buttons |
+| `docs/DEBT_REVIEW.md` | Phase 10 section + updated live-debt summary |
+| `docs/PHASE_10_ROUTES_VIEWS.md` | new — Phase 10 documentation |
+| `CHANGELOG.md` | this section |
+
+### Notes
+
+- All existing unit tests (391), contract tests (21), and HTTP smoke tests
+  (66 pass / 8 pre-existing D-8-5) remain green — no regression introduced.
+- The `static_analysis.py` and `php_lint_simple.py` warnings are
+  unchanged (all pre-existing false positives around `$csrfField` /
+  `$content` / `define()` / CSS braces).
+- The `Container` self-registration fix is the highest-impact change: it
+  converts a class of "first logged-in admin click → 500" failures into
+  working pages.
+
+---
+
 ## [1.1.0] — 2026-11-17
 
 Phase 8 — Rollout Stage 2 (two-way sync). The infrastructure for pushing v3
