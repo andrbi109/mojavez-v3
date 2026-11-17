@@ -129,13 +129,14 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
     public function update(int $id, array $data): void
     {
         $updatable = [
-            'first_name', 'last_name', 'postal_code', 'mobile', 'birth_date',
-            'father_name', 'marital_status', 'children_count', 'physical_condition',
-            'disability_details', 'income_decile', 'has_court_case', 'has_active_loan',
-            'has_overdue_installments', 'priority', 'service_type_id',
+            'first_name', 'last_name', 'national_code', 'postal_code', 'mobile', 'birth_date',
+            'father_name', 'applicant_type', 'marital_status', 'children_count',
+            'physical_condition', 'disability_details', 'income_decile', 'has_court_case',
+            'has_active_loan', 'has_overdue_installments', 'priority', 'service_type_id',
             'parent_application_id', 'user_account_id', 'consent_external_share',
             'payment_required', 'payment_requested_at', 'registration_started_at',
-            'registration_completed_at',
+            'registration_completed_at', 'tracking_code', 'current_status',
+            'license_state', 'license_valid_until',
         ];
         $sets = [];
         $params = [];

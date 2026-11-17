@@ -42,6 +42,12 @@ require __DIR__ . '/_progress.php';
                     <?= $csrfField ?>
 
                     <h2 class="h6 mb-3"><i class="bi bi-upload"></i> مدارک</h2>
+                    <?php if (empty($requiredDocs)): ?>
+                        <div class="alert alert-info small mb-3">
+                            <i class="bi bi-info-circle"></i>
+                            در حال حاضر مدرکی اجباری نیست. می‌توانید در مراحل بعدی مدارک خود را بارگذاری کنید.
+                        </div>
+                    <?php endif; ?>
                     <?php foreach ($requiredDocs as $doc):
                         $docType = (string)($doc['doc_type'] ?? '');
                         $label = (string)($doc['label'] ?? '');
@@ -54,8 +60,7 @@ require __DIR__ . '/_progress.php';
                             </label>
                             <input type="file" class="form-control" id="doc_<?= htmlspecialchars($docType, ENT_QUOTES) ?>"
                                 name="docs[<?= htmlspecialchars($docType, ENT_QUOTES) ?>]"
-                                accept="image/jpeg,image/png,application/pdf"
-                                <?= $req ? 'required' : '' ?>>
+                                accept="image/jpeg,image/png,application/pdf">
                         </div>
                     <?php endforeach; ?>
 

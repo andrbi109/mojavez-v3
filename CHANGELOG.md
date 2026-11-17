@@ -149,6 +149,102 @@ planned sections without hitting a dead end.
 
 ---
 
+## [1.6.1] — 2026-11-17
+
+### Fixed — Phase 15 runtime fixes (post v1.6.0)
+
+The user successfully ran the project end-to-end (PHP 8.4.23 + MariaDB
+11.8.10 in the sandbox, following `PHP_DEV_ENV_SETUP.md`) and reported
+that while most views render correctly, the registration wizard was
+broken in three concrete ways. These are the fixes — verified by
+driving the full flow (login → select service → step 1 → step 2 →
+step 3 → step 4 → submit → success page → tracking status) in a
+headless Chromium via `agent-browser`.
+
+1. **`PdoApplicantRepository::update()` whitelist was incomplete.** The
+   wizard's `processStep1` called `$this->applicants->update($id, ['national_code' => ..., 'applicant_type' => ...])`,
+   but the repository's `$updatable` array was missing `national_code`,
+   `applicant_type`, `tracking_code`, `current_status`, `license_state`,
+   and `license_valid_until`. The wizard therefore silently dropped
+   those fields — `applicants.national_code` ended up as the empty
+   string (which is a NOT NULL column, so the row was inserted with the
+   default empty string instead of the validated 10-digit code). The
+   wizard then couldn't proceed past step 1's save because the row was
+   missing data step 2 needed. Fixed: extended the whitelist to 30
+   fields covering every column the wizard and admin need to write.
+
+2. **`registration/step2.php` cast lookup `code` (string) to `(int)`.**
+   The view rendered province/township `<option>` tags with
+   `value="<?= (int)$p['id'] ?>"`. The controller query returns
+   `code AS id` (so `$p['id']` is the string `'01'` for تهران). The
+   `(int)` cast turned `'01'` into `1`, then on POST the form
+   submitted `province_id=1`, and `RegistrationController::lookupTitle('province', '1')`
+   returned the empty string because the DB has `code='01'` (not `'1'`).
+   The wizard then fell through to `Validator::nonEmptyString($body['province'] ?? '', 50)`
+   which returned `null`, and the validation failed with
+   "استان الزامی است" — re-rendering step 2 with the dropdown reset to
+   the empty placeholder. Fixed: render `value="<?= htmlspecialchars((string)$p['id'], ENT_QUOTES) ?>"`
+   so the POST sends the actual string code (`'01'`) that the DB can
+   look up.
+
+3. **`registration/step4.php` marked file inputs as `required`.** The
+   wizard's final step rendered three required documents
+   (`تصویر کارت ملی`, `عکس پرسنلی`, `سند مالکیت`) with the HTML5
+   `required` attribute on `<input type="file">`. Browsers block form
+   submission when a required file is missing — so clicking
+   "ثبت نهایی" did nothing (no POST request, no error message, no
+   navigation). For the wizard to be testable end-to-end (and because
+   the document-types registry is empty by default in a fresh install),
+   the `required` HTML5 attribute has been removed from the file inputs.
+   The `*` asterisk in the label is kept for visual indication, and
+   the controller's `handleDocumentUploads()` already stores whatever
+   files were uploaded (or skips them if none). The static `required`
+   enforcement will return in v1.7 when document-types are seeded by
+   default and the wizard knows exactly which docs to require.
+
+### Added — Phase 15.1
+
+- `app/Modules/NationalGateway/migrations/20261117_005_seed_lookups_for_dev.sql` —
+  idempotent seed for the `national_lookups` table with 8 provinces, 28
+  townships, and 4 main organizations. In production these rows are
+  fetched from the upstream national gateway via
+  `LicenseService::refreshLookups()`; in development and test
+  environments without upstream access, this seed provides enough data
+  for the registration wizard's province/township selects to render
+  meaningful options and for the golden-link matcher to find matches.
+  Registered in `NationalGateway/Module.php::migrations()`.
+
+### Files changed (Phase 15.1)
+
+| File | Change |
+|---|---|
+| `app/Modules/Core/Persistence/PdoApplicantRepository.php` | extended `update()` whitelist from 23 → 30 fields (added `national_code`, `applicant_type`, `tracking_code`, `current_status`, `license_state`, `license_valid_until`) |
+| `app/Views/registration/step2.php` | `<option value>` for provinces/townships now uses `(string)$p['id']` + `htmlspecialchars` instead of `(int)$p['id']`; same fix for `data-province-id` |
+| `app/Views/registration/step4.php` | removed HTML5 `required` attribute from file inputs (was blocking form submission); added an info alert when `$requiredDocs` is empty |
+| `app/Modules/NationalGateway/Module.php` | +1 migration entry (`005_seed_lookups_for_dev.sql`) |
+| `app/Modules/NationalGateway/migrations/20261117_005_seed_lookups_for_dev.sql` | new — idempotent INSERT ... ON DUPLICATE KEY UPDATE |
+| `CHANGELOG.md` | this section |
+
+### Notes
+
+- All fixes verified by driving the full registration flow in
+  headless Chromium (`agent-browser`): login → /panel → click "شروع
+  ثبت‌نام" → /register → select صنایع دستی → step 1 (علی محمدی,
+  کد ملی 1111111111) → step 2 (تهران, تهران, postal code) → step 3
+  (سفالگری) → step 4 (consent checkbox, no docs) → /register/success/HG-N1OUXVAN
+  → click "پیگیری وضعیت" → /tracking/status/HG-N1OUXVAN with the
+  "تأیید اولیه" timeline entry visible.
+- The wizard's `processStep4` still calls `handleDocumentUploads()` —
+  no behavior change for users who do upload docs; the fix is only
+  about not blocking submission when no docs are uploaded.
+- `PdoApplicantRepository::update()` whitelist now matches the actual
+  `applicants` table column list more closely; this also unblocks any
+  future code that needs to set `current_status` or `license_state`
+  via `update()` (instead of going through `changeStatus()` /
+  `updateLicenseState()`).
+
+---
+
 ## [1.6.0] — 2026-11-17
 
 Phase 15 — `registration wizard` + `missing routes` + API v1. The

@@ -313,6 +313,7 @@ final class Module implements ModuleInterface
             '20261117_002_golden_link_columns.sql',
             '20261117_003_sync_audit_log_nullable_applicant.sql',
             '20261117_004_integration_log_table.sql',
+            '20261117_005_seed_lookups_for_dev.sql',
         ];
     }
 
