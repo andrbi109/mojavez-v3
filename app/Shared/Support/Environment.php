@@ -68,7 +68,6 @@ final readonly class Environment
 
         $appEnv = $vars['APP_ENV'] ?? 'production';
         $debug = self::asBool($vars['APP_DEBUG'] ?? 'false') || $appEnv === 'local';
-
         return new self(
             appEnv: $appEnv,
             debug: $debug,
@@ -182,5 +181,22 @@ final readonly class Environment
     {
         $lower = strtolower(trim($value));
         return in_array($lower, ['true', '1', 'yes', 'on'], true);
+    }
+
+    /**
+     * Return the application version (read from the VERSION file at the
+     * project root). Used by views to show the version in the footer.
+     */
+    public static function version(): string
+    {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        // Walk up from this file (app/Shared/Support/) to find VERSION.
+        $dir = dirname(__DIR__, 3);
+        $versionFile = $dir . '/VERSION';
+        $cached = is_file($versionFile) ? trim((string)file_get_contents($versionFile)) : '0.0.0-dev';
+        return $cached;
     }
 }

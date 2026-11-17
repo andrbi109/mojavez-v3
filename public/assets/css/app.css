@@ -1,0 +1,247 @@
+/* mojavez-v3 — app theme (day/night) + brand colors.
+   Per docs/00-MASTER.md §19.7 — Bootstrap 5 RTL + Vazirmatn + day/night theme. */
+
+/* ---- Brand palette (mojavez teal) ---- */
+:root {
+    --moj-brand:        #0f766e;  /* teal-700 — trust, government */
+    --moj-brand-rgb:   15, 118, 110;
+    --moj-brand-dark:   #115e59;
+    --moj-brand-light:  #14b8a6;
+    --moj-accent:       #b45309;  /* amber-700 — warm accent for CTAs */
+    --moj-success:      #15803d;
+    --moj-warning:      #b45309;
+    --moj-danger:       #b91c1c;
+
+    /* Surface tokens (light/day theme) */
+    --moj-bg:           #f8fafc;
+    --moj-surface:      #ffffff;
+    --moj-surface-2:     #f1f5f9;
+    --moj-border:        #e2e8f0;
+    --moj-text:          #0f172a;
+    --moj-text-muted:    #64748b;
+
+    /* Header gradient */
+    --moj-header-bg:     linear-gradient(135deg, var(--moj-brand) 0%, var(--moj-brand-dark) 100%);
+    --moj-header-text:   #ffffff;
+}
+
+/* ---- Dark/night theme (data-bs-theme="dark") ---- */
+[data-bs-theme="dark"] {
+    --moj-bg:           #0f172a;
+    --moj-surface:      #1e293b;
+    --moj-surface-2:    #334155;
+    --moj-border:        #475569;
+    --moj-text:          #f1f5f9;
+    --moj-text-muted:    #94a3b8;
+    --moj-header-bg:     linear-gradient(135deg, #134e4a 0%, #0f766e 100%);
+}
+
+/* ---- Bootstrap brand overrides ---- */
+.btn-primary {
+    --bs-btn-bg: var(--moj-brand);
+    --bs-btn-border-color: var(--moj-brand);
+    --bs-btn-hover-bg: var(--moj-brand-dark);
+    --bs-btn-hover-border-color: var(--moj-brand-dark);
+    --bs-btn-active-bg: var(--moj-brand-dark);
+    --bs-btn-active-border-color: var(--moj-brand-dark);
+}
+.btn-outline-primary {
+    --bs-btn-color: var(--moj-brand);
+    --bs-btn-border-color: var(--moj-brand);
+    --bs-btn-hover-bg: var(--moj-brand);
+    --bs-btn-hover-border-color: var(--moj-brand);
+}
+a {
+    color: var(--moj-brand);
+}
+a:hover {
+    color: var(--moj-brand-dark);
+}
+.text-brand { color: var(--moj-brand) !important; }
+.bg-brand { background-color: var(--moj-brand) !important; }
+
+/* ---- App layout ---- */
+body {
+    background-color: var(--moj-bg);
+    color: var(--moj-text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Public site header */
+.moj-header {
+    background: var(--moj-header-bg);
+    color: var(--moj-header-text);
+    padding: 0.75rem 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.moj-header .navbar-brand {
+    font-weight: 700;
+    font-size: 1.25rem;
+    color: var(--moj-header-text);
+}
+.moj-header .nav-link {
+    color: rgba(255, 255, 255, 0.9);
+}
+.moj-header .nav-link:hover,
+.moj-header .nav-link.active {
+    color: #ffffff;
+    font-weight: 500;
+}
+
+/* Public site footer */
+.moj-footer {
+    background-color: var(--moj-surface);
+    border-top: 1px solid var(--moj-border);
+    padding: 1.5rem 0;
+    margin-top: auto;
+    color: var(--moj-text-muted);
+    font-size: 0.9rem;
+}
+
+/* Main content area */
+.moj-main {
+    flex: 1 0 auto;
+    padding: 2rem 0;
+}
+
+/* Card polish */
+.card {
+    background-color: var(--moj-surface);
+    border-color: var(--moj-border);
+    border-radius: 0.625rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.card-header {
+    background-color: var(--moj-surface-2);
+    border-bottom-color: var(--moj-border);
+    font-weight: 600;
+}
+
+/* ---- Admin layout (sidebar + main) ---- */
+.moj-admin-body {
+    display: flex;
+    min-height: 100vh;
+}
+.moj-admin-sidebar {
+    width: 240px;
+    background-color: var(--moj-surface);
+    border-left: 1px solid var(--moj-border);
+    padding: 1rem;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+.moj-admin-sidebar .nav-link {
+    color: var(--moj-text-muted);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    margin-bottom: 0.125rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.moj-admin-sidebar .nav-link:hover {
+    background-color: var(--moj-surface-2);
+    color: var(--moj-text);
+}
+.moj-admin-sidebar .nav-link.active {
+    background-color: rgba(var(--moj-brand-rgb), 0.12);
+    color: var(--moj-brand);
+    font-weight: 500;
+}
+.moj-admin-main {
+    flex: 1;
+    padding: 1.5rem;
+    min-width: 0;
+}
+.moj-admin-sidebar h6 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--moj-text-muted);
+    margin: 1rem 0 0.5rem;
+    padding-right: 0.75rem;
+}
+
+/* ---- Theme toggle button ---- */
+.moj-theme-toggle {
+    background: transparent;
+    border: 1px solid var(--moj-border);
+    color: var(--moj-text-muted);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.moj-theme-toggle:hover {
+    background-color: var(--moj-surface-2);
+    color: var(--moj-text);
+}
+.moj-theme-toggle .bi-sun { display: none; }
+[data-bs-theme="dark"] .moj-theme-toggle .bi-sun { display: inline-block; }
+[data-bs-theme="dark"] .moj-theme-toggle .bi-moon-stars { display: none; }
+
+/* ---- Status badges (Persian applicant status) ---- */
+.moj-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.moj-status::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+.moj-status-draft     { color: #64748b; background: rgba(100,116,139,0.12); }
+.moj-status-submitted { color: #1d4ed8; background: rgba(29,78,216,0.12); }
+.moj-status-confirmed { color: var(--moj-success); background: rgba(21,128,61,0.12); }
+.moj-status-issued    { color: var(--moj-brand); background: rgba(var(--moj-brand-rgb),0.12); }
+.moj-status-rejected  { color: var(--moj-danger); background: rgba(185,28,28,0.12); }
+.moj-status-cancelled { color: #6b7280; background: rgba(107,114,128,0.12); }
+
+/* ---- Tracking code display (monospace, copyable) ---- */
+.moj-tracking-code {
+    font-family: 'Vazirmatn', ui-monospace, monospace;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--moj-brand);
+    background: rgba(var(--moj-brand-rgb), 0.08);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    direction: ltr;
+    display: inline-block;
+}
+
+/* ---- Print view (license) ---- */
+@media print {
+    .moj-header, .moj-footer, .moj-admin-sidebar, .no-print { display: none !important; }
+    .moj-main, .moj-admin-main { padding: 0 !important; }
+    body { background: white; color: black; }
+    .card { box-shadow: none; border: 1px solid #999; }
+}
+
+/* ---- Responsive: collapse admin sidebar on mobile ---- */
+@media (max-width: 767.98px) {
+    .moj-admin-body { flex-direction: column; }
+    .moj-admin-sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        border-left: none;
+        border-bottom: 1px solid var(--moj-border);
+    }
+}
