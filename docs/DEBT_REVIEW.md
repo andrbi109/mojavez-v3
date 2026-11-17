@@ -1366,6 +1366,59 @@ ApplicantStatus enum + config/workflow.php تأیید شد. تغییر وضعی�
 
 ---
 
+### فاز ۲۳: تکمیل CRUD views + تأیید همه قابلیت‌ها فعال (v1.9.5)
+
+**تاریخ تکمیل:** 2026-11-17
+**Maintainer:** AI agent (z.ai)
+**نسخهٔ منتشرشده:** 1.9.5 (phase/23-remaining-crud-views branch, tag v1.9.5)
+
+#### رفع باگ حیاتی — timeline در /panel
+
+`/panel` خطای 500 می‌داد چون `user/overview.php` به timeline به‌صورت
+array دسترسی داشت (`$t['status']`) اما controller آبجکت‌های
+`StatusLogEntry` می‌فرستاد. اصلاح: هم array و هم object پشتیبانی
+می‌شود.
+
+#### تأیید همه views
+
+- همه ۲۹ view ادمین v2 در v3 معادل دارند (directory یا file).
+- ۳ view اضافی در v3: status_cycle، stub_coming_soon (دیگر استفاده
+  نمی‌شود)، sync_readiness.
+- همه ۳۲ endpoint ادمین با session 200 برمی‌گردانند.
+- همه ۹ endpoint کاربر با session 200 برمی‌گردانند.
+- همه ۱۰ endpoint عمومی 200/404 برمی‌گردانند.
+
+#### بدون stub / بدون version-gated
+
+جستجو در کد برای stub/coming-soon/under-construction/v2.0.0-reserved:
+- هیچ stub واقعی وجود ندارد.
+- هیچ قابلیتی به v2.0.0 رزرو نشده.
+- placeholderها در DocumentController فقط برای زمانی است که فایل
+  image موجود نیست (PNG پیش‌فرض).
+
+#### Debt paid
+
+هیچ (فاز fix-only).
+
+#### Debt introduced
+
+هیچ.
+
+#### Debt carried forward به فاز ۲۴
+
+همان ۱۳ low debt از فاز ۲۲.
+
+#### توصیه برای فاز ۲۴
+
+- [ ] فاز ۲۴ (v1.9.6): low debt cleanup batch 1 (D-4-5, D-5-1, D-5-4, D-5-5)
+- [ ] فاز ۲۵ (v1.9.7): low debt cleanup batch 2 (D-6-2, D-6-3, D-6-4, D-6-5, D-6-6)
+- [ ] فاز ۲۶ (v1.9.8): low debt cleanup batch 3 (D-8-1, D-8-2, D-8-3, D-8-5)
+- [ ] فاز ۲۷ (v1.9.9): final polish + tests
+- [ ] فاز ۲۸ (v1.9.10): آماده‌سازی v2.0.0
+- [ ] پس از تأیید کاربر → v2.0.0
+
+---
+
 ## ۵. خلاصهٔ live debt
 
 این بخش به‌صورت خودکار با اسکریپت `tools/debt_summary.py` به‌روزرسانی می‌شود
