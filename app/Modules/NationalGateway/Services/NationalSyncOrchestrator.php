@@ -38,6 +38,25 @@ use App\Shared\Support\StructuredLogger;
  */
 final class NationalSyncOrchestrator
 {
+    /**
+     * Per-orchestrator-instance dedup set for Stage 2 pushes.
+     *
+     * Per D-8-3 — Stage 2 push is keyed by matched_at falling within the
+     * cycle window [startedAt, endedAt]. In a long cycle, the same applicant
+     * could be returned by the SQL window more than once (e.g. if
+     * runCycle() is invoked twice within the same second, or if a
+     * previously-pushed applicant's matched_at is updated by another
+     * cycle in the same window). OutboundSyncService has idempotency at
+     * the integration_log layer, but a dedup set here is cleaner: we
+     * skip + log instead of going through the idempotency lookup.
+     *
+     * The set is reset at the start of each runCycle() call so each cycle
+     * starts fresh (per D-8-3 requirement #4).
+     *
+     * @var array<int,true>
+     */
+    private array $pushedApplicantIds = [];
+
     public function __construct(
         private readonly LicenseService $licenseService,
         private readonly ApplicantSyncAdapter $adapter,
@@ -87,6 +106,10 @@ final class NationalSyncOrchestrator
                 'skip_reason' => 'sync_direction=disabled',
             ];
         }
+
+        // Per D-8-3 — reset the per-cycle dedup set at the start of each
+        // runCycle() call so each cycle starts fresh.
+        $this->pushedApplicantIds = [];
 
         $startedAt = date('Y-m-d H:i:s');
         $this->logger->info('Sync cycle started', ['at' => $startedAt, 'direction' => $direction]);
@@ -138,9 +161,23 @@ final class NationalSyncOrchestrator
         $outboundPushed = 0;
         $outboundConflicts = 0;
         $outboundSkipped = 0;
+        $outboundDedupSkipped = 0;
         $twoWayEnabled = $this->readSetting('sync_two_way_enabled', '0') === '1'
                          && $direction === 'two_way';
         if ($twoWayEnabled && $this->outboundService !== null && $autoConfirmed > 0) {
+            // Per D-8-1 — if the outbound push is still stubbed (no callable
+            // injected), emit a clear warning so production logs surface
+            // "outbound push is stubbed" rather than silently succeeding.
+            if ($this->outboundService->isStubActive()) {
+                $this->logger->warning(
+                    'Stage 2 outbound push running with STUB — upstream has '
+                    . 'no writable endpoint yet (§19.8). Pushes will log as '
+                    . "'skipped'. Inject a real callable via "
+                    . 'OutboundSyncService::setPushCallable() when upstream '
+                    . 'exposes one.',
+                    ['cycle_started_at' => $startedAt]
+                );
+            }
             $recentlyMatched = $this->conn->all(
                 'SELECT id, current_status FROM applicants
                  WHERE matched_at IS NOT NULL
@@ -148,28 +185,17 @@ final class NationalSyncOrchestrator
                    AND national_license_request_number IS NOT NULL',
                 [$startedAt, $endedAt]
             );
-            foreach ($recentlyMatched as $row) {
-                $status = \App\Modules\Core\Domain\Enums\ApplicantStatus::fromSlug((string)$row['current_status']);
-                if ($status === null) {
-                    continue;
-                }
-                $result = $this->outboundService->pushStatusChange(
-                    (int)$row['id'],
-                    $status,
-                    'auto_sync'
-                );
-                if ($result['outcome'] === 'conflict') {
-                    $outboundConflicts++;
-                } elseif ($result['outcome'] === 'skipped') {
-                    $outboundSkipped++;
-                } else {
-                    $outboundPushed++;
-                }
-            }
+            $pushSummary = $this->pushStage2ForRows($recentlyMatched);
+            $outboundPushed = $pushSummary['pushed'];
+            $outboundConflicts = $pushSummary['conflicts'];
+            $outboundSkipped = $pushSummary['skipped'];
+            $outboundDedupSkipped = $pushSummary['dedup_skipped'];
             $this->logger->info('Stage 2 outbound pushes completed', [
                 'pushed' => $outboundPushed,
                 'conflicts' => $outboundConflicts,
                 'skipped' => $outboundSkipped,
+                'dedup_skipped' => $outboundDedupSkipped,
+                'stub_active' => $this->outboundService->isStubActive(),
             ]);
         }
 
@@ -185,6 +211,7 @@ final class NationalSyncOrchestrator
             'outbound_pushed' => $outboundPushed,
             'outbound_conflicts' => $outboundConflicts,
             'outbound_skipped' => $outboundSkipped,
+            'outbound_dedup_skipped' => $outboundDedupSkipped,
             'two_way_enabled' => $twoWayEnabled,
         ]));
 
@@ -198,6 +225,7 @@ final class NationalSyncOrchestrator
             'auto_rejected' => $autoRejected,
             'outbound_pushed' => $outboundPushed,
             'outbound_conflicts' => $outboundConflicts,
+            'outbound_dedup_skipped' => $outboundDedupSkipped,
             'two_way_enabled' => $twoWayEnabled,
         ]);
 
@@ -212,6 +240,7 @@ final class NationalSyncOrchestrator
             'outbound_pushed' => $outboundPushed,
             'outbound_conflicts' => $outboundConflicts,
             'outbound_skipped' => $outboundSkipped,
+            'outbound_dedup_skipped' => $outboundDedupSkipped,
             'two_way_enabled' => $twoWayEnabled,
         ];
     }
@@ -256,6 +285,81 @@ final class NationalSyncOrchestrator
     public function status(): array
     {
         return $this->auditRepo->latestCycleSummary();
+    }
+
+    /**
+     * Push Stage 2 status changes for an iterable of recently-matched
+     * applicant rows. Extracted from runCycle() so the per-row dedup set
+     * (D-8-3) is testable in isolation — the SQL window in runCycle()
+     * only ever returns unique applicant IDs (PK), so the dedup is a
+     * defensive guard against future changes that might cause the same
+     * applicant to appear more than once (e.g. if the SQL is changed to
+     * a JOIN that produces duplicates).
+     *
+     * Each row MUST have 'id' (int) and 'current_status' (string). Rows
+     * whose current_status is not a known ApplicantStatus slug are
+     * skipped (no push, no dedup marking).
+     *
+     * Public for testability — called only from runCycle() in production.
+     *
+     * @param array<int,array{id:mixed,current_status:mixed}> $rows
+     * @return array{pushed:int, conflicts:int, skipped:int, dedup_skipped:int}
+     */
+    public function pushStage2ForRows(array $rows): array
+    {
+        $pushed = 0;
+        $conflicts = 0;
+        $skipped = 0;
+        $dedupSkipped = 0;
+
+        if ($this->outboundService === null) {
+            return ['pushed' => 0, 'conflicts' => 0, 'skipped' => 0, 'dedup_skipped' => 0];
+        }
+
+        foreach ($rows as $row) {
+            $applicantId = (int)$row['id'];
+
+            // Per D-8-3 — dedup set: if we've already pushed for this
+            // applicant in THIS cycle (e.g. a JOIN-based SQL returned them
+            // more than once, or a future change causes duplicates), skip +
+            // log instead of going through the idempotency lookup at
+            // OutboundSyncService.
+            if (array_key_exists($applicantId, $this->pushedApplicantIds)) {
+                $dedupSkipped++;
+                $this->logger->info('Stage 2 push skipped: already pushed in this cycle', [
+                    'applicant_id' => $applicantId,
+                ]);
+                continue;
+            }
+
+            $status = \App\Modules\Core\Domain\Enums\ApplicantStatus::fromSlug((string)$row['current_status']);
+            if ($status === null) {
+                continue;
+            }
+            $result = $this->outboundService->pushStatusChange(
+                $applicantId,
+                $status,
+                'auto_sync'
+            );
+            if ($result['outcome'] === 'conflict') {
+                $conflicts++;
+            } elseif ($result['outcome'] === 'skipped') {
+                $skipped++;
+            } else {
+                $pushed++;
+            }
+            // Mark this applicant as pushed for this cycle — even if the
+            // outcome was 'conflict' or 'skipped' (idempotency / conflict
+            // are stable across re-pushes; no need to retry in-cycle).
+            $this->pushedApplicantIds[$applicantId] = true;
+        }
+
+        return [
+            'pushed' => $pushed,
+            'conflicts' => $conflicts,
+            'skipped' => $skipped,
+            'dedup_skipped' => $dedupSkipped,
+        ];
     }
 
     /**

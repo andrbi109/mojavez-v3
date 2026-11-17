@@ -112,6 +112,103 @@ final class Stage2ReadinessCheckerTest extends TestCase
             'cond4 passed is a bool'
         );
 
+        // 8b. D-8-2: with a contract runner override returning "0 failures",
+        //     cond4 passes with the new detail format ("۰ failure").
+        $this->checker->setContractRunnerOverride(
+            static function (string $runner): array {
+                return [
+                    'output' => "OutboundPushContractTest   21 assertions   0 failures  PASS\n\nTotal: 21 assertions, 0 failures\n",
+                    'exit_code' => 0,
+                    'timed_out' => false,
+                ];
+            }
+        );
+        $report2 = $this->checker->check();
+        $this->assertSame(
+            true,
+            $report2['conditions']['contract_tests']['passed'],
+            'cond4 passes when contract runner reports 0 failures'
+        );
+        $this->assertStringContainsString(
+            '۰ failure',
+            $report2['conditions']['contract_tests']['value'],
+            'cond4 value reports 0 failures'
+        );
+        $this->assertStringContainsString(
+            'Total:',
+            $report2['conditions']['contract_tests']['detail'],
+            'cond4 detail includes the Total line'
+        );
+
+        // 8c. D-8-2: with a contract runner override returning "3 failures",
+        //     cond4 fails with the failure count.
+        $this->checker->setContractRunnerOverride(
+            static function (string $runner): array {
+                return [
+                    'output' => "SomeTest   5 assertions   3 failures  FAIL\n\nTotal: 5 assertions, 3 failures\n",
+                    'exit_code' => 1,
+                    'timed_out' => false,
+                ];
+            }
+        );
+        $report3 = $this->checker->check();
+        $this->assertSame(
+            false,
+            $report3['conditions']['contract_tests']['passed'],
+            'cond4 fails when contract runner reports failures'
+        );
+        $this->assertStringContainsString(
+            '3 failure',
+            $report3['conditions']['contract_tests']['value'],
+            'cond4 value reports failure count'
+        );
+
+        // 8d. D-8-2: with a contract runner override returning timed_out,
+        //     cond4 fails with a timeout message.
+        $this->checker->setContractRunnerOverride(
+            static function (string $runner): array {
+                return [
+                    'output' => '',
+                    'exit_code' => -1,
+                    'timed_out' => true,
+                ];
+            }
+        );
+        $report4 = $this->checker->check();
+        $this->assertSame(
+            false,
+            $report4['conditions']['contract_tests']['passed'],
+            'cond4 fails on timeout'
+        );
+        $this->assertStringContainsString(
+            'timeout',
+            $report4['conditions']['contract_tests']['value'],
+            'cond4 value mentions timeout'
+        );
+
+        // 8e. D-8-2: with the override returning null (shell_exec
+        //     unavailable), cond4 falls back to the existence check and
+        //     passes with "اجرا نشد".
+        $this->checker->setContractRunnerOverride(
+            static function (string $runner): ?array {
+                return null;
+            }
+        );
+        $report5 = $this->checker->check();
+        $this->assertSame(
+            true,
+            $report5['conditions']['contract_tests']['passed'],
+            'cond4 passes via fallback when shell_exec unavailable'
+        );
+        $this->assertStringContainsString(
+            'اجرا نشد',
+            $report5['conditions']['contract_tests']['detail'],
+            'cond4 detail mentions "اجرا نشد" fallback'
+        );
+
+        // Reset the override so subsequent checks use the real path.
+        $this->checker->setContractRunnerOverride(null);
+
         // 9. Clean up the test applicant + audit logs we created.
         $this->conn->execute('DELETE FROM sync_audit_log WHERE applicant_id = ?', [$appId]);
         $this->conn->execute("DELETE FROM applicants WHERE tracking_code = 'HG-READY-CHK'");
