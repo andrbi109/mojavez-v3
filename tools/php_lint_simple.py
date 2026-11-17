@@ -59,8 +59,11 @@ def lint_file(path: pathlib.Path) -> list[str]:
         errors.append("file must not end with `?>` closing tag")
 
     # 3. declare(strict_types=1); — relaxed check (must appear early).
-    # Tests and TestCase don't strictly need this but CODING_CONVENTIONS §2.1 says "every file".
-    if "<?php" in content[:20]:
+    # CODING_CONVENTIONS §2.1 says "every file", but view templates
+    # (.phtml-style PHP) are exempted — they don't have their own namespace
+    # and are include'd into a controller's scope.
+    is_view = 'Views' in path.parts or 'views' in path.parts
+    if "<?php" in content[:20] and not is_view:
         head = content[:500]
         if "declare(strict_types=1)" not in head:
             errors.append("missing `declare(strict_types=1);` near the top")
