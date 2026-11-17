@@ -100,12 +100,77 @@ final class Module implements ModuleInterface
                 $container->logger
             )
         );
+
+        // PDO repositories — implement the Shared\Contracts interfaces.
+        $container->bind(
+            \App\Shared\Contracts\NationalLicenseRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalLicenseRepository(
+                $container->make(\App\Shared\Persistence\Connection::class),
+                $container->logger
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\NationalLookupRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalLookupRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\NationalFilterRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalFilterRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\NationalBatchRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\NationalBatchRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+        $container->bind(
+            \App\Shared\Contracts\SyncAuditLogRepositoryInterface::class,
+            fn () => new \App\Modules\NationalGateway\Persistence\SyncAuditLogRepository(
+                $container->make(\App\Shared\Persistence\Connection::class)
+            )
+        );
+
+        // PatternMatcher — stateless, cheap to construct.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\PatternMatcher::class,
+            fn () => new \App\Modules\NationalGateway\Services\PatternMatcher()
+        );
+
+        // LicenseService — the orchestrator. Wires all of the above.
+        $container->bind(
+            \App\Modules\NationalGateway\Services\LicenseService::class,
+            fn () => new \App\Modules\NationalGateway\Services\LicenseService(
+                $container->make(\App\Modules\NationalGateway\Infrastructure\MojavecClient::class),
+                $container->make(\App\Modules\NationalGateway\Infrastructure\TrackScraper::class),
+                $container->make(\App\Modules\NationalGateway\Services\CacheService::class),
+                $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
+                $container->make(\App\Shared\Contracts\NationalLookupRepositoryInterface::class),
+                $container->make(\App\Events\EventBus::class),
+                $container->logger,
+                $container->make(\App\Modules\NationalGateway\Infrastructure\CircuitBreaker::class),
+                $container->make(\App\Modules\NationalGateway\Services\RateLimiterService::class)
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void
     {
-        // No cross-module wiring in Phase 3 — Phase 4 wires the ACL
-        // ApplicantSyncAdapter + the NationalSyncOrchestrator.
+        // Register the golden-link subscribers on the EventBus.
+        // LogSubscriber (wildcard) + SyncSubscriber (LicenseIssuedOnNational).
+        // NotificationSubscriber is wired in Phase 4g once NotificationService exists.
+        $container = $loader->container();
+        $eventBus = $container->make(\App\Events\EventBus::class);
+        $logger = $container->logger;
+
+        $eventBus->subscribe(new \App\Events\Subscribers\LogSubscriber($logger));
+        $eventBus->subscribe(new \App\Events\Subscribers\SyncSubscriber(
+            $container->make(\App\Queue\JobQueue::class),
+            $logger
+        ));
     }
 
     public function routes(): array

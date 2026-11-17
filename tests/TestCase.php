@@ -107,6 +107,14 @@ class TestCase
         }
     }
 
+    public function assertArrayHasKey(string|int $key, array $array, string $message = ''): void
+    {
+        $this->assertions++;
+        if (!array_key_exists($key, $array)) {
+            $this->recordFailure($message ?: sprintf('array has no key "%s"', $key));
+        }
+    }
+
     public function assertCount(int $expected, array $actual, string $message = ''): void
     {
         $this->assertions++;
