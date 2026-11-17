@@ -24,6 +24,22 @@ final readonly class License
         public LicenseStatus $status,
         public ?string $statusId = null,
         public ?string $statusTitle = null,
+        // Golden-link anchor fields — populated by TrackScraper (from the
+        // /track/{rn} page RSC payload) and persisted in national_licenses.
+        // See docs/00-MASTER.md §9.1: masked values are confirmation anchors
+        // for the PatternMatcher.
+        public ?string $maskedNationalCode = null,
+        public ?string $fatherName = null,
+        public ?string $businessAddress = null,
+        public ?string $postalCodeMasked = null,
+        public ?string $isicCode = null,
+        public ?string $isicTitle = null,
+        public ?string $issueType = null,
+        public ?string $expiresAt = null,
+        public ?string $supervisoryAuthorities = null,
+        public ?int $matchedApplicantId = null,
+        public ?int $matchConfidence = null,
+        public ?string $matchedBy = null,
     ) {}
 
     /**
@@ -106,14 +122,34 @@ final readonly class License
             applicantName: '',
             userImage: null,
             licenseTitle: (string)($t['license_title'] ?? ''),
-            organizationTitle: (string)($t['issuing_authority'] ?? ''),
+            organizationTitle: (string)($t['issuing_authority'] ?? $t['organization_title'] ?? ''),
             provinceTitle: (string)($t['business_province'] ?? ''),
             townshipTitle: (string)($t['business_township'] ?? ''),
-            respondedAt: (string)($t['issue_date'] ?? ''),
+            respondedAt: (string)($t['issue_date'] ?? $t['responded_at'] ?? ''),
             status: LicenseStatus::fromUpstream($slug, $id),
             statusId: $id,
             statusTitle: $title,
+            // Golden-link anchors from the RSC payload.
+            maskedNationalCode: self::nullableString($t['national_id'] ?? null),
+            fatherName: self::nullableString($t['father_name'] ?? null),
+            businessAddress: self::nullableString($t['business_address'] ?? null),
+            postalCodeMasked: self::nullableString($t['postal_code'] ?? null),
+            isicCode: self::nullableString($t['isic_code'] ?? null),
+            isicTitle: self::nullableString($t['isic_title'] ?? null),
+            issueType: self::nullableString($t['issuance_type'] ?? $t['issue_type'] ?? null),
+            expiresAt: self::nullableString($t['expires_at'] ?? null),
+            supervisoryAuthorities: self::nullableString($t['supervisory_authorities'] ?? null),
         );
+    }
+
+    /**
+     * Normalize a value to a nullable string ('' → null, else trimmed).
+     */
+    private static function nullableString(mixed $v): ?string
+    {
+        if ($v === null) return null;
+        $s = trim((string)$v);
+        return $s === '' ? null : $s;
     }
 
     /**
