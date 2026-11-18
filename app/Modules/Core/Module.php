@@ -359,6 +359,22 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/users/{id}',          'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'update'],
             ['method' => 'POST', 'path' => '/admin/users/{id}/delete',    'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'destroy'],
 
+            // ----- Phase 42 (v2.0.8) admin: applicant account management -----
+            // These are the `user_accounts` rows (the accounts applicants use
+            // to log in to /panel/*), NOT the admin `users` table managed by
+            // UsersController above. The 4 routes give an admin:
+            //   - list with search (mobile / username LIKE)
+            //   - detail view (account fields + linked applicants)
+            //   - toggle is_active (disable / re-enable login)
+            //   - reset password (generate a new random password, hash + show
+            //     the raw value once via session flash so the admin can pass it
+            //     to the applicant out-of-band).
+            // All routes are admin-only (requireRole(['admin'])).
+            ['method' => 'GET',  'path' => '/admin/applicant-accounts',                        'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/applicant-accounts/{id}',                   'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'view'],
+            ['method' => 'POST', 'path' => '/admin/applicant-accounts/{id}/toggle',             'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'toggle'],
+            ['method' => 'POST', 'path' => '/admin/applicant-accounts/{id}/reset-password',     'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'resetPassword'],
+
             ['method' => 'GET',  'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'index'],
             ['method' => 'POST', 'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'update'],
             // Phase 20 (v1.9.2): image upload for site_logo + header banners.

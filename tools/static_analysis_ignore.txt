@@ -1,297 +1,251 @@
-# static_analysis_ignore.txt — false-positive patterns for
-# tools/static_analysis.py.
-#
-# Used in --strict mode (or with the MOJAVEZ_STRICT=1 env var) to suppress
-# warnings that are known false positives. CI runs the analyzer with
-# --strict (see .github/workflows/ci.yml).
-#
-# Format:
-#   - One pattern per line.
-#   - Lines starting with '#' are comments (ignored).
-#   - Blank lines are ignored.
-#   - Patterns are matched as substrings (case-sensitive) on the full
-#     warning text (e.g. "app/Views/user/profile.php:<?= $roleLabel ?>
-#     without htmlspecialchars (XSS risk)").
-#   - A warning is suppressed if its text contains ANY of the listed
-#     patterns as a substring.
-#
-# When adding a new pattern:
-#   - Make it specific enough to suppress ONLY the false-positive class
-#     you intend (don't over-broaden — that hides real warnings).
-#   - Prefer adding the suppression to static_analysis.py itself (an
-#     exclude-list constant, an implicit-safe variable, a per-file
-#     exclusion) rather than this file. Patterns here are a LAST RESORT —
-#     the tool's heuristic improvements (D-6-2, Phase 25) are the
-#     preferred path because they apply to everyone, not just the ignore
-#     file.
 
-# -----------------------------------------------------------------------------
-# Phase 25 (v1.9.7, D-6-2) — heuristic improvements moved to the tool.
 #
-# The following BROAD patterns were previously in this file but are now
-# handled by smarter heuristics in tools/static_analysis.py:
-#
-#   - `csrfField` — now in the IMPLICIT_SAFE_VIEW_VARS frozenset.
-#   - `$content ?> without htmlspecialchars` — same (the layout's
 #     $content variable).
-#   - `controller not in app/Modules` — now handled by
-#     check_controller_location, which extracts the actual class name
-#     and only flags if it ends with "Controller".
-#   - `SQL string-concat with variable` — now a per-file exclusion
 #     (SQL_CONCAT_EXCLUDED_FILES) for Connection.php's allowlist-validated
 #     SET NAMES / SET time_zone (the only place the pattern ever fires
+#     and only flags if it ends with "Controller".
+#     check_controller_location, which extracts the actual class name
+#     exclude-list constant, an implicit-safe variable, a per-file
+#     exclusion) rather than this file. Patterns here are a LAST RESORT —
+#     file.
 #     in this codebase). Removing the broad pattern lets a real SQL
 #     injection elsewhere be flagged.
-#
-# The narrow patterns below remain because they're file:variable scoped
-# (too specific to generalize in the tool's heuristic without risking
-# false negatives if a user-input variable happened to share the name).
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# 1. $totalPages in app/Views/admin/applications.php.
-#
-# `$totalPages = max(1, (int)ceil($total / max(1, $pageSize)));` — already
-# cast to int via (int)ceil(...). Cannot contain user input.
-# -----------------------------------------------------------------------------
-totalPages
-
-# -----------------------------------------------------------------------------
-# 2. $roleLabel in app/Views/admin/users/index.php.
-#
-# A Persian string literal chosen from a fixed three-value lookup
-# ('مدیر کل' / 'اپراتور همگام‌سازی' / 'کارشناس'), assigned based on the
-# user's `role` field. Not user input.
-# -----------------------------------------------------------------------------
-roleLabel
-
-# -----------------------------------------------------------------------------
-# 3. Phase 14 (v1.5.0) — registration view false positives.
-#
-# The new registration wizard views (app/Views/registration/*.php) emit
-# a handful of variables without htmlspecialchars() in the immediate
-# vicinity — but each is provably safe:
-#
-#  - `$id` in _dynamic_fields.php is `$id = 'fld_' . htmlspecialchars($key,
+#     patterns as a substring.
+#     preferred path because they apply to everyone, not just the ignore
+#     the tool's heuristic improvements (D-6-2, Phase 25) are the
+#     warning text (e.g. "app/Views/user/profile.php:<?= $roleLabel ?>
+#     without htmlspecialchars (XSS risk)").
+#     you intend (don't over-broaden — that hides real warnings).
+#    $status['counts'] which itself comes from a SQL COUNT(*) query —
+#    'UTF-8')` — already escaped at the assignment site. Not user input.
+#    'secondary') — same pattern as Phase 15's `$badge` in revisions.php.
+#    ('success', 'warning', 'danger'). Not user input.
+#    ('text-bg-success', 'text-bg-warning', 'text-bg-secondary'). Same
+#    (once per stats card: byStatus, byLicenseState, byServiceType).
+#    1-based loop counter (`for ($p = 1; $p <= $pages; $p++)`). Not user
+#    15/17's $badge in revisions.php / sms.php.
+#    42; the ignore pattern formalises the existing behaviour.)
 #    ENT_QUOTES)` — already escaped at the assignment site a few lines
+#    Not user input.
+#    `(int)$row['id']` (or `(int)$r['id']`) — cast to int. Not user input.
+#    `(int)($r['applicant_count'] ?? 0)` / `(int)($r['field_count'] ?? 0)`
+#    `count($docsByType[$key] ?? [])` — an int count of uploaded files.
+#    `htmlspecialchars((string)($r['status_title'] ?? $st), ENT_QUOTES,
+#    `htmlspecialchars(implode('، ', $criteria), ENT_QUOTES, 'UTF-8')`
 #    above. The analyzer can't trace through the variable assignment.
-#  - `$percent` and `$s` in _progress.php are integer counters (loop
-#    index + a (int)round(...) expression). Not user input.
-#  - `$sid` in select_service.php is `(int)($st['id'] ?? 0)` — cast to
-#    int. Not user input.
-#  - `$fa` in step4.php is the result of a `match { ... }` against
+#    against fixed Bootstrap CSS class literals — same pattern as Phase
+#    applicant_account_view.php are all `(int)($row['col'] ?? 0)` casts
+#    assigned via `match` against fixed Bootstrap CSS class literals
+#    assigned via `match` or ternary against fixed Bootstrap CSS class
+#    builder is responsible for escaping its own user input.
+#    cast to int. Used in 4 places (the table cell + 3 data-id attributes
+#    class="text-muted">—</span>' when the criteria array is empty). Not
+#    fixed Bootstrap CSS class literals ('success', 'danger', 'warning',
 #    fixed Persian string literals. Not user input.
-#
-# Each pattern includes the file path prefix so it suppresses ONLY the
-# registration false positives (not real XSS issues elsewhere — the
-# bare variable names like `$id` or `$s` would be too broad).
+#    if/elseif on (int)$dc against fixed Bootstrap CSS class literals
+#    in gateway_sync_status.php are integer counts cast from
+#    index + a (int)round(...) expression). Not user input.
+#    input.
+#    int. Not user input.
+#    literals ('' or 'table-warning', 'table-success', 'table-danger').
+#    not user input. (These were already emitted unescaped before Phase
+#    of DB columns. Not user input.
+#    on every user-controllable component before assembly). Emitting it
+#    on the apply/edit/run/delete buttons). Not user input.
+#    pattern as Phase 15/17/37's $badge. Not user input.
+#    raw is the same pattern as `$content` in the layout files — the
+#    returned by the DB, cast to int. Not user input. Appears 3 times
+#    same pattern as output_grouped_form.php. Not user input.
+#    the view from already-escaped values (htmlspecialchars was called
+#    user input.
+#    — a count returned by the DB, cast to int. Not user input.
+#    — a count returned by the controller's buildReport() helper, cast to
+#    — already escaped at the assignment site (or the literal '<span
+#    — counts returned by the DB, cast to int. Not user input.
+#   - A warning is suppressed if its text contains ANY of the listed
+#   - Blank lines are ignored.
+#   - Lines starting with '#' are comments (ignored).
+#   - Make it specific enough to suppress ONLY the false-positive class
+#   - One pattern per line.
+#   - Patterns are matched as substrings (case-sensitive) on the full
+#   - Prefer adding the suppression to static_analysis.py itself (an
+#   - `$content ?> without htmlspecialchars` — same (the layout's
+#   - `SQL string-concat with variable` — now a per-file exclusion
+#   - `controller not in app/Modules` — now handled by
+#   - `csrfField` — now in the IMPLICIT_SAFE_VIEW_VARS frozenset.
+#  - `$accountId`, `$failedLogin`, `$applicantId` in
+#  - `$applicantCount`, `$fieldCount` are assigned as
+#  - `$autoConfirmed`, `$operatorFlag`, `$autoRejected`, `$totalMatches`
+#  - `$badge` in admin/bulk_result.php is built from a `match` expression
+#  - `$badge` is always assigned via a `match { ... }` expression against
+#  - `$cls` in admin/bulk_missing_docs.php is assigned via a 3-way
+#  - `$cnt` in admin/output_general.php is `(int)$r['cnt']` — a count
+#  - `$count` in admin/output_grouped_form.php is `(int)($row['count'] ?? 0)`
+#  - `$count` in admin/report_stats.php is `(int)($row['count'] ?? 0)` —
+#  - `$criteriaStr` in admin/gateway_filters.php is built from
+#  - `$dc` in admin/bulk_missing_docs.php is `(int)($a['doc_count'] ?? 0)`
+#  - `$existingCount` in admin/bulk_upload_docs.php is
+#  - `$fa` in step4.php is the result of a `match { ... }` against
+#  - `$id` in _dynamic_fields.php is `$id = 'fld_' . htmlspecialchars($key,
+#  - `$id` in admin/gateway_filters.php is `(int)$f['id']` — a DB row id
+#  - `$id`, `$p` in applicant_accounts.php are `(int)$r['id']` and a
+#  - `$percent` and `$s` in _progress.php are integer counters (loop
+#  - `$rowClass` in admin/bulk_preview.php + admin/bulk_result.php is
+#  - `$runAlertHtml` in gateway_sync_status.php is HTML built inline in
+#  - `$sid` in select_service.php is `(int)($st['id'] ?? 0)` — cast to
+#  - `$sid`, `$requestId`, `$entryId`, `$tid` are all assigned as
+#  - `$stBadge` in admin/gateway_search.php + admin/gateway_saved.php is
+#  - `$stLabel` in admin/gateway_search.php + admin/gateway_saved.php is
+# $conf in admin/view_application.php is `(int)($applicant->matchConfidence ?? 0)`
+# $i in step4.php is a loop counter (int).
+# $id, $applicant, $autoConfirmed, $operatorFlag, $autoRejected,
+# $m = $i + 1 where $i is the array index of $months (int), $d iterates
+# $name in admin/edit_application.php is the Persian month name from the
+# $requestId in admin/license_requests.php is `(int)$r['id']` — a DB row
+# $totalMatches in gateway_sync_*.php are (int) DB row ids / counts.
+# $y / $m / $d in admin/edit_application.php are the 3 Jalali birth-date
+# $y, $m, $d in admin/register.php are (int) year/month/day values for
+# ('success', 'danger', 'warning' — Bootstrap CSS classes). Not user
+# ('مدیر کل' / 'اپراتور همگام‌سازی' / 'کارشناس'), assigned based on the
+# (too specific to generalize in the tool's heuristic without risking
 # -----------------------------------------------------------------------------
+# --strict (see .github/workflows/ci.yml).
+# 1. $totalPages in app/Views/admin/applications.php.
+# 1..31 (int). All loop-counter ints — no user input flows into them.
+# 10. Phase 39 (v2.0.5) — gateway admin views false positives.
+# 12. Phase 35-39 (v2.0.1-v2.0.5) — register form integer variables.
+# 13. Phase 41-42 (v2.0.7-v2.0.8) — integer variables in new views.
+# 2. $roleLabel in app/Views/admin/users/index.php.
+# 3. Phase 14 (v1.5.0) — registration view false positives.
+# 4. Phase 15 (v1.6.0) — admin views + document/pdf_viewer false positives.
+# 5. Phase 17 (v1.8.0) — new admin panel views false positives.
+# 6. Phase 18 (v1.9.0) — payment + bulk-import + report views false positives.
+# 7. Phase 19 (v1.9.1) — license_requests view integer IDs.
+# 8. Phase 36 (v2.0.2) — view_application + edit_application integer casts.
+# 8. Phase 42 (v2.0.8) — applicant-account + sync-status views.
+# 9. Phase 37 (v2.0.3) — bulk-import view integer/constant false positives.
+# A Persian string literal chosen from a fixed three-value lookup
+# All provably safe — not user input.
+# Each pattern includes the file path prefix so it suppresses ONLY the
+# Each pattern is scoped to a specific file:variable-name combo so it
+# Format:
+# Phase 25 (v1.9.7, D-6-2) — heuristic improvements moved to the tool.
+# The Phase 17 admin views (admin/register.php, admin/edit_application.php,
+# The Phase 18 admin views emit a handful of integer counters without
+# The Phase 37 enhanced admin views emit a handful of variables without
+# The Phase 39 gateway admin views (admin/gateway_panel.php, admin/gateway_search.php,
+# The following BROAD patterns were previously in this file but are now
+# The narrow patterns below remain because they're file:variable scoped
+# The new admin views (admin/revisions.php, admin/license_requests.php)
+# The new admin views introduced in Phase 42 emit a handful of integer-
+# The new registration wizard views (app/Views/registration/*.php) emit
+# Used in --strict mode (or with the MOJAVEZ_STRICT=1 env var) to suppress
+# When adding a new pattern:
+# `$totalPages = max(1, (int)ceil($total / max(1, $pageSize)));` — already
+# `app/Views/document/pdf_viewer.php` emits `$src` in an `<iframe src>`
+# a handful of variables without htmlspecialchars() in the immediate
+# admin/gateway_saved.php, admin/gateway_filters.php, admin/gateway_batch.php)
+# admin/postal_requests.php, admin/service_types.php, admin/wizard_steps.php,
+# admin/sms.php) emit a handful of variables without htmlspecialchars() in
+# assigned via a `match { ... }` expression against fixed string literals
+# attribute. The controller (DocumentController::pdfViewer) builds `$src`
+# bare variable names like `$id` or `$s` would be too broad).
+# by `htmlspecialchars($baseUrl . 'document/inline/' . $id, ENT_QUOTES)`
+# cast / loop-counter / pre-built-HTML variables without htmlspecialchars()
+# cast to int via (int)ceil(...). Cannot contain user input.
+# docblock explicitly says "already escaped". The analyzer can't trace
+# else secondary) and to display the percentage. Not user input.
+# elsewhere — the bare variable names like `$badge` or `$sid` would be
+# emit a `$badge` variable in a Bootstrap class attribute. `$badge` is
+# emit a handful of variables without htmlspecialchars() in the immediate
+# false negatives if a user-input variable happened to share the name).
+# handled by smarter heuristics in tools/static_analysis.py:
+# hidden form inputs, modal ids). Suppressed per-file:variable-name.
+# htmlspecialchars() in the immediate vicinity — each is provably safe:
+# id cast to int. Not user input. Appears 6 times (in the table cell,
+# in the immediate vicinity — all are provably safe:
+# input. $name is a controller-supplied setting value, not user input.
+# input. The pattern would also catch a real XSS if a user-controlled
+# local $months array (a fixed list of 12 Persian strings). Not user input.
+# name only refers to this fixed CSS-class lookup.
+# registration false positives (not real XSS issues elsewhere — the
+# select <option> values — $y iterates 1300..currentPersianYear (int),
+# static_analysis_ignore.txt — false-positive patterns for
+# suppresses ONLY these Phase 18 false positives.
+# suppresses ONLY these Phase 37 false positives.
+# suppresses ONLY these Phase 39 false positives.
+# suppresses ONLY these admin-panel false positives (not real XSS issues
+# the 3 Jalali date selects — provably safe integer inputs, not user
+# the golden-link confidence badge (>= 80 = success, >= 50 = warning,
+# the immediate vicinity — but each is provably safe:
+# through the controller→view variable hand-off.
+# too broad).
+# tools/static_analysis.py.
+# user's `role` field. Not user input.
+# variable happened to be named `$badge`, but in this codebase that
+# vicinity — but each is provably safe:
+# vicinity — each is provably safe:
+# warnings that are known false positives. CI runs the analyzer with
+# — a DB-backed int field on the Applicant VO, cast to int. Used to color
+# — the value is already escaped at the controller level. The view's
+app/Views/admin/applicant_account_view.php:<?= $accountId ?>
+app/Views/admin/applicant_account_view.php:<?= $applicantId ?>
+app/Views/admin/applicant_account_view.php:<?= $failedLogin ?>
+app/Views/admin/applicant_accounts.php:<?= $id ?>
+app/Views/admin/applicant_accounts.php:<?= $p ?>
+app/Views/admin/bulk_missing_docs.php:<?= $cls ?>
+app/Views/admin/bulk_missing_docs.php:<?= $dc ?>
+app/Views/admin/bulk_preview.php:<?= $rowClass ?>
+app/Views/admin/bulk_result.php:<?= $badge ?>
+app/Views/admin/bulk_result.php:<?= $rowClass ?>
+app/Views/admin/bulk_upload_docs.php:<?= $existingCount ?>
+app/Views/admin/edit_application.php:<?= $applicantId ?>
+app/Views/admin/edit_application.php:<?= $d ?>
+app/Views/admin/edit_application.php:<?= $m ?>
+app/Views/admin/edit_application.php:<?= $name ?>
+app/Views/admin/edit_application.php:<?= $sid ?>
+app/Views/admin/edit_application.php:<?= $y ?>
+app/Views/admin/gateway_filters.php:<?= $criteriaStr ?>
+app/Views/admin/gateway_filters.php:<?= $id ?>
+app/Views/admin/gateway_saved.php:<?= $stBadge ?>
+app/Views/admin/gateway_saved.php:<?= $stLabel ?>
+app/Views/admin/gateway_search.php:<?= $stBadge ?>
+app/Views/admin/gateway_search.php:<?= $stLabel ?>
+app/Views/admin/gateway_sync_pending.php:<?= $applicant ?>
+app/Views/admin/gateway_sync_pending.php:<?= $id ?>
+app/Views/admin/gateway_sync_status.php:<?= $autoConfirmed ?>
+app/Views/admin/gateway_sync_status.php:<?= $autoRejected ?>
+app/Views/admin/gateway_sync_status.php:<?= $operatorFlag ?>
+app/Views/admin/gateway_sync_status.php:<?= $runAlertHtml ?>
+app/Views/admin/gateway_sync_status.php:<?= $totalMatches ?>
+app/Views/admin/license_requests.php:<?= $badge ?>
+app/Views/admin/license_requests.php:<?= $requestId ?>
+app/Views/admin/output_general.php:<?= $cnt ?>
+app/Views/admin/output_grouped_form.php:<?= $count ?>
+app/Views/admin/postal_requests.php:<?= $applicantId ?>
+app/Views/admin/postal_requests.php:<?= $badge ?>
+app/Views/admin/postal_requests.php:<?= $requestId ?>
+app/Views/admin/register.php:<?= $d ?>
+app/Views/admin/register.php:<?= $m ?>
+app/Views/admin/register.php:<?= $name ?>
+app/Views/admin/register.php:<?= $sid ?>
+app/Views/admin/register.php:<?= $y ?>
+app/Views/admin/report_stats.php:<?= $count ?>
+app/Views/admin/revisions.php:<?= $badge ?>
+app/Views/admin/service_types.php:<?= $applicantCount ?>
+app/Views/admin/service_types.php:<?= $sid ?>
+app/Views/admin/sms.php:<?= $badge ?>
+app/Views/admin/sms.php:<?= $entryId ?>
+app/Views/admin/sms.php:<?= $tid ?>
+app/Views/admin/view_application.php:<?= $conf ?>
+app/Views/admin/wizard_steps.php:<?= $fieldCount ?>
+app/Views/admin/wizard_steps.php:<?= $sid ?>
+app/Views/document/pdf_viewer.php:<?= $src ?>
 app/Views/registration/_dynamic_fields.php:<?= $id ?>
 app/Views/registration/_progress.php:<?= $percent ?>
 app/Views/registration/_progress.php:<?= $s ?>
 app/Views/registration/select_service.php:<?= $sid ?>
 app/Views/registration/step4.php:<?= $fa ?>
-
-# -----------------------------------------------------------------------------
-# 4. Phase 15 (v1.6.0) — admin views + document/pdf_viewer false positives.
-#
-# The new admin views (admin/revisions.php, admin/license_requests.php)
-# emit a `$badge` variable in a Bootstrap class attribute. `$badge` is
-# assigned via a `match { ... }` expression against fixed string literals
-# ('success', 'danger', 'warning' — Bootstrap CSS classes). Not user
-# input. The pattern would also catch a real XSS if a user-controlled
-# variable happened to be named `$badge`, but in this codebase that
-# name only refers to this fixed CSS-class lookup.
-#
-# `app/Views/document/pdf_viewer.php` emits `$src` in an `<iframe src>`
-# attribute. The controller (DocumentController::pdfViewer) builds `$src`
-# by `htmlspecialchars($baseUrl . 'document/inline/' . $id, ENT_QUOTES)`
-# — the value is already escaped at the controller level. The view's
-# docblock explicitly says "already escaped". The analyzer can't trace
-# through the controller→view variable hand-off.
-# -----------------------------------------------------------------------------
-app/Views/admin/revisions.php:<?= $badge ?>
-app/Views/admin/license_requests.php:<?= $badge ?>
-app/Views/document/pdf_viewer.php:<?= $src ?>
-
-# -----------------------------------------------------------------------------
-# 5. Phase 17 (v1.8.0) — new admin panel views false positives.
-#
-# The Phase 17 admin views (admin/register.php, admin/edit_application.php,
-# admin/postal_requests.php, admin/service_types.php, admin/wizard_steps.php,
-# admin/sms.php) emit a handful of variables without htmlspecialchars() in
-# the immediate vicinity — but each is provably safe:
-#
-#  - `$badge` is always assigned via a `match { ... }` expression against
-#    fixed Bootstrap CSS class literals ('success', 'danger', 'warning',
-#    'secondary') — same pattern as Phase 15's `$badge` in revisions.php.
-#    Not user input.
-#  - `$sid`, `$requestId`, `$entryId`, `$tid` are all assigned as
-#    `(int)$row['id']` (or `(int)$r['id']`) — cast to int. Not user input.
-#  - `$applicantCount`, `$fieldCount` are assigned as
-#    `(int)($r['applicant_count'] ?? 0)` / `(int)($r['field_count'] ?? 0)`
-#    — counts returned by the DB, cast to int. Not user input.
-#
-# Each pattern is scoped to a specific file:variable-name combo so it
-# suppresses ONLY these admin-panel false positives (not real XSS issues
-# elsewhere — the bare variable names like `$badge` or `$sid` would be
-# too broad).
-# -----------------------------------------------------------------------------
-app/Views/admin/postal_requests.php:<?= $badge ?>
-app/Views/admin/postal_requests.php:<?= $requestId ?>
-app/Views/admin/postal_requests.php:<?= $applicantId ?>
-app/Views/admin/register.php:<?= $sid ?>
-app/Views/admin/edit_application.php:<?= $applicantId ?>
-app/Views/admin/edit_application.php:<?= $sid ?>
-app/Views/admin/service_types.php:<?= $sid ?>
-app/Views/admin/service_types.php:<?= $applicantCount ?>
-app/Views/admin/wizard_steps.php:<?= $sid ?>
-app/Views/admin/wizard_steps.php:<?= $fieldCount ?>
-app/Views/admin/sms.php:<?= $tid ?>
-app/Views/admin/sms.php:<?= $entryId ?>
-app/Views/admin/sms.php:<?= $badge ?>
-
-# -----------------------------------------------------------------------------
-# 6. Phase 18 (v1.9.0) — payment + bulk-import + report views false positives.
-#
-# The Phase 18 admin views emit a handful of integer counters without
-# htmlspecialchars() in the immediate vicinity — each is provably safe:
-#
-#  - `$cnt` in admin/output_general.php is `(int)$r['cnt']` — a count
-#    returned by the DB, cast to int. Not user input. Appears 3 times
-#    (once per stats card: byStatus, byLicenseState, byServiceType).
-#  - `$count` in admin/output_grouped_form.php is `(int)($row['count'] ?? 0)`
-#    — a count returned by the controller's buildReport() helper, cast to
-#    int. Not user input.
-#  - `$count` in admin/report_stats.php is `(int)($row['count'] ?? 0)` —
-#    same pattern as output_grouped_form.php. Not user input.
-#
-# Each pattern is scoped to a specific file:variable-name combo so it
-# suppresses ONLY these Phase 18 false positives.
-# -----------------------------------------------------------------------------
-app/Views/admin/output_general.php:<?= $cnt ?>
-app/Views/admin/output_grouped_form.php:<?= $count ?>
-app/Views/admin/report_stats.php:<?= $count ?>
-
-# -----------------------------------------------------------------------------
-# 7. Phase 19 (v1.9.1) — license_requests view integer IDs.
-#
-# $requestId in admin/license_requests.php is `(int)$r['id']` — a DB row
-# id cast to int. Not user input. Appears 6 times (in the table cell,
-# hidden form inputs, modal ids). Suppressed per-file:variable-name.
-# -----------------------------------------------------------------------------
-app/Views/admin/license_requests.php:<?= $requestId ?>
-
-# -----------------------------------------------------------------------------
-# 8. Phase 36 (v2.0.2) — view_application + edit_application integer casts.
-#
-# $conf in admin/view_application.php is `(int)($applicant->matchConfidence ?? 0)`
-# — a DB-backed int field on the Applicant VO, cast to int. Used to color
-# the golden-link confidence badge (>= 80 = success, >= 50 = warning,
-# else secondary) and to display the percentage. Not user input.
-#
-# $y / $m / $d in admin/edit_application.php are the 3 Jalali birth-date
-# select <option> values — $y iterates 1300..currentPersianYear (int),
-# $m = $i + 1 where $i is the array index of $months (int), $d iterates
-# 1..31 (int). All loop-counter ints — no user input flows into them.
-#
-# $name in admin/edit_application.php is the Persian month name from the
-# local $months array (a fixed list of 12 Persian strings). Not user input.
-# -----------------------------------------------------------------------------
-app/Views/admin/view_application.php:<?= $conf ?>
-app/Views/admin/edit_application.php:<?= $y ?>
-app/Views/admin/edit_application.php:<?= $m ?>
-app/Views/admin/edit_application.php:<?= $d ?>
-app/Views/admin/edit_application.php:<?= $name ?>
-
-# -----------------------------------------------------------------------------
-# 9. Phase 37 (v2.0.3) — bulk-import view integer/constant false positives.
-#
-# The Phase 37 enhanced admin views emit a handful of variables without
-# htmlspecialchars() in the immediate vicinity — each is provably safe:
-#
-#  - `$cls` in admin/bulk_missing_docs.php is assigned via a 3-way
-#    if/elseif on (int)$dc against fixed Bootstrap CSS class literals
-#    ('success', 'warning', 'danger'). Not user input.
-#  - `$dc` in admin/bulk_missing_docs.php is `(int)($a['doc_count'] ?? 0)`
-#    — a count returned by the DB, cast to int. Not user input.
-#  - `$rowClass` in admin/bulk_preview.php + admin/bulk_result.php is
-#    assigned via `match` or ternary against fixed Bootstrap CSS class
-#    literals ('' or 'table-warning', 'table-success', 'table-danger').
-#    Not user input.
-#  - `$badge` in admin/bulk_result.php is built from a `match` expression
-#    against fixed Bootstrap CSS class literals — same pattern as Phase
-#    15/17's $badge in revisions.php / sms.php.
-#  - `$existingCount` in admin/bulk_upload_docs.php is
-#    `count($docsByType[$key] ?? [])` — an int count of uploaded files.
-#    Not user input.
-#
-# Each pattern is scoped to a specific file:variable-name combo so it
-# suppresses ONLY these Phase 37 false positives.
-# -----------------------------------------------------------------------------
-app/Views/admin/bulk_missing_docs.php:<?= $cls ?>
-app/Views/admin/bulk_missing_docs.php:<?= $dc ?>
-app/Views/admin/bulk_preview.php:<?= $rowClass ?>
-app/Views/admin/bulk_result.php:<?= $rowClass ?>
-app/Views/admin/bulk_result.php:<?= $badge ?>
-app/Views/admin/bulk_upload_docs.php:<?= $existingCount ?>
-
-# -----------------------------------------------------------------------------
-# 10. Phase 39 (v2.0.5) — gateway admin views false positives.
-#
-# The Phase 39 gateway admin views (admin/gateway_panel.php, admin/gateway_search.php,
-# admin/gateway_saved.php, admin/gateway_filters.php, admin/gateway_batch.php)
-# emit a handful of variables without htmlspecialchars() in the immediate
-# vicinity — each is provably safe:
-#
-#  - `$id` in admin/gateway_filters.php is `(int)$f['id']` — a DB row id
-#    cast to int. Used in 4 places (the table cell + 3 data-id attributes
-#    on the apply/edit/run/delete buttons). Not user input.
-#  - `$criteriaStr` in admin/gateway_filters.php is built from
-#    `htmlspecialchars(implode('، ', $criteria), ENT_QUOTES, 'UTF-8')`
-#    — already escaped at the assignment site (or the literal '<span
-#    class="text-muted">—</span>' when the criteria array is empty). Not
-#    user input.
-#  - `$stBadge` in admin/gateway_search.php + admin/gateway_saved.php is
-#    assigned via `match` against fixed Bootstrap CSS class literals
-#    ('text-bg-success', 'text-bg-warning', 'text-bg-secondary'). Same
-#    pattern as Phase 15/17/37's $badge. Not user input.
-#  - `$stLabel` in admin/gateway_search.php + admin/gateway_saved.php is
-#    `htmlspecialchars((string)($r['status_title'] ?? $st), ENT_QUOTES,
-#    'UTF-8')` — already escaped at the assignment site. Not user input.
-#
-# Each pattern is scoped to a specific file:variable-name combo so it
-# suppresses ONLY these Phase 39 false positives.
-# -----------------------------------------------------------------------------
-app/Views/admin/gateway_filters.php:<?= $id ?>
-app/Views/admin/gateway_filters.php:<?= $criteriaStr ?>
-app/Views/admin/gateway_search.php:<?= $stBadge ?>
-app/Views/admin/gateway_search.php:<?= $stLabel ?>
-app/Views/admin/gateway_saved.php:<?= $stBadge ?>
-app/Views/admin/gateway_saved.php:<?= $stLabel ?>
-
-# 12. Phase 35-39 (v2.0.1-v2.0.5) — register form integer variables.
-#
-# $y, $m, $d in admin/register.php are (int) year/month/day values for
-# the 3 Jalali date selects — provably safe integer inputs, not user
-# input. $name is a controller-supplied setting value, not user input.
-# -----------------------------------------------------------------------------
-app/Views/admin/register.php:<?= $y ?>
-app/Views/admin/register.php:<?= $m ?>
-app/Views/admin/register.php:<?= $d ?>
-app/Views/admin/register.php:<?= $name ?>
-
-# 13. Phase 41-42 (v2.0.7-v2.0.8) — integer variables in new views.
-#
-# $id, $applicant, $autoConfirmed, $operatorFlag, $autoRejected,
-# $totalMatches in gateway_sync_*.php are (int) DB row ids / counts.
-# $i in step4.php is a loop counter (int).
-# All provably safe — not user input.
-# -----------------------------------------------------------------------------
-app/Views/admin/gateway_sync_pending.php:<?= $id ?>
-app/Views/admin/gateway_sync_pending.php:<?= $applicant ?>
-app/Views/admin/gateway_sync_status.php:<?= $autoConfirmed ?>
-app/Views/admin/gateway_sync_status.php:<?= $operatorFlag ?>
-app/Views/admin/gateway_sync_status.php:<?= $autoRejected ?>
-app/Views/admin/gateway_sync_status.php:<?= $totalMatches ?>
 app/Views/registration/step4.php:<?= $i ?>
+roleLabel
+totalPages

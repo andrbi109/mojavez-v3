@@ -10,16 +10,26 @@
  *   - conflicts / outbound two-way status
  *   - run-sync-now button (POST /admin/sync/run)
  *
+ * Phase 42 (v2.0.8) — the "run sync" button now produces a visible
+ * result: the POST handler stores the run summary in the session flash
+ * and redirects back here, where it is rendered as a contextual alert
+ * above the cards (success / degraded / failed) so the admin sees
+ * whether the upstream was actually reached, how many licenses were
+ * fetched, and how many applicants were matched.
+ *
  * Expected $data:
  *   $status   array{cycle_started_at:?string,cycle_ended_at:?string,
  *                  counts:array<string,int>,jobs_drained:int}
  *   $syncInfo array{direction:string,two_way_enabled:bool}
  *   $jobsRun  int  (alias of $status['jobs_drained']).
+ *   $lastRun  ?array<string,mixed>  — Phase 42 flash summary of the last
+ *                  /admin/sync/run call (consumed once on render).
  *   $baseUrl, $csrfField.
  */
 /** @var array<string,mixed> $status */
 /** @var array{direction:string,two_way_enabled:bool} $syncInfo */
 /** @var int $jobsRun */
+/** @var array<string,mixed>|null $lastRun */
 /** @var string $baseUrl */
 /** @var string $csrfField */
 
@@ -48,6 +58,53 @@ $directionClass = match ($direction) {
     'two_way'  => 'text-bg-success',
     default    => 'text-bg-secondary',
 };
+
+// Phase 42 (v2.0.8) — render the last-run flash summary as a contextual alert.
+// $lastRun is null on a normal page view (no flash); it is set after a
+// /admin/sync/run POST redirects back here.
+$runAlertHtml = '';
+if (is_array($lastRun)) {
+    $reached   = (bool)($lastRun['upstream_reached']  ?? false);
+    $degraded  = (bool)($lastRun['upstream_degraded'] ?? false);
+    $fetched   = (int)($lastRun['upstream_fetched']  ?? 0);
+    $total     = $lastRun['upstream_total'] ?? null;
+    $ac        = (int)($lastRun['auto_confirmed']   ?? 0);
+    $of        = (int)($lastRun['operator_flagged']  ?? 0);
+    $ar        = (int)($lastRun['auto_rejected']     ?? 0);
+    $proc      = (int)($lastRun['licenses_processed'] ?? 0);
+    $tried     = (int)($lastRun['applicants_tried']  ?? 0);
+    $err       = (string)($lastRun['upstream_error'] ?? '');
+
+    if ($lastRun['skipped'] ?? false) {
+        $runAlertHtml = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> '
+            . 'دور همگام‌سازی اجرا نشد — sync_direction=disabled.</div>';
+    } elseif ($reached && !$degraded) {
+        $runAlertHtml = '<div class="alert alert-success">'
+            . '<i class="bi bi-check-circle-fill"></i> دور همگام‌سازی با موفقیت اجرا شد. '
+            . '<strong>' . $fetched . '</strong> مجوز از درگاه ملی دریافت و ذخیره شد'
+            . ($total !== null ? ' (از مجموع ' . (int)$total . ')' : '')
+            . '؛ <strong>' . $proc . '</strong> مجوز پردازش و <strong>' . $tried . '</strong> متقاضی بررسی شدند. '
+            . 'تطبیق‌ها: <strong>' . $ac . '</strong> تأیید خودکار، <strong>' . $of . '</strong> پرچم اپراتور، <strong>' . $ar . '</strong> رد خودکار.'
+            . '</div>';
+    } elseif ($degraded) {
+        $msg = '<div class="alert alert-warning">'
+            . '<i class="bi bi-exclamation-triangle-fill"></i> درگاه ملی در دسترس نبود؛ '
+            . 'دور همگام‌سازی در حالت <strong>تنزل‌یافته</strong> با داده‌های محلی اجرا شد. '
+            . '<strong>' . $proc . '</strong> مجوز و <strong>' . $tried . '</strong> متقاضی پردازش شد. '
+            . 'تطبیق‌ها: ' . $ac . ' تأیید خودکار، ' . $of . ' پرچم اپراتور، ' . $ar . ' رد خودکار.';
+        if ($err !== '') {
+            $msg .= '<br><span class="small text-muted">خطا: ' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</span>';
+        }
+        $msg .= '</div>';
+        $runAlertHtml = $msg;
+    } else {
+        $runAlertHtml = '<div class="alert alert-danger">'
+            . '<i class="bi bi-x-octagon-fill"></i> دور همگام‌سازی اجرا شد اما درگاه ملی پاسخ نداد. '
+            . 'لطفاً اتصال به درگاه را بررسی کنید. '
+            . '<span class="small text-muted">' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</span>'
+            . '</div>';
+    }
+}
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="h5 mb-0"><i class="bi bi-cloud-arrow-down text-brand"></i> وضعیت همگام‌سازی درگاه ملی</h2>
@@ -59,6 +116,9 @@ $directionClass = match ($direction) {
         </button>
     </form>
 </div>
+
+<?= $runAlertHtml ?>
+
 
 <div class="row g-3 mb-3">
     <div class="col-sm-6 col-lg-3">

@@ -210,6 +210,129 @@ final class LicenseService
     }
 
     /**
+     * Force a single upstream search page (cache-skipping). Phase 42 (v2.0.8).
+     *
+     * Used by NationalSyncOrchestrator::runCycle() to make sure the cycle
+     * actually pulls fresh data from qr.mojavez.ir rather than only ever
+     * re-matching the existing local cache. The method:
+     *
+     *   1. Consults the circuit breaker. If OPEN, returns the local cache
+     *      (degraded mode) and the caller treats the cycle as "partial".
+     *   2. Calls MojavecClient::search() (which itself does retry + rate-
+     *      limit respect) to fetch one page of the upstream search.
+     *   3. Persists whatever it got to national_licenses (via saveMany).
+     *   4. Dispatches LicenseSaved + LicenseIssuedOnNational for the
+     *      golden-link trigger (same as searchHybrid).
+     *
+     * Returns a small summary array — the orchestrator merges this into
+     * the cycle report so the admin sees whether the upstream was
+     * actually reached or the cycle ran in degraded (cache-only) mode.
+     *
+     * @return array{
+     *   reached:bool,
+     *   fetched:int,
+     *   total:?int,
+     *   degraded:bool,
+     *   error:?string,
+     * }
+     */
+    public function searchUpstream(Filter $filter): array
+    {
+        $summary = [
+            'reached'  => false,
+            'fetched'  => 0,
+            'total'    => null,
+            'degraded' => false,
+            'error'    => null,
+        ];
+
+        // Circuit breaker check — if OPEN, serve from cache (degraded).
+        if (!$this->circuitBreaker->canProceed()) {
+            $this->logger->warning('searchUpstream: circuit breaker OPEN — degraded mode', [
+                'filter' => $filter->describe(),
+            ]);
+            $local = $this->searchLocal($filter->toLocalFilterArray(), $filter->page, $filter->pageSize);
+            $summary['degraded'] = true;
+            $summary['fetched'] = $local->count();
+            $summary['total']   = $local->total;
+            return $summary;
+        }
+
+        try {
+            $collection = $this->client->search($filter, fn (): null => $this->rateLimiter->wait());
+            $this->circuitBreaker->recordSuccess();
+        } catch (\Throwable $e) {
+            $this->circuitBreaker->recordFailure();
+            $this->logger->error('searchUpstream: upstream call failed', [
+                'filter' => $filter->describe(),
+                'error'  => $e->getMessage(),
+            ]);
+            // Fall back to local cache (degraded mode) — cycle still runs the
+            // matcher against the existing cache, so it isn't a no-op.
+            $local = $this->searchLocal($filter->toLocalFilterArray(), $filter->page, $filter->pageSize);
+            $summary['degraded'] = true;
+            $summary['fetched'] = $local->count();
+            $summary['total']   = $local->total;
+            $summary['error']   = $e->getMessage();
+            return $summary;
+        }
+
+        $summary['reached'] = true;
+        $summary['fetched'] = $collection->count();
+        $summary['total']   = $collection->total;
+
+        // Persist whatever we got to the local cache.
+        if (!$collection->isEmpty()) {
+            $filterContext = $filter->toLocalFilterArray();
+            $filterContext['filter_hash'] = $filter->cacheKey();
+            $this->licenseRepo->saveMany($collection->items, null, $filterContext);
+
+            // Dispatch golden-link triggers (same as searchHybrid — capped
+            // at 20 events per call to avoid flooding the bus on a large page).
+            $limit = min(count($collection->items), 20);
+            for ($i = 0; $i < $limit; $i++) {
+                $license = $collection->items[$i];
+                $this->eventBus->dispatch(new LicenseSaved([
+                    'request_number'  => $license->requestNumber,
+                    'applicant_name'  => $license->applicantName,
+                    'license_title'   => $license->licenseTitle,
+                    'status_slug'     => $license->status->value,
+                    'filter_hash'     => $filter->cacheKey(),
+                ]));
+                if ($license->status->value === 'active') {
+                    $this->eventBus->dispatch(new LicenseIssuedOnNational([
+                        'request_number'        => $license->requestNumber,
+                        'applicant_name'         => $license->applicantName,
+                        'license_title'          => $license->licenseTitle,
+                        'province'               => $license->provinceTitle,
+                        'township'               => $license->townshipTitle,
+                    ]));
+                }
+            }
+        }
+
+        // Refresh the local page-cache snapshot so subsequent searchHybrid
+        // calls for the same filter see the fresh data without re-hitting
+        // the upstream.
+        $this->cache->setSearchPage($filter->cacheKey(), $filter->page, [
+            'items'     => array_map(static fn (License $l): array => $l->toArray(), $collection->items),
+            'page'      => $filter->page,
+            'page_size' => $filter->pageSize,
+            'total'     => $collection->total,
+        ]);
+        $this->cache->setFilterTotal($filter->cacheKey(), $collection->total);
+
+        $this->logger->info('searchUpstream: upstream call succeeded', [
+            'filter'  => $filter->describe(),
+            'page'    => $filter->page,
+            'fetched' => $collection->count(),
+            'total'   => $collection->total,
+        ]);
+
+        return $summary;
+    }
+
+    /**
      * Fetch the extended detail for a license via the /track/{rn} page
      * and persist the golden-link anchor fields.
      *

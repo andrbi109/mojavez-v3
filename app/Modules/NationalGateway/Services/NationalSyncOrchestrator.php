@@ -6,9 +6,11 @@ namespace App\Modules\NationalGateway\Services;
 use App\Events\EventBus;
 use App\Events\Events\ApplicantMatched;
 use App\Events\Events\SyncCycleCompleted;
+use App\Modules\NationalGateway\Domain\Filter;
 use App\Shared\Contracts\NationalLicenseRepositoryInterface;
 use App\Shared\Contracts\SyncAuditLogRepositoryInterface;
 use App\Shared\Persistence\Connection;
+use App\Shared\Support\Hash;
 use App\Shared\Support\StructuredLogger;
 
 /**
@@ -66,10 +68,30 @@ final class NationalSyncOrchestrator
         private readonly StructuredLogger $logger,
         private readonly Connection $conn,
         private readonly ?OutboundSyncService $outboundService = null,
+        private readonly ?Hash $hash = null,
     ) {}
 
     /**
      * Run one full sync cycle. Returns a summary for the admin panel.
+     *
+     * Per docs/00-MASTER.md §9.5 — the cycle is:
+     *   1. trigger (cron / poor man's cron / manual from admin panel)
+     *   2. fetch upstream: LicenseService::searchUpstream() pulls one page
+     *      of fresh licenses from qr.mojavez.ir and persists them to
+     *      national_licenses. Falls back gracefully (degraded mode) if
+     *      the upstream is unreachable / circuit breaker is OPEN.
+     *   3. match: for each unmatched national_license with golden-link
+     *      anchors, run ApplicantSyncAdapter against all eligible
+     *      applicants.
+     *   4. act: the adapter performs the atomic per-applicant transaction.
+     *   5. notify + log: dispatch ApplicantMatched + SyncCycleCompleted.
+     *   6. report: return a summary for the /admin/sync/status panel.
+     *
+     * The cycle also writes a 'cycle_started' + 'cycle_completed' row to
+     * sync_audit_log so the status panel can read the last-cycle timestamps
+     * back from the audit trail rather than in-memory state. The upstream
+     * fetch is logged to integration_log (direction='inbound',
+     * operation='fetch_license') per §29.1 (the bidirectional audit trail).
      *
      * @param int $licenseBatchSize  Max unmatched licenses to process per cycle.
      * @return array{
@@ -114,7 +136,29 @@ final class NationalSyncOrchestrator
         $startedAt = date('Y-m-d H:i:s');
         $this->logger->info('Sync cycle started', ['at' => $startedAt, 'direction' => $direction]);
 
-        // §9.5 step 2: find unmatched licenses with golden-link anchors.
+        // §9.5 step 1: write a 'cycle_started' audit row so the status panel
+        // can read the last-cycle start time back from sync_audit_log.
+        $this->auditRepo->log(
+            applicantId: 0,
+            nationalRequestNumber: '',
+            action: 'cycle_started',
+            outcome: 'cycle_started',
+            confidence: 0,
+            context: ['direction' => $direction, 'batch_size' => $licenseBatchSize]
+        );
+
+        // §9.5 step 2 (Phase 42 v2.0.8): pull a fresh page from upstream so
+        // the cycle isn't a no-op when the cache is empty. The fetch is
+        // logged to integration_log (the bidirectional audit trail, §29.1).
+        // If upstream is unreachable / circuit breaker OPEN, the searchUpstream
+        // helper returns a 'degraded' summary and the cycle continues with
+        // whatever the local cache has (the matcher step below will still run
+        // against existing national_licenses rows).
+        $upstreamFilter = new Filter(page: 1, pageSize: 20);
+        $upstreamSummary = $this->licenseService->searchUpstream($upstreamFilter);
+        $this->logIntegrationFetch($upstreamSummary);
+
+        // §9.5 step 2 (cont.): find unmatched licenses with golden-link anchors.
         $licenses = $this->licenseRepo->findUnmatched($licenseBatchSize);
 
         $licensesProcessed = 0;
@@ -213,7 +257,33 @@ final class NationalSyncOrchestrator
             'outbound_skipped' => $outboundSkipped,
             'outbound_dedup_skipped' => $outboundDedupSkipped,
             'two_way_enabled' => $twoWayEnabled,
+            'upstream_reached'  => $upstreamSummary['reached'],
+            'upstream_fetched'  => $upstreamSummary['fetched'],
+            'upstream_degraded' => $upstreamSummary['degraded'],
         ]));
+
+        // §9.5 step 1 (book-end): write a 'cycle_completed' audit row so the
+        // status panel can read the last-cycle end time back from sync_audit_log.
+        $this->auditRepo->log(
+            applicantId: 0,
+            nationalRequestNumber: '',
+            action: 'cycle_completed',
+            outcome: 'cycle_completed',
+            confidence: 0,
+            context: [
+                'started_at'        => $startedAt,
+                'ended_at'          => $endedAt,
+                'licenses_processed'=> $licensesProcessed,
+                'applicants_tried'  => $applicantsTried,
+                'auto_confirmed'    => $autoConfirmed,
+                'operator_flagged'  => $operatorFlagged,
+                'auto_rejected'     => $autoRejected,
+                'upstream_reached'  => $upstreamSummary['reached'],
+                'upstream_fetched'  => $upstreamSummary['fetched'],
+                'upstream_degraded' => $upstreamSummary['degraded'],
+                'upstream_error'    => $upstreamSummary['error'],
+            ]
+        );
 
         $this->logger->info('Sync cycle completed', [
             'started_at' => $startedAt,
@@ -227,6 +297,9 @@ final class NationalSyncOrchestrator
             'outbound_conflicts' => $outboundConflicts,
             'outbound_dedup_skipped' => $outboundDedupSkipped,
             'two_way_enabled' => $twoWayEnabled,
+            'upstream_reached' => $upstreamSummary['reached'],
+            'upstream_fetched' => $upstreamSummary['fetched'],
+            'upstream_degraded' => $upstreamSummary['degraded'],
         ]);
 
         return [
@@ -242,6 +315,11 @@ final class NationalSyncOrchestrator
             'outbound_skipped' => $outboundSkipped,
             'outbound_dedup_skipped' => $outboundDedupSkipped,
             'two_way_enabled' => $twoWayEnabled,
+            'upstream_reached'  => $upstreamSummary['reached'],
+            'upstream_fetched'  => $upstreamSummary['fetched'],
+            'upstream_total'    => $upstreamSummary['total'],
+            'upstream_degraded' => $upstreamSummary['degraded'],
+            'upstream_error'    => $upstreamSummary['error'],
         ];
     }
 
@@ -422,5 +500,69 @@ final class NationalSyncOrchestrator
             ]);
         }
         return $default;
+    }
+
+    /**
+     * Write one row to integration_log recording the upstream fetch the
+     * cycle just performed. Per §29.1 (the bidirectional audit trail) —
+     * every interaction between v3 and the upstream national gateway is
+     * recorded here so the audit team can replay any cycle.
+     *
+     * The idempotency_key is derived from (operation, page, bucket) so
+     * re-runs of the same cycle within the same minute deduplicate
+     * naturally — the UNIQUE constraint on integration_log.idempotency_key
+     * will reject a duplicate insert (we silently swallow that error so
+     * the cycle doesn't fail on a tight cron schedule).
+     *
+     * @param array{reached:bool,fetched:int,total:?int,degraded:bool,error:?string} $summary
+     */
+    private function logIntegrationFetch(array $summary): void
+    {
+        $bucket = date('Y-m-d H:i');  // 1-minute bucket
+        $idempotencyKey = 'fetch_license:page=1:' . $bucket;
+        if ($this->hash !== null) {
+            $idempotencyKey = 'fetch_license:' . $this->hash->short($idempotencyKey);
+        }
+
+        $outcome = $summary['degraded'] ? 'skipped' : ($summary['reached'] ? 'success' : 'timeout');
+        $payload = [
+            'operation'  => 'fetch_license',
+            'page'       => 1,
+            'page_size'  => 20,
+            'reached'    => $summary['reached'],
+            'fetched'    => $summary['fetched'],
+            'total'      => $summary['total'],
+            'degraded'   => $summary['degraded'],
+            'error'      => $summary['error'],
+        ];
+
+        try {
+            $this->conn->insert(
+                'INSERT INTO integration_log
+                    (direction, operation, idempotency_key, request_payload_json,
+                     response_payload_json, outcome, source_of_truth, latency_ms, error_message)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    'inbound',
+                    'fetch_license',
+                    $idempotencyKey,
+                    json_encode(['page' => 1, 'page_size' => 20], JSON_UNESCAPED_UNICODE),
+                    json_encode($payload, JSON_UNESCAPED_UNICODE),
+                    $outcome,
+                    $summary['reached'] ? 'upstream' : 'v3',
+                    null,
+                    $summary['error'],
+                ]
+            );
+        } catch (\Throwable $e) {
+            // Two known error modes — both are safe to swallow:
+            //   1. SQLSTATE 23000 — duplicate idempotency_key (UNIQUE
+            //      constraint): the same cycle already ran this minute.
+            //   2. The integration_log table doesn't exist yet (pre-install
+            //      or migration not applied): we still want the cycle to run.
+            $this->logger->debug('logIntegrationFetch: insert skipped', [
+                'reason' => $e->getMessage(),
+            ]);
+        }
     }
 }
