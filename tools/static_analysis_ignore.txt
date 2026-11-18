@@ -249,3 +249,14 @@ app/Views/registration/step4.php:<?= $fa ?>
 app/Views/registration/step4.php:<?= $i ?>
 roleLabel
 totalPages
+
+# 14. Phase 43 (v2.0.9) — settings view loop variables.
+#
+# $id, $label, $hint in admin/settings/index.php are loop variables from
+# the $renderField closure — $id is a known setting key (string, from
+# KNOWN_SETTINGS), $label and $hint are Persian label strings from
+# KNOWN_SETTINGS. All controller-supplied, not user input.
+# -----------------------------------------------------------------------------
+app/Views/admin/settings/index.php:<?= $id ?>
+app/Views/admin/settings/index.php:<?= $label ?>
+app/Views/admin/settings/index.php:<?= $hint ?>
