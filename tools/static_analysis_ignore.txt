@@ -260,3 +260,20 @@ totalPages
 app/Views/admin/settings/index.php:<?= $id ?>
 app/Views/admin/settings/index.php:<?= $label ?>
 app/Views/admin/settings/index.php:<?= $hint ?>
+
+# 15. Phase 48-49 (v2.1.4-v2.1.5) — integer variables in fee_tariff + service_types.
+#
+# $gid, $gDecMin, $gDecMax, $gSort, $itId, $itSrt in fee_tariff/index.php
+# are loop-extracted (int) values from fee_groups/fee_group_items rows.
+# $licenseTitleCount, $formFieldCount, $wizardStepCount in service_types.php
+# are COUNT(*) subquery results (int). All provably safe — not user input.
+# -----------------------------------------------------------------------------
+app/Views/admin/fee_tariff/index.php:<?= $gid ?>
+app/Views/admin/fee_tariff/index.php:<?= $gDecMin ?>
+app/Views/admin/fee_tariff/index.php:<?= $gDecMax ?>
+app/Views/admin/fee_tariff/index.php:<?= $gSort ?>
+app/Views/admin/fee_tariff/index.php:<?= $itId ?>
+app/Views/admin/fee_tariff/index.php:<?= $itSrt ?>
+app/Views/admin/service_types.php:<?= $licenseTitleCount ?>
+app/Views/admin/service_types.php:<?= $formFieldCount ?>
+app/Views/admin/service_types.php:<?= $wizardStepCount ?>
