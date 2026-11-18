@@ -22,8 +22,9 @@ use App\Shared\Support\StructuredLogger;
  * (Stage 2, future). Changing it is a runtime no-deploy switch.
  *
  * Operations:
- *   - index():  GET  /admin/settings           list + edit all settings
+ *   - index():  GET  /admin/settings             list + edit all settings
  *   - update(): POST /admin/settings             bulk-update submitted settings
+ *   - delete(): POST /admin/settings/delete      delete a custom (non-known) setting
  *
  * Access: requireRole(['admin']) — only superadmin can change settings.
  *
@@ -52,6 +53,13 @@ use App\Shared\Support\StructuredLogger;
  * fee_modal_enabled). The update() loop now respects the `textarea` type
  * (no 500-char truncation) and the `image` type (treats the value as a
  * filesystem path; the actual upload is handled by uploadImage()).
+ *
+ * Phase 49 (v2.1.5) — delete() method added: a POST /admin/settings/delete
+ * route lets the admin permanently delete a CUSTOM (non-known) setting row
+ * from the `settings` table. Known settings (in KNOWN_SETTINGS) are refused
+ * (they have first-class UI controls and deleting one would silently
+ * reset it to the default — confusing). The settings view now shows a
+ * delete button next to each custom setting.
  */
 final class SettingsController extends Controller
 {
@@ -188,6 +196,7 @@ final class SettingsController extends Controller
             'known'    => self::KNOWN_SETTINGS,
             'saved'    => false,
             'errors'   => [],
+            'message'  => $this->readFlash('settings_message'),
         ]);
     }
 
@@ -273,6 +282,7 @@ final class SettingsController extends Controller
             'known'    => self::KNOWN_SETTINGS,
             'saved'    => true,
             'errors'   => $errors,
+            'message'  => $this->readFlash('settings_message'),
         ]);
     }
 
@@ -339,6 +349,77 @@ final class SettingsController extends Controller
         $relativePath = 'storage/uploads/settings/' . $filename;
         $this->upsertSetting($safeKey, $relativePath);
         return Response::json(['success' => true, 'data' => ['path' => $relativePath]]);
+    }
+
+    /**
+     * POST /admin/settings/delete — permanently delete a CUSTOM (non-known)
+     * setting from the `settings` table.
+     *
+     * Phase 49 (v2.1.5) — full admin control over all system settings.
+     * Before this phase, the admin could add or edit any custom key via the
+     * "تنظیمات سفارشی" card, but there was no way to remove an obsolete
+     * custom key entirely — once added, it stayed in the table forever
+     * (the update() loop only ever upserts; it never deletes).
+     *
+     * Defense:
+     *   - Body param `setting_key` is required (non-empty after trim).
+     *   - Rejects any key in KNOWN_SETTINGS — known settings have first-
+     *     class UI controls and the seeded defaults; deleting one would
+     *     silently reset it to the default on the next index() load,
+     *     which is confusing. The admin should use the edit form instead.
+     *   - The key is run through `validateCustomKey()` so a malicious
+     *     input like `sync_direction OR 1=1` is rejected before it ever
+     *     reaches SQL (defense in depth — the actual DELETE uses a
+     *     bound placeholder, so SQL injection is already impossible,
+     *     but this also rejects reserved `_`/`.` prefixes).
+     *   - The DELETE is a parameterized prepared statement (no string
+     *     concatenation).
+     *
+     * Outcome: redirect back to /admin/settings with a flash message
+     * (`settings_message`) shown at the top of the page — success,
+     * "not found" (no row matched the key), or "refused" (known key /
+     * invalid key).
+     */
+    public function delete(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $body = $request->body();
+        $key = trim((string)($body['setting_key'] ?? ''));
+
+        if ($key === '') {
+            $this->session->set('settings_message', 'کلید تنظیم برای حذف وارد نشده است.');
+            return $this->redirect('/admin/settings');
+        }
+
+        // Refuse known settings — they have first-class UI controls.
+        if (array_key_exists($key, self::KNOWN_SETTINGS)) {
+            $this->session->set(
+                'settings_message',
+                'کلید «' . $key . '» یک تنظیم سیستمی است و از این مسیر قابل حذف نیست؛ از فرم ویرایش بالا مقداردهی کنید.'
+            );
+            return $this->redirect('/admin/settings');
+        }
+
+        // Defense in depth — same per-key rules as the custom-add form.
+        $error = self::validateCustomKey($key);
+        if ($error !== null) {
+            $this->session->set('settings_message', 'کلید نامعتبر: ' . $error);
+            return $this->redirect('/admin/settings');
+        }
+
+        $existing = $this->conn->one('SELECT setting_key FROM settings WHERE setting_key = ?', [$key]);
+        if ($existing === null) {
+            $this->session->set('settings_message', 'کلید «' . $key . '» در پایگاه داده یافت نشد.');
+            return $this->redirect('/admin/settings');
+        }
+
+        $this->conn->execute('DELETE FROM settings WHERE setting_key = ?', [$key]);
+        $this->logger->info('Custom setting deleted', [
+            '_module' => 'core',
+            'key'     => $key,
+        ]);
+        $this->session->set('settings_message', 'تنظیم سفارشی «' . $key . '» حذف شد.');
+        return $this->redirect('/admin/settings');
     }
 
     /**
@@ -437,5 +518,21 @@ final class SettingsController extends Controller
                 [$key, $value]
             );
         }
+    }
+
+    /**
+     * Read + clear a one-shot flash message from the session.
+     *
+     * Phase 49 (v2.1.5) — used by index()/update() to surface the
+     * `settings_message` set by delete(). The message is removed after
+     * being read so a refresh of the settings page does not re-show it.
+     */
+    private function readFlash(string $key): string
+    {
+        $value = (string)$this->session->get($key, '');
+        if ($value !== '') {
+            $this->session->remove($key);
+        }
+        return $value;
     }
 }

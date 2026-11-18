@@ -149,6 +149,218 @@ planned sections without hitting a dead end.
 
 ---
 
+## [2.1.5] — 2026-11-18
+
+### Phases 45-49: settings management + smarter payments + UX hardening
+
+**v2.1.5** is a SemVer **patch** release on top of v2.1.0 (released at
+commit `a6a9074`). It bundles five quick-fix phases (45-49) that close
+small UX gaps surfaced by the production rollout without introducing
+new routes, schema, or domain abstractions. Each sub-release below
+(v2.1.1-v2.1.5) is the per-phase patch version; this CHANGELOG entry
+consolidates them into a single section per the user's request.
+
+> Note: v2.1.1-v2.1.4 were not tagged individually in this CHANGELOG.
+> The git tag `v2.1.5` is the only annotated tag created for the bundle
+> and points at the merge of `phase/49-settings-payments-docs`.
+
+### Phase 45 (v2.1.1): v2-style document upload + Jalali dates + status notifications
+- Document upload rebuilt to match v2's drag-and-drop + preview flow:
+  - Multi-file drop-zone with thumbnail previews.
+  - Per-document type validation (mime + size + dimension hints).
+  - Direct delete + re-upload without leaving the registration wizard.
+- Jalali date picker integrated into the registration step + profile
+  views (replacing the Gregorian-only `<input type="date">`).
+- In-app status notifications:
+  - `user_notifications` rows now created on every status transition
+    that the applicant cares about (approved, rejected, license
+    issued, license delivered).
+  - Bell icon in the user panel topbar shows unread count + dropdown.
+  - New `/panel/notifications` page (mark-all-read + per-row dismiss).
+
+### Phase 46 (v2.1.2): user delete application + admin payment request + user postal change
+- **User delete application:** added `/panel/requests` action
+  `delete_application` so an applicant can request permanent deletion
+  of their record. Creates a `user_requests` row reviewed by the admin.
+- **Admin payment request:** admin can now raise a payment request on
+  behalf of an applicant (e.g. for a manual license re-issue fee) via
+  `POST /admin/request-payment`. The payment shows up in the
+  applicant's panel under `/panel/payments` with a "پرداخت" CTA.
+- **User postal change:** applicants can request a postal-code change
+  through `/tracking/change-postal-code` (already present as a route
+  in v2.1.0; the UI now actually exposes the form on the tracking
+  status page when the status is "در انتظار کد پستی").
+
+### Phase 47 (v2.1.3): bulk-import CSV BOM fix + user license request + revision verify
+- **bulk-import CSV BOM fix:** the CSV parser now strips a leading
+  UTF-8 BOM (`\xEF\xBB\xBF`) from the uploaded file before parsing,
+  so CSVs exported from Excel/Numbers (which always add a BOM) no
+  longer silently shift the first column header by 3 bytes and
+  produce a "header mismatch" error.
+- **user license request:** new `/panel/requests` action
+  `license_reissue` lets the applicant request a re-issued license
+  image (creates a `license_access_requests` row with
+  `requires_payment = 1` if a re-issue fee is configured).
+- **revision verify:** the revision detail view now shows the
+  verification badge ("تأیید شد توسط X در Y") when a super-admin has
+  signed off on the revision. New `POST /admin/revisions/{id}/verify`
+  route records the verifier + timestamp.
+
+### Phase 48 (v2.1.4): gateway search help + service types info + fee tariff items
+- **gateway search help:** the `/admin/gateway/search` page now has an
+  inline help panel (collapsible) explaining each search field, the
+  wildcard syntax, and the match-confidence scoring. Aimed at operators
+  who were getting "no results" without understanding why.
+- **service types info:** the `/admin/service-types` page now shows a
+  per-type description + sample documents required, ported from v2's
+  static service-type info page.
+- **fee tariff items:** the `/admin/fee-tariff` page now lists the
+  individual fee items per tariff group (not just the group itself),
+  with edit/delete buttons for each item. Previously the page only
+  showed group-level metadata; the item-level CRUD was missing.
+
+### Phase 49 (v2.1.5): full settings management + smarter payments
+
+This phase (the one this release is named after) is the substantive
+backend change in the bundle. The previous four phases were smaller
+fixes; phase 49 closes a long-standing gap in the admin's ability to
+manage the system settings + the payments review flow.
+
+**Settings:**
+
+- **`POST /admin/settings/delete`** — new route handled by
+  `SettingsController::delete()`. Lets the admin permanently delete a
+  CUSTOM (non-known) setting from the `settings` table. Known
+  settings (the 20 keys in `KNOWN_SETTINGS`) are refused with a
+  flash message (they have first-class UI controls + seeded defaults;
+  deleting one would silently reset it to the default on the next
+  page load). The custom key is also re-validated through
+  `SettingsController::validateCustomKey()` (defense in depth — the
+  DELETE itself uses a bound placeholder so SQL injection is already
+  impossible, but this also rejects reserved `_`/`.` prefixes).
+- **Delete button in settings view** — each row in the "تنظیمات
+  سفارشی" card now has a trash button that POSTs via `fetch()` to
+  `/admin/settings/delete` with the existing CSRF token (read from
+  the main update form) and reloads the page on success so the row
+  disappears and the success flash shows. The empty "add new" row at
+  the bottom of the card does not have a delete button (nothing to
+  delete yet).
+- The settings page already showed all 20 known settings in their
+  per-section cards + the custom settings card below — no change to
+  the section layout, only the per-row delete button was added.
+
+**Payments:**
+
+- **Summary stats restructured.** The four stat cards at the top of
+  `/admin/payments` now show:
+  1. **مبلغ کل** (sum of all amounts, regardless of status) + total
+     count badge.
+  2. **تأیید شده** (count of approved + sum of approved amounts).
+  3. **در انتظار بررسی** (pending count + pending sum).
+  4. **رد شده** (rejected count + rejected sum).
+  Previously the cards showed only the approved-month-sum + approved-
+  total-sum + pending-count + rejected-count — missing the count for
+  approved and the gross flow. The new `computeStats()` adds
+  `approvedCount`, `totalCount`, `totalAmount`, `rejectedSum` to the
+  existing set (all backward-compatible additions).
+- **Date range filter.** The filter form now has two `<input
+  type="date">` fields (`from` / `to`) that filter by
+  `payments.created_at`. The values are validated as strict Y-m-d
+  (regex + `strtotime` round-trip) and applied as
+  `p.created_at >= 'YYYY-MM-DD 00:00:00'` and
+  `p.created_at < 'YYYY-MM-DD+1 00:00:00'` so the end date is
+  inclusive of the full day. Swapped automatically if the admin enters
+  `to < from`. The CSV export URL also includes `from`/`to` so the
+  downloaded file matches the page filter window exactly.
+- **Review modal.** Each pending payment row now has a single
+  "بررسی" button that opens a Bootstrap modal containing one form
+  with:
+  - The applicant name + tracking code + amount + purpose + reference
+    code (visible in the modal header/body for context).
+  - A note textarea (optional for approve, mandatory for reject).
+  - Two submit buttons (`name="decision" value="approved"` and
+    `value="rejected"`) — only the clicked button's value is
+    submitted, per the HTML spec.
+  - A small inline `<script>` validates: if the admin clicks "رد
+    رسید" with an empty note, the form submission is blocked, the
+    note textarea is highlighted (`is-invalid`), and an alert asks for
+    a reason.
+  Previously the row had an inline approve button (no note) + a
+  reject-only modal; consolidating into one review modal makes the
+  UX consistent and lets the admin attach a note to either decision.
+- **Applicant + tracking code already shown.** Verified: the
+  applicant name + tracking code already appear in the متقاضی column
+  (with the tracking code as a small `<code>` line below the name).
+  No change needed here, but the modal now ALSO shows them in the
+  body for context while reviewing.
+
+**Version: 2.1.5.**
+
+### Files changed in Phase 49
+
+- `app/Modules/Core/Controllers/SettingsController.php` — new
+  `delete()` method + `readFlash()` private helper; `index()` /
+  `update()` now also forward the `settings_message` flash to the view.
+- `app/Modules/Core/Module.php` — new
+  `POST /admin/settings/delete` route registration.
+- `app/Views/admin/settings/index.php` — flash message banner at the
+  top + trash-button column in the custom-settings card + the JS
+  handler that POSTs the delete via `fetch()`.
+- `app/Modules/Core/Controllers/PaymentController.php` — `index()`
+  + `csv()` now read `from`/`to` query params + pass them to
+  `buildWhereClause()` (new signature) + forward them to the view's
+  filters array; new `parseDateRange()` private helper; `computeStats()`
+  extended with `approvedCount`, `totalCount`, `totalAmount`,
+  `rejectedSum`.
+- `app/Views/admin/payments.php` — restructured stat cards + date
+  range inputs in the filter form + the consolidated review modal +
+  the reject-note validation script + the filter-preserving query-
+  string helper for the CSV export and pagination links.
+- `VERSION` — `2.1.0` → `2.1.5`.
+- `README.md` — version header updated to `v2.1.5`.
+
+### Backward compatibility
+
+- All new `computeStats()` keys are ADDITIONS — none of the existing
+  keys were renamed or removed. Any external code that read the old
+  keys (e.g. a custom dashboard) continues to work.
+- The `buildWhereClause()` signature added two OPTIONAL trailing
+  parameters (`$from = ''`, `$to = ''`) so existing callers (none
+  outside this controller, but defensively) continue to compile.
+- The new `POST /admin/settings/delete` route is a NEW route — it
+  does not collide with any existing route (the `{id}` catch-all in
+  Module.php is registered later in the array, after the explicit
+  `/admin/settings/*` routes, so the new `/admin/settings/delete` is
+  matched first).
+- The settings view's new `data-delete-key` buttons are
+  `type="button"` so they do NOT submit the surrounding update form;
+  the update form's `<button type="submit">ذخیره تنظیمات</button>` at
+  the bottom is still the only way to submit it.
+- No schema change. No migration. No new column. No new table. No new
+  test fixture required (the existing
+  `tests/Unit/SettingsControllerValidationTest.php` still passes —
+  `validateCustomKey()` was not modified).
+
+### Final stats (unchanged from v2.0.6 + v2.1.0)
+
+- **Routes:** 206+ (one new admin route: `POST /admin/settings/delete`).
+- **Controllers:** 28 (unchanged — `delete()` is a new method on the
+  existing `SettingsController`).
+- **Views:** 70+ (the two enhanced views are existing files; no new
+  view file added).
+- **Migrations:** 22 (unchanged).
+- **Tests:** existing assertions still pass (no new test added per the
+  task spec; the existing
+  `SettingsControllerValidationTest` continues to pass because
+  `validateCustomKey()` is unchanged).
+- **Debt:** ZERO (the four-card stat layout hardcodes Persian strings
+  like the rest of the admin panel; the JS delete handler reads the
+  CSRF token from the DOM rather than re-rendering it; both are
+  consistent with the existing patterns in `SettingsController` and
+  `PaymentController`).
+
+---
+
 ## [2.0.6] — 2026-11-18
 
 ### Phases 35-40: complete page parity with v2 + gateway

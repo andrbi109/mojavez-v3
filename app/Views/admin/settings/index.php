@@ -3,10 +3,12 @@
 /** @var array $known     KNOWN_SETTINGS metadata (key→[label,hint,type,options?]) */
 /** @var bool $saved */
 /** @var array<string,string> $errors  custom-key validation errors (Phase 14) */
+/** @var string $message  flash message from delete() (Phase 49) */
 /** @var string $csrfField */
 /** @var string $baseUrl */
 $baseUrl ??= '/';
 $errors ??= [];
+$message ??= '';
 $siteLogoPath = $settings['site_logo'] ?? '';
 
 /**
@@ -79,6 +81,10 @@ $renderField = static function (string $key) use ($known, $settings, $baseUrl): 
 };
 ?>
 <h2 class="h5 mb-3"><i class="bi bi-gear"></i> تنظیمات سامانه</h2>
+
+<?php if ($message !== ''): ?>
+<div class="alert alert-info"><i class="bi bi-info-circle"></i> <?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
 
 <?php if (!empty($saved)): ?>
 <div class="alert alert-success"><i class="bi bi-check-circle"></i> تنظیمات با موفقیت ذخیره شد.</div>
@@ -256,25 +262,82 @@ $renderField = static function (string $key) use ($known, $settings, $baseUrl): 
     <div class="card mb-3">
         <div class="card-header"><i class="bi bi-sliders"></i> تنظیمات سفارشی</div>
         <div class="card-body">
-            <p class="text-muted small mb-3">برای افزودن کلید دلخواه، ردیف جدید را پر کنید. مقادیر موجود نیز ویرایش می‌شوند.</p>
+            <p class="text-muted small mb-3">
+                برای افزودن کلید دلخواه، ردیف جدید را پر کنید. مقادیر موجود نیز ویرایش می‌شوند.
+                برای حذف دائمی یک کلید سفارشی، روی دکمهٔ سطل زباله در همان ردیف کلیک کنید
+                (تنظیمات سیستمی بالا قابل حذف نیستند).
+            </p>
             <?php
             $customKeys = array_diff(array_keys($settings), array_keys($known));
             $i = 0;
             foreach ($customKeys as $ck):
                 $cv = $settings[$ck];
             ?>
-                <div class="row g-2 mb-2">
-                    <div class="col-5"><input type="text" class="form-control" name="custom_keys[]" value="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
-                    <div class="col-7"><input type="text" class="form-control" name="custom_values[]" value="<?= htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
+                <div class="row g-2 mb-2 align-items-center">
+                    <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" value="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
+                    <div class="col-10 col-sm-6"><input type="text" class="form-control" name="custom_values[]" value="<?= htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
+                    <div class="col-2 col-sm-2 d-grid">
+                        <button type="button" class="btn btn-sm btn-outline-danger py-1"
+                                data-delete-key="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>"
+                                title="حذف دائمی این تنظیم سفارشی">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
                 </div>
             <?php $i++; endforeach; ?>
             <!-- One empty row for adding a new custom setting. -->
-            <div class="row g-2 mb-2">
-                <div class="col-5"><input type="text" class="form-control" name="custom_keys[]" placeholder="کلید جدید" dir="ltr"></div>
-                <div class="col-7"><input type="text" class="form-control" name="custom_values[]" placeholder="مقدار" dir="ltr"></div>
+            <div class="row g-2 mb-2 align-items-center">
+                <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" placeholder="کلید جدید" dir="ltr"></div>
+                <div class="col-12 col-sm-8"><input type="text" class="form-control" name="custom_values[]" placeholder="مقدار" dir="ltr"></div>
             </div>
         </div>
     </div>
 
     <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> ذخیره تنظیمات</button>
 </form>
+
+<!-- Phase 49 (v2.1.5) — delete-custom-setting handler (separate from the main
+     update form so we don't nest <form> elements, which is invalid HTML).
+     The button reads the existing CSRF token from the main form above and
+     POSTs via fetch to /admin/settings/delete; on success the page reloads
+     and the row disappears. -->
+<script>
+(function () {
+    var buttons = document.querySelectorAll('button[data-delete-key]');
+    if (buttons.length === 0) return;
+    // The main update form holds the CSRF token in <input name="_csrf">.
+    var csrfInput = document.querySelector('form[action$="/admin/settings"] input[name="_csrf"]');
+    var csrfToken = csrfInput ? csrfInput.value : '';
+    buttons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var key = btn.getAttribute('data-delete-key') || '';
+            if (!key) return;
+            if (!window.confirm('تنظیم سفارشی «' + key + '» برای همیشه حذف شود؟')) return;
+            // Disable the button while the request is in flight.
+            btn.disabled = true;
+            var body = new URLSearchParams();
+            body.append('setting_key', key);
+            body.append('_csrf', csrfToken);
+            fetch('/admin/settings/delete', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
+            }).then(function (r) {
+                if (r.ok && r.redirected) {
+                    // The controller returns a 302 to /admin/settings; follow
+                    // it by reloading the page so the flash message shows.
+                    window.location.reload();
+                    return;
+                }
+                return r.text().then(function (txt) {
+                    throw new Error('HTTP ' + r.status + ': ' + txt.slice(0, 200));
+                });
+            }).catch(function (err) {
+                btn.disabled = false;
+                window.alert('حذف ناموفق بود: ' + (err && err.message ? err.message : 'خطای شبکه'));
+            });
+        });
+    });
+})();
+</script>
