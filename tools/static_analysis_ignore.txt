@@ -269,3 +269,14 @@ app/Views/admin/gateway_search.php:<?= $stBadge ?>
 app/Views/admin/gateway_search.php:<?= $stLabel ?>
 app/Views/admin/gateway_saved.php:<?= $stBadge ?>
 app/Views/admin/gateway_saved.php:<?= $stLabel ?>
+
+# 12. Phase 35-39 (v2.0.1-v2.0.5) — register form integer variables.
+#
+# $y, $m, $d in admin/register.php are (int) year/month/day values for
+# the 3 Jalali date selects — provably safe integer inputs, not user
+# input. $name is a controller-supplied setting value, not user input.
+# -----------------------------------------------------------------------------
+app/Views/admin/register.php:<?= $y ?>
+app/Views/admin/register.php:<?= $m ?>
+app/Views/admin/register.php:<?= $d ?>
+app/Views/admin/register.php:<?= $name ?>
