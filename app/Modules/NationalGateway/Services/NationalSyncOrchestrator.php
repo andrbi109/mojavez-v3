@@ -259,6 +259,43 @@ final class NationalSyncOrchestrator
     }
 
     /**
+     * Operator-flagged matches pending review (for /admin/sync/pending).
+     *
+     * Delegates to the audit-log repository's pendingOperatorReview().
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function pending(int $limit = 50): array
+    {
+        return $this->auditRepo->pendingOperatorReview($limit);
+    }
+
+    /**
+     * Resolve an operator-flagged item — admin confirms or rejects.
+     */
+    public function resolve(int $logId, int $reviewerId, string $decision, ?string $note = null): void
+    {
+        $this->auditRepo->resolve($logId, $reviewerId, $decision, $note);
+    }
+
+    /**
+     * Current sync-direction settings (for the /admin/sync/status panel).
+     *
+     * Returns the runtime values of:
+     *   - sync_direction     ('disabled' | 'inbound' | 'two_way')
+     *   - two_way_enabled    (bool)
+     *
+     * @return array{direction:string,two_way_enabled:bool}
+     */
+    public function syncInfo(): array
+    {
+        $direction = $this->readSetting('sync_direction', 'inbound');
+        $twoWay = $this->readSetting('sync_two_way_enabled', '0') === '1'
+            && $direction === 'two_way';
+        return ['direction' => $direction, 'two_way_enabled' => $twoWay];
+    }
+
+    /**
      * Read a setting from the settings table (key→value).
      * Returns $default if the key is missing or the table is unreachable.
      *

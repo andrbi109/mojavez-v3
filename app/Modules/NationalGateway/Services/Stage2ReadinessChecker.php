@@ -39,10 +39,12 @@ use App\Shared\Support\StructuredLogger;
  *      checker verifies the tests exist. A future enhancement could shell out
  *      to run them.)
  *
- * The checker is invoked manually by an admin (via /admin/sync/readiness) or
- * by a pre-deploy CI step. It NEVER auto-enables Stage 2 — it only reports
- * readiness. Enabling is a separate admin action (SettingsController) so a
- * human reviews the report first.
+ * The checker is invoked by a pre-deploy CI step (or programmatically).
+ * Phase 41 (v2.0.7) removed the /admin/sync/readiness admin UI that used
+ * to wrap this checker — the underlying checker class is kept for future
+ * programmatic use (CI, pre-deploy script). It NEVER auto-enables Stage 2 —
+ * it only reports readiness. Enabling is a separate admin action
+ * (SettingsController) so a human reviews the report first.
  */
 final class Stage2ReadinessChecker
 {

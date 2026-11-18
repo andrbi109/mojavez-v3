@@ -226,6 +226,34 @@ body {
     display: inline-block;
 }
 
+/* ---- Upload box (v2-style clickable file picker) ---- */
+.upload-box {
+    border: 2px dashed var(--moj-border);
+    border-radius: 14px;
+    padding: 1.3rem .8rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--moj-surface-2);
+    height: 100%;
+}
+.upload-box:hover {
+    border-color: var(--moj-brand);
+    background: rgba(var(--moj-brand-rgb), 0.06);
+}
+.upload-box.has-file {
+    border-color: var(--moj-success);
+    border-style: solid;
+    background: rgba(21, 128, 61, 0.08);
+}
+[data-bs-theme="dark"] .upload-box {
+    background: var(--moj-surface);
+    border-color: var(--moj-border);
+}
+[data-bs-theme="dark"] .upload-box.has-file {
+    background: rgba(21, 128, 61, 0.16);
+}
+
 /* ---- Print view (license) ---- */
 @media print {
     .moj-header, .moj-footer, .moj-admin-sidebar, .no-print { display: none !important; }
