@@ -14,6 +14,7 @@ use App\Modules\Core\Services\FileStorage;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\DocumentRepositoryInterface;
 use App\Shared\Contracts\JobAndPropertyRepositoryInterface;
+use App\Shared\Contracts\LicenseFileRepositoryInterface;
 use App\Shared\Contracts\ServiceTypeRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
 use App\Shared\Persistence\Connection;
@@ -74,6 +75,7 @@ final class AdminController extends Controller
         private readonly JobAndPropertyRepositoryInterface $jobAndProperty,
         private readonly DocumentRepositoryInterface $documents,
         private readonly FileStorage $storage,
+        private readonly LicenseFileRepositoryInterface $licenseFiles,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -196,6 +198,25 @@ final class AdminController extends Controller
         // isImage()/isPdf()/extension() helpers for thumbnail rendering).
         $documents = $this->documents->findByApplicantId($id);
 
+        // Phase 55 (v2.2.1) — load the existing license image (1:1 with
+        // applicant) so the view can show its thumbnail when the admin
+        // opens the page after the status was changed to 'صدور مجوز'.
+        // Returns null when no license image has been uploaded yet.
+        $licenseFile = null;
+        $licenseDoc  = null;
+        try {
+            $licenseFile = $this->licenseFiles->findByApplicantId($id);
+            if ($licenseFile !== null && $licenseFile->documentId > 0) {
+                $licenseDoc = $this->documents->findById($licenseFile->documentId);
+            }
+        } catch (\Throwable $e) {
+            $this->logger->warning('Failed to load license file for view', [
+                '_module'      => 'core',
+                'applicant_id' => $id,
+                'error'        => $e->getMessage(),
+            ]);
+        }
+
         // Load the raw applicants row for fields not exposed by the
         // Applicant VO (father_name, birth_date, marital_status,
         // children_count, physical_condition, disability_details,
@@ -274,6 +295,8 @@ final class AdminController extends Controller
             'jobDetail'        => $jobDetail,
             'propertyDetail'   => $propertyDetail,
             'documents'        => $documents,
+            'licenseFile'      => $licenseFile,
+            'licenseDoc'       => $licenseDoc,
             'serviceTypeTitle' => $serviceTypeTitle,
             'row'              => $row,
             'statusMeta'       => $statusMeta,

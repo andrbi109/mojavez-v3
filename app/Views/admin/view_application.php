@@ -25,6 +25,8 @@
  *   $flashMessage     string    — Phase 50: one-shot flash banner text ('' = none)
  *   $flashKind        string    — Phase 50: 'success' | 'danger' | 'warning' | 'info'
  *   $suggestedAmount  int       — Phase 50: pre-fill for the payment modal (Toman)
+ *   $licenseFile      ?LicenseFile — Phase 55: existing license_files row (null = not uploaded yet)
+ *   $licenseDoc       ?Document   — Phase 55: Document row backing $licenseFile (null = none)
  */
 /** @var \App\Modules\Core\Domain\Applicant $applicant */
 /** @var array $statusLog */
@@ -41,9 +43,13 @@
 /** @var string $flashMessage */
 /** @var string $flashKind */
 /** @var int $suggestedAmount */
+/** @var ?\App\Modules\Core\Domain\LicenseFile $licenseFile */
+/** @var ?\App\Modules\Core\Domain\Document $licenseDoc */
 
 use App\Modules\Core\Domain\Document;
+use App\Modules\Core\Domain\LicenseFile;
 use App\Modules\Core\Domain\Enums\LicenseState;
+use App\Modules\Core\Domain\Enums\ApplicantStatus;
 use App\Shared\Support\PersianDate;
 use App\Shared\Support\StatusBadge;
 
@@ -58,9 +64,23 @@ $persianDate  ??= null;
 $flashMessage ??= '';
 $flashKind    ??= 'success';
 $suggestedAmount ??= 500000;
+$licenseFile  ??= null;
+$licenseDoc   ??= null;
 
 $currentStatus = $applicant->currentStatus;
 $licenseState  = $applicant->licenseState;
+
+// Phase 55 (v2.2.1) — derive two view-level flags from the current
+// status so the template can decide which sections to dim/disable
+// without re-implementing the cycle rules:
+//   - $isTerminal: closed case — the entire page is read-only (a
+//     top banner says "پرونده بسته شده است").
+//   - $isLicenseIssuance: the admin has moved the applicant to
+//     "صدور مجوز" and now must upload the license image. Only the
+//     status-change + license-upload sections stay active; the
+//     rest (edit form, document upload) is dimmed.
+$isTerminal         = $currentStatus->isTerminal();
+$isLicenseIssuance  = ($currentStatus === ApplicantStatus::LicenseIssuance);
 
 // Helper: pick a Bootstrap badge color for a given status name.
 //
@@ -126,6 +146,25 @@ $flashKindClass = match ($flashKind) {
 </div>
 <?php endif; ?>
 
+<?php if ($isTerminal): ?>
+<!-- Phase 55 (v2.2.1) — closed-case banner. When the applicant's
+     current_status is terminal (رد درخواست / لغو / تحویل مجوز /
+     تأیید نهایی دریافت کد رهگیری) the entire page is locked down.
+     The status-change form, the license-upload form, the inline
+     edit form, and the document upload form are all server-side
+     disabled (HTML disabled attrs) so the page is read-only even
+     before JS runs. The print button stays active (it opens a new
+     tab — no write). -->
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-4" role="alert">
+    <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+    <div>
+        <strong>پرونده بسته شده است.</strong>
+        وضعیت فعلی پرونده «<strong><?= htmlspecialchars($currentStatus->titleFa(), ENT_QUOTES, 'UTF-8') ?></strong>»
+        است و امکان تغییر اطلاعات، بارگذاری مدرک یا تغییر وضعیت وجود ندارد.
+    </div>
+</div>
+<?php endif; ?>
+
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
         <h1 class="h4 mb-1">پروندهٔ متقاضی</h1>
@@ -153,8 +192,14 @@ $flashKindClass = match ($flashKind) {
     </div>
 </div>
 
-<!-- ====== Status Change Card (18-status cycle) ====== -->
-<div class="card border-primary mb-4">
+<!-- ====== Status Change Card (18-status cycle) ======
+     Phase 55 (v2.2.1) — the entire card is server-side disabled when
+     the applicant's current_status is terminal. Even though the
+     server's changeStatus() controller rejects terminal transitions,
+     locking the form here gives a clear visual signal that the case
+     is closed (no point letting the admin pick a new status from a
+     disabled dropdown). -->
+<div class="card border-primary mb-4<?= $isTerminal ? ' moj-card-locked' : '' ?>">
     <div class="card-header bg-primary-subtle d-flex align-items-center gap-2">
         <i class="bi bi-arrow-repeat text-primary"></i>
         <strong>تغییر وضعیت پرونده (چرخهٔ ۱۸ وضعیت)</strong>
@@ -175,7 +220,7 @@ $flashKindClass = match ($flashKind) {
                 </div>
                 <div class="col-md-4">
                     <label for="new_status" class="form-label">انتخاب وضعیت جدید</label>
-                    <select class="form-select" id="new_status" name="new_status" required>
+                    <select class="form-select" id="new_status" name="new_status" required<?= $isTerminal ? ' disabled' : '' ?>>
                         <option value="">— انتخاب کنید —</option>
                         <?php foreach ($allStatuses as $s): ?>
                             <?php $isCurrent = $s['value'] === $currentStatus->value; ?>
@@ -193,11 +238,11 @@ $flashKindClass = match ($flashKind) {
                 <div class="col-md-3">
                     <label for="status_description" class="form-label">توضیح (اختیاری)</label>
                     <input type="text" class="form-control" id="status_description" name="description"
-                           placeholder="دلیل تغییر وضعیت..." maxlength="500">
+                           placeholder="دلیل تغییر وضعیت..." maxlength="500"<?= $isTerminal ? ' disabled' : '' ?>>
                 </div>
             </div>
             <div class="mt-3 d-flex gap-2 flex-wrap align-items-center">
-                <button type="submit" class="btn btn-primary" id="btn-change-status">
+                <button type="submit" class="btn btn-primary" id="btn-change-status"<?= $isTerminal ? ' disabled' : '' ?>>
                     <i class="bi bi-check2-circle"></i> اعمال تغییر وضعیت
                 </button>
             </div>
@@ -215,9 +260,10 @@ $flashKindClass = match ($flashKind) {
              page (showing a flash banner) — so the admin never sees
              raw JSON. Lives inside the same card body so it's visually
              grouped with the status change section but OUTSIDE the
-             status-change-form (forms cannot be nested in HTML). -->
+             status-change-form (forms cannot be nested in HTML).
+             Phase 55 (v2.2.1) — disabled when the case is terminal. -->
         <div class="mt-3 border-top pt-3">
-            <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#requestPaymentModal">
+            <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#requestPaymentModal"<?= $isTerminal ? ' disabled' : '' ?>>
                 <i class="bi bi-cash"></i> درخواست پرداخت
             </button>
 
@@ -282,6 +328,127 @@ $flashKindClass = match ($flashKind) {
         </div>
     </div>
 </div>
+
+<!-- ====== Phase 55 (v2.2.1): License image upload card ======
+     The license upload form. POSTs to /admin/license/upload with
+     applicant_id + license_image (file). After Phase 55 the
+     controller redirects back here with a flash banner instead of
+     returning JSON, so the page reloads showing the new thumbnail.
+
+     Visibility:
+       - Hidden by default (the wrapper has style="display:none"
+         unless $isLicenseIssuance).
+       - JS at the bottom of the page shows the card when the admin
+         selects "صدور مجوز" in the #new_status dropdown (preview
+         before submitting the status change).
+       - When the current_status is already "صدور مجوز", the card
+         is rendered visible server-side so the admin can upload
+         without first re-selecting the status.
+       - When the current_status is terminal the card stays hidden
+         (the entire page is locked down anyway). -->
+<div class="card mb-4 border-success" id="license-upload-card"
+     <?= $isLicenseIssuance ? '' : 'style="display:none"' ?>>
+    <div class="card-header bg-success-subtle d-flex align-items-center gap-2">
+        <i class="bi bi-patch-check-fill text-success"></i>
+        <strong>بارگذاری تصویر مجوز</strong>
+    </div>
+    <div class="card-body">
+        <?php if ($licenseFile !== null && $licenseDoc !== null): ?>
+            <!-- Phase 55 (v2.2.1) — already-uploaded license thumbnail.
+                 Reuses the same docViewerModal pattern as the
+                 documents section below. Clicking the thumbnail opens
+                 the inline viewer; re-uploading via the form below
+                 replaces the documents row + the license_files FK. -->
+            <div class="mb-3 pb-3 border-bottom">
+                <p class="text-muted small mb-2">
+                    <i class="bi bi-check-circle-fill text-success"></i>
+                    تصویر مجوز بارگذاری‌شده
+                    (<?= htmlspecialchars($fmtDate($licenseDoc->uploadedAt), ENT_QUOTES, 'UTF-8') ?>):
+                </p>
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <a href="#" class="d-block text-decoration-none"
+                       data-bs-toggle="modal" data-bs-target="#docViewerModal"
+                       data-doc-id="<?= (int)$licenseDoc->id ?>"
+                       data-doc-is-image="<?= $licenseDoc->isImage() ? '1' : '0' ?>"
+                       data-doc-is-pdf="<?= $licenseDoc->isPdf() ? '1' : '0' ?>"
+                       data-doc-name="<?= htmlspecialchars($licenseDoc->originalName, ENT_QUOTES, 'UTF-8') ?>"
+                       data-doc-label="تصویر مجوز"
+                       data-doc-url="<?= htmlspecialchars($baseUrl . 'document/inline/' . (int)$licenseDoc->id, ENT_QUOTES) ?>">
+                        <?php if ($licenseDoc->isImage()): ?>
+                            <img src="<?= htmlspecialchars($baseUrl . 'document/thumb/' . (int)$licenseDoc->id, ENT_QUOTES) ?>"
+                                 class="rounded"
+                                 style="height:120px;width:auto;max-width:160px;object-fit:cover;border:1px solid var(--bs-border-color, #e2e8f0);"
+                                 alt="تصویر مجوز">
+                        <?php elseif ($licenseDoc->isPdf()): ?>
+                            <div class="p-3 rounded d-inline-block"
+                                 style="background:var(--bs-surface-2, #f1f5f9);color:var(--bs-danger, #dc3545)">
+                                <i class="bi bi-file-earmark-pdf" style="font-size:3rem"></i>
+                            </div>
+                        <?php else: ?>
+                            <div class="p-3 rounded d-inline-block"
+                                 style="background:var(--bs-surface-2, #f1f5f9);color:var(--bs-secondary, #6c757d)">
+                                <i class="bi bi-file-earmark-text" style="font-size:3rem"></i>
+                            </div>
+                        <?php endif; ?>
+                    </a>
+                    <div class="small">
+                        <div class="text-muted text-truncate d-block" dir="ltr" style="max-width:280px"
+                             title="<?= htmlspecialchars($licenseDoc->originalName, ENT_QUOTES, 'UTF-8') ?>">
+                            <?= htmlspecialchars($licenseDoc->originalName, ENT_QUOTES, 'UTF-8') ?>
+                        </div>
+                        <div class="text-muted mt-1">
+                            برای جایگزینی، فایل جدید را در فرم زیر بارگذاری کنید.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- License image upload form. The file input name
+             'license_image' matches the controller's
+             $request->file('license_image') call. The accept attribute
+             restricts the file picker to JPEG/PNG/PDF (the controller
+             re-validates the actual MIME via detectMime()). -->
+        <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/license/upload"
+              enctype="multipart/form-data" id="license-upload-form">
+            <?= $csrfField ?>
+            <input type="hidden" name="applicant_id" value="<?= (int)$applicant->id ?>">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-8">
+                    <label for="license_image" class="form-label small">
+                        فایل تصویر مجوز
+                        (jpg / png / pdf — حداکثر ۱۰ مگابایت)
+                    </label>
+                    <input type="file" class="form-control" id="license_image"
+                           name="license_image"
+                           accept="image/jpeg,image/png,application/pdf" required>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-upload"></i>
+                        <?= ($licenseFile !== null) ? 'بارگذاری مجدد تصویر مجوز' : 'بارگذاری تصویر مجوز' ?>
+                    </button>
+                </div>
+            </div>
+            <div class="form-text small mt-2">
+                پس از بارگذاری، تصویر در همین بخش نمایش داده می‌شود و در صورت وجود
+                درخواست دسترسی در انتظار، به‌طور خودکار تأیید خواهد شد.
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ====== Phase 55 (v2.2.1): "Everything else" wrapper ======
+     The container below holds all sections OTHER than the status-change
+     card and the license-upload card (which must stay active when the
+     current_status is "صدور مجوز"). When the case is terminal OR in
+     the license-issuance state, the wrapper gets the
+     `moj-sections-disabled` class so the inline edit form + the
+     document upload form + the delete-document buttons are all
+     visually dimmed and unclickable. The CSS for that class lives in
+     the <style> block at the bottom of this file. -->
+<div id="moj-applicant-detail-sections"
+     class="<?= ($isTerminal || $isLicenseIssuance) ? 'moj-sections-disabled' : '' ?>">
 
 <!-- ====== Phase 36: License State section ====== -->
 <div class="card mb-4 border-<?= htmlspecialchars($licenseState->badgeColor(), ENT_QUOTES, 'UTF-8') ?>">
@@ -718,6 +885,11 @@ $flashKindClass = match ($flashKind) {
     </div>
 </div>
 
+<!-- ====== Phase 55 (v2.2.1): close the "everything else" wrapper.
+     The opening <div id="moj-applicant-detail-sections"> is right
+     above the License State section. -->
+</div>
+
 <!-- ====== Phase 51 (v2.1.7): Document viewer modal ====== -->
 <!-- Clicking a document thumbnail opens this modal. JS swaps the body:
      - image → <img class="img-fluid">
@@ -752,6 +924,41 @@ $flashKindClass = match ($flashKind) {
     </div>
 </div>
 
+<!-- ====== Phase 55 (v2.2.1): inline styles for the disabled/dim
+     state. The .moj-sections-disabled class is applied to the
+     "everything else" wrapper (#moj-applicant-detail-sections)
+     when the case is terminal OR in the "صدور مجوز" state. The
+     .moj-card-locked class is a small visual hint applied to the
+     status-change card when the case is terminal (the inputs are
+     already disabled server-side; this just dims the header a bit).
+     Keeping these styles inline (rather than in app.css) so the
+     phase's behaviour is self-contained and easy to grep. -->
+<style>
+.moj-sections-disabled {
+    opacity: 0.55;
+    pointer-events: none;
+    filter: grayscale(35%);
+}
+.moj-sections-disabled .card {
+    box-shadow: none !important;
+}
+.moj-sections-disabled .btn,
+.moj-sections-disabled a[data-bs-toggle="modal"] {
+    cursor: not-allowed;
+}
+/* Status-change card gets a slightly muted header when the case is
+   closed (the inputs are server-side disabled; this is a visual
+   hint that the form is locked). */
+.moj-card-locked .card-header {
+    opacity: 0.7;
+}
+.moj-card-locked .form-select,
+.moj-card-locked .form-control,
+.moj-card-locked .btn {
+    cursor: not-allowed;
+}
+</style>
+
 <script>
 // Toggle edit form
 (function() {
@@ -770,16 +977,36 @@ $flashKindClass = match ($flashKind) {
 })();
 
 // Status change confirmation — show the target status badge color
+// + Phase 55 (v2.2.1) — also toggle the license-upload section
+// visibility based on the selected status. The card is shown when
+// the admin picks "صدور مجوز" (preview) and hidden otherwise
+// (including when a terminal status like "تحویل مجوز" is picked —
+// picking a terminal status closes the case, so the upload form
+// is irrelevant).
 (function() {
     var sel = document.getElementById('new_status');
     if (!sel) return;
+    var uploadCard = document.getElementById('license-upload-card');
+    function syncUploadCard(value) {
+        if (!uploadCard) return;
+        // The Persian string 'صدور مجوز' is the enum value for
+        // ApplicantStatus::LicenseIssuance. Matched verbatim because
+        // the option's value attribute carries the enum's Persian
+        // string (see ApplicantStatus enum + the foreach loop above).
+        uploadCard.style.display = (value === 'صدور مجوز') ? '' : 'none';
+    }
     sel.addEventListener('change', function() {
         var opt = sel.options[sel.selectedIndex];
         var btn = document.getElementById('btn-change-status');
-        if (!opt || !opt.value) { btn.className = 'btn btn-primary'; return; }
+        if (!opt || !opt.value) {
+            if (btn) btn.className = 'btn btn-primary';
+            syncUploadCard('');
+            return;
+        }
         var color = opt.getAttribute('data-color') || 'primary';
         var terminal = opt.getAttribute('data-terminal') === '1';
-        btn.className = 'btn btn-' + (terminal ? 'danger' : color);
+        if (btn) btn.className = 'btn btn-' + (terminal ? 'danger' : color);
+        syncUploadCard(opt.value);
     });
 })();
 
