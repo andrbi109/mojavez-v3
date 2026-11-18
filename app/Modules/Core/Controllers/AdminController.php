@@ -20,6 +20,7 @@ use App\Shared\Persistence\Connection;
 use App\Shared\Support\Config;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
+use App\Shared\Support\PersianDate;
 use App\Shared\Support\StructuredLogger;
 use App\Shared\Support\Validator;
 
@@ -178,7 +179,6 @@ final class AdminController extends Controller
         // Load related data for the editable form.
         $jobDetail = null;
         $propertyDetail = null;
-        $documents = [];
         try {
             $conn = $this->connection();
             $jobRow = $conn->one('SELECT * FROM job_details WHERE applicant_id = ?', [$id]);
@@ -189,26 +189,46 @@ final class AdminController extends Controller
             if ($propRow !== null) {
                 $propertyDetail = $propRow;
             }
-            $documents = $conn->all('SELECT * FROM documents WHERE applicant_id = ? ORDER BY uploaded_at DESC', [$id]);
         } catch (\Throwable) {
             // best-effort — the view handles nulls.
         }
+        // Load documents as Document domain objects (so the view can use
+        // isImage()/isPdf()/extension() helpers for thumbnail rendering).
+        $documents = $this->documents->findByApplicantId($id);
+
+        // Load the raw applicants row for fields not exposed by the
+        // Applicant VO (father_name, birth_date, marital_status,
+        // children_count, physical_condition, disability_details,
+        // income_decile, has_court_case, has_active_loan,
+        // has_overdue_installments). Used by the v2-parity detail view.
+        $row = $this->conn->one(
+            'SELECT * FROM applicants WHERE id = ? AND deleted_at IS NULL',
+            [$id]
+        ) ?? [];
 
         // Load service type title.
         $serviceTypeTitle = '';
         if ($applicant->serviceTypeId !== null) {
             try {
-                $row = $this->connection()->one(
+                $serviceRow = $this->connection()->one(
                     'SELECT title FROM service_types WHERE id = ?',
                     [$applicant->serviceTypeId]
                 );
-                if ($row !== null) {
-                    $serviceTypeTitle = (string)$row['title'];
+                if ($serviceRow !== null) {
+                    $serviceTypeTitle = (string)$serviceRow['title'];
                 }
             } catch (\Throwable) {
                 // ignore
             }
         }
+
+        // Status meta (config/statuses.php) for color-coding the status
+        // history timeline. Maps Persian status name → meta array
+        // (order, color, manual, pre_issue, services).
+        $statusMeta = Config::get('statuses.statuses', []);
+
+        // PersianDate helper for Jalali date formatting in the view.
+        $persianDate = $this->container->make(PersianDate::class);
 
         return $this->render('admin/view_application', [
             'applicant'        => $applicant,
@@ -218,6 +238,9 @@ final class AdminController extends Controller
             'propertyDetail'   => $propertyDetail,
             'documents'        => $documents,
             'serviceTypeTitle' => $serviceTypeTitle,
+            'row'              => $row,
+            'statusMeta'       => $statusMeta,
+            'persianDate'      => $persianDate,
         ]);
     }
 
@@ -428,6 +451,25 @@ final class AdminController extends Controller
         // all the editable fields like father_name, marital_status, etc.).
         $row = $this->conn->one('SELECT * FROM applicants WHERE id = ? AND deleted_at IS NULL', [$id]) ?? [];
 
+        // Build the same 18-status dropdown as view_application so the
+        // edit form can change the status inline (reuses the existing
+        // POST /admin/change-status handler).
+        $allStatuses = [];
+        foreach (ApplicantStatus::cases() as $s) {
+            $allStatuses[] = [
+                'value'      => $s->value,
+                'label'      => $s->titleFa(),
+                'badgeColor' => $s->badgeColor(),
+                'order'      => $s->order(),
+                'isTerminal' => $s->isTerminal(),
+            ];
+        }
+        usort($allStatuses, static fn($a, $b): int => $a['order'] <=> $b['order']);
+
+        // PersianDate for converting the stored Gregorian birth_date
+        // back to Jalali Y/M/D in the 3-select dropdown.
+        $persianDate = $this->container->make(PersianDate::class);
+
         return $this->render('admin/edit_application', [
             'title'         => 'ویرایش پروندهٔ متقاضی',
             'applicant'     => $applicant,
@@ -437,6 +479,8 @@ final class AdminController extends Controller
             'documents'     => $documents,
             'serviceTypes'  => $serviceTypes,
             'errors'        => [],
+            'allStatuses'   => $allStatuses,
+            'persianDate'   => $persianDate,
         ]);
     }
 
@@ -466,6 +510,23 @@ final class AdminController extends Controller
         $address    = Validator::sanitizeText($body['address'] ?? '', 255);
         $serviceTypeId = Validator::positiveIntOrNull($body['service_type_id'] ?? '');
 
+        // Phase 36 (v2.0.2) — v2-parity identity fields. All optional on
+        // edit (the case may have been registered before these fields
+        // existed, or by a v2 import that left them NULL).
+        $maritalStatus = Validator::inEnum($body['marital_status'] ?? '', ['مجرد', 'متأهل']);
+        $childrenCount = Validator::intOrNull($body['children_count'] ?? '');
+        $physicalCondition = Validator::inEnum($body['physical_condition'] ?? '', ['سالم', 'معلولیت']);
+        $disabilityDetails = Validator::sanitizeText($body['disability_details'] ?? '', 255);
+        $incomeDecile = Validator::intInRange($body['income_decile'] ?? '', 1, 10);
+        $hasCourtCase = Validator::inEnum($body['has_court_case'] ?? '', ['بله', 'خیر']);
+        $hasActiveLoan = Validator::inEnum($body['has_active_loan'] ?? '', ['بله', 'خیر']);
+        $hasOverdueInstallments = Validator::inEnum($body['has_overdue_installments'] ?? '', ['بله', 'خیر']);
+        $birthDateGreg = $this->birthDateFromInputs(
+            (int)($body['birth_year'] ?? 0),
+            (int)($body['birth_month'] ?? 0),
+            (int)($body['birth_day'] ?? 0),
+        );
+
         // Job-detail fields (optional on edit — may be empty for a
         // manually-registered case that has no job info yet).
         $licenseTitle     = Validator::sanitizeText($body['license_title'] ?? '', 100);
@@ -477,6 +538,9 @@ final class AdminController extends Controller
         $province = Validator::sanitizeText($body['province'] ?? '', 50);
         $county   = Validator::sanitizeText($body['county'] ?? '', 50);
         $city     = Validator::sanitizeText($body['city'] ?? '', 50);
+        $district = Validator::sanitizeText($body['district'] ?? '', 50);
+        $ruralDistrict = Validator::sanitizeText($body['rural_district'] ?? '', 50);
+        $village  = Validator::sanitizeText($body['village'] ?? '', 50);
         $electricityBillId = Validator::sanitizeText($body['electricity_bill_id'] ?? '', 20);
         $addressStreet = Validator::sanitizeText($body['address_street'] ?? '', 100);
         $addressAlley  = Validator::sanitizeText($body['address_alley'] ?? '', 100);
@@ -501,6 +565,17 @@ final class AdminController extends Controller
 
         if ($errors !== []) {
             $row = $this->conn->one('SELECT * FROM applicants WHERE id = ?', [$id]) ?? [];
+            $allStatuses = [];
+            foreach (ApplicantStatus::cases() as $s) {
+                $allStatuses[] = [
+                    'value'      => $s->value,
+                    'label'      => $s->titleFa(),
+                    'badgeColor' => $s->badgeColor(),
+                    'order'      => $s->order(),
+                    'isTerminal' => $s->isTerminal(),
+                ];
+            }
+            usort($allStatuses, static fn($a, $b): int => $a['order'] <=> $b['order']);
             return $this->render('admin/edit_application', [
                 'title'         => 'ویرایش پروندهٔ متقاضی',
                 'applicant'     => $applicant,
@@ -510,6 +585,8 @@ final class AdminController extends Controller
                 'documents'     => $this->documents->findByApplicantId($id),
                 'serviceTypes'  => $this->serviceTypes->getActive(),
                 'errors'        => $errors,
+                'allStatuses'   => $allStatuses,
+                'persianDate'   => $this->container->make(PersianDate::class),
             ]);
         }
 
@@ -520,6 +597,15 @@ final class AdminController extends Controller
             'postal_code' => $postalCode,
             'father_name' => $fatherName !== '' ? $fatherName : null,
             'service_type_id' => $serviceTypeId,
+            'birth_date' => $birthDateGreg,
+            'marital_status' => $maritalStatus,
+            'children_count' => $childrenCount,
+            'physical_condition' => $physicalCondition,
+            'disability_details' => $disabilityDetails !== '' ? $disabilityDetails : null,
+            'income_decile' => $incomeDecile,
+            'has_court_case' => $hasCourtCase,
+            'has_active_loan' => $hasActiveLoan,
+            'has_overdue_installments' => $hasOverdueInstallments,
         ], static fn ($v): bool => $v !== null);
         $this->applicants->update($id, $update);
 
@@ -535,12 +621,16 @@ final class AdminController extends Controller
         }
 
         // Property detail upsert if any of the address fields are present.
-        if ($ownershipStatus !== null || $province !== '' || $city !== '' || $addressStreet !== '' || $address !== '') {
+        if ($ownershipStatus !== null || $province !== '' || $city !== '' || $addressStreet !== '' || $address !== ''
+            || $district !== '' || $ruralDistrict !== '' || $village !== '') {
             $this->jobAndProperty->upsertPropertyDetail($id, [
                 'ownership_status'   => $ownershipStatus ?? 'شخص',
                 'province'            => $province,
                 'county'              => $county,
                 'city'                => $city,
+                'district'            => $district !== '' ? $district : null,
+                'rural_district'      => $ruralDistrict !== '' ? $ruralDistrict : null,
+                'village'             => $village !== '' ? $village : null,
                 'electricity_bill_id' => $electricityBillId,
                 'address_street'      => $addressStreet !== '' ? $addressStreet : ($address !== '' ? $address : null),
                 'address_alley'       => $addressAlley !== '' ? $addressAlley : null,
@@ -562,6 +652,28 @@ final class AdminController extends Controller
         ]);
 
         return $this->redirect('/admin/view/' . $id);
+    }
+
+    /**
+     * Convert three Jalali select inputs (year, month, day) into a
+     * Gregorian 'YYYY-MM-DD' string for storage in applicants.birth_date.
+     *
+     * Returns null if any of the three inputs are zero/missing or if the
+     * conversion fails (so the caller can simply omit the field from the
+     * update array — the existing DB value is preserved).
+     */
+    private function birthDateFromInputs(int $jy, int $jm, int $jd): ?string
+    {
+        if ($jy <= 0 || $jm <= 0 || $jd <= 0) {
+            return null;
+        }
+        try {
+            $persianDate = $this->container->make(PersianDate::class);
+            [$gy, $gm, $gd] = $persianDate->jalaliToGregorian($jy, $jm, $jd);
+            return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

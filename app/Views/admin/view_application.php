@@ -2,13 +2,12 @@
 /**
  * admin/view_application.php — editable applicant case view with 18-status cycle.
  *
- * Phase 29 (v1.9.11) — the admin can:
- *   1. View all applicant data (identity, property, job, documents).
- *   2. Edit fields inline (POST to /admin/update).
- *   3. Change the applicant's status via the 18-status dropdown (POST to
- *      /admin/change-status).
- *   4. Upload/delete documents.
- *   5. View the status history timeline.
+ * Phase 29 (v1.9.11): the admin can change the applicant's status via the
+ *   18-status dropdown and edit fields inline.
+ * Phase 36 (v2.0.2): port v2's full detail view — golden-link section with
+ *   matched_at, document thumbnails inline, print button, color-coded
+ *   status history badges, license-state section with valid_until date,
+ *   and the full identity/property/job detail grid.
  *
  * Expected $data:
  *   $applicant        Applicant  — the domain object
@@ -16,8 +15,11 @@
  *   $allStatuses      array<array{value,label,badgeColor,order,isTerminal}>
  *   $jobDetail        ?array    — job_details row or null
  *   $propertyDetail   ?array    — property_details row or null
- *   $documents        array     — documents rows
- *   $serviceTypeTitle string    — service type title
+ *   $documents        array<Document> — Document domain objects
+ *   $serviceTypeTitle string
+ *   $row              array     — raw applicants row (father_name, birth_date, …)
+ *   $statusMeta       array    — config/statuses.php inner 'statuses' map
+ *   $persianDate      PersianDate — for Jalali date formatting
  *   $baseUrl          string
  *   $csrfField        string
  */
@@ -26,22 +28,58 @@
 /** @var array $allStatuses */
 /** @var ?array $jobDetail */
 /** @var ?array $propertyDetail */
-/** @var array $documents */
+/** @var array<\App\Modules\Core\Domain\Document> $documents */
 /** @var string $serviceTypeTitle */
+/** @var array $row */
+/** @var array $statusMeta */
+/** @var \App\Shared\Support\PersianDate $persianDate */
 /** @var string $baseUrl */
 /** @var string $csrfField */
 
-use App\Modules\Core\Domain\Applicant;
+use App\Modules\Core\Domain\Document;
 use App\Modules\Core\Domain\Enums\LicenseState;
+use App\Shared\Support\PersianDate;
 
 $allStatuses  ??= [];
 $jobDetail    ??= null;
 $propertyDetail ??= null;
 $documents    ??= [];
 $serviceTypeTitle ??= '';
+$row          ??= [];
+$statusMeta   ??= [];
+$persianDate  ??= null;
 
 $currentStatus = $applicant->currentStatus;
-$licenseState = $applicant->licenseState;
+$licenseState  = $applicant->licenseState;
+
+// Helper: pick a Bootstrap badge color for a given status name from
+// the config map (falls back to 'secondary' for unknown statuses —
+// e.g. legacy v2 imports or custom log rows like 'حذف مدرک').
+$badgeColorFor = static function (string $statusName) use ($statusMeta): string {
+    return $statusMeta[$statusName]['color'] ?? 'secondary';
+};
+
+// Helper: format a Gregorian datetime as a Jalali Y/M/D string.
+$fmtDate = static function (?string $greg) use ($persianDate): string {
+    if ($greg === null || $greg === '' || $greg === '0000-00-00' || $greg === '0000-00-00 00:00:00') {
+        return '—';
+    }
+    if ($persianDate instanceof PersianDate) {
+        return $persianDate->formatGregorianDateTime($greg);
+    }
+    return htmlspecialchars((string)$greg, ENT_QUOTES, 'UTF-8');
+};
+
+// Helper: format a Gregorian date as Jalali Y/M/D (date-only).
+$fmtDateOnly = static function (?string $greg) use ($persianDate): string {
+    if ($greg === null || $greg === '' || $greg === '0000-00-00') {
+        return '—';
+    }
+    if ($persianDate instanceof PersianDate) {
+        return $persianDate->formatGregorianDateTime($greg);
+    }
+    return htmlspecialchars((string)$greg, ENT_QUOTES, 'UTF-8');
+};
 ?>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
@@ -51,13 +89,22 @@ $licenseState = $applicant->licenseState;
             <span class="badge text-bg-info ms-2"><?= htmlspecialchars($serviceTypeTitle, ENT_QUOTES, 'UTF-8') ?></span>
         <?php endif; ?>
     </div>
-    <div class="d-flex gap-2 align-items-center">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
         <span class="badge text-bg-<?= htmlspecialchars($currentStatus->badgeColor(), ENT_QUOTES, 'UTF-8') ?> fs-6">
             <?= htmlspecialchars($currentStatus->titleFa(), ENT_QUOTES, 'UTF-8') ?>
         </span>
-        <span class="badge text-bg-<?= $licenseState === LicenseState::Issued ? 'success' : 'secondary' ?> fs-6">
+        <span class="badge text-bg-<?= htmlspecialchars($licenseState->badgeColor(), ENT_QUOTES, 'UTF-8') ?> fs-6">
             وضعیت مجوز: <?= htmlspecialchars($licenseState->titleFa(), ENT_QUOTES, 'UTF-8') ?>
         </span>
+        <!-- Phase 36: print button — opens /admin/output/single/{trackingCode} in new tab -->
+        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/output/single/<?= htmlspecialchars(rawurlencode($applicant->trackingCode), ENT_QUOTES, 'UTF-8') ?>"
+           target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-printer"></i> نسخهٔ چاپی
+        </a>
+        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/applications"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-right"></i> بازگشت
+        </a>
     </div>
 </div>
 
@@ -109,10 +156,41 @@ $licenseState = $applicant->licenseState;
                     <i class="bi bi-check2-circle"></i> اعمال تغییر وضعیت
                 </button>
                 <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/status-cycle" class="btn btn-outline-secondary" target="_blank">
-                    <i class="bi bi-diagram-3"></i> مشاهده چرخهٔ کامل
+                    <i class="bi bi-diagram-3"></i> مشاهدهٔ چرخهٔ کامل
                 </a>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ====== Phase 36: License State section ====== -->
+<div class="card mb-4 border-<?= htmlspecialchars($licenseState->badgeColor(), ENT_QUOTES, 'UTF-8') ?>">
+    <div class="card-header d-flex align-items-center gap-2 bg-<?= htmlspecialchars($licenseState->badgeColor(), ENT_QUOTES, 'UTF-8') ?>-subtle">
+        <i class="bi bi-patch-check text-<?= htmlspecialchars($licenseState->badgeColor(), ENT_QUOTES, 'UTF-8') ?>"></i>
+        <strong>وضعیت مجوز</strong>
+    </div>
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-4 text-muted">وضعیت مجوز</dt>
+            <dd class="col-sm-8">
+                <span class="badge text-bg-<?= htmlspecialchars($licenseState->badgeColor(), ENT_QUOTES, 'UTF-8') ?> fs-6">
+                    <?= htmlspecialchars($licenseState->titleFa(), ENT_QUOTES, 'UTF-8') ?>
+                </span>
+            </dd>
+            <dt class="col-sm-4 text-muted">اعتبار تا</dt>
+            <dd class="col-sm-8">
+                <?php if ($licenseState === LicenseState::Issued && $applicant->licenseValidUntil !== null): ?>
+                    <span class="badge text-bg-success" dir="ltr"><?= htmlspecialchars($fmtDateOnly($applicant->licenseValidUntil), ENT_QUOTES, 'UTF-8') ?></span>
+                    <?php if ($applicant->hasValidLicense()): ?>
+                        <span class="badge text-bg-success ms-2"><i class="bi bi-check-circle"></i> معتبر</span>
+                    <?php else: ?>
+                        <span class="badge text-bg-warning ms-2"><i class="bi bi-clock"></i> منقضی‌شده</span>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <span class="text-muted">—</span>
+                <?php endif; ?>
+            </dd>
+        </dl>
     </div>
 </div>
 
@@ -136,11 +214,33 @@ $licenseState = $applicant->licenseState;
                     <dt class="col-sm-4 text-muted">موبایل</dt>
                     <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">کد پستی</dt>
-                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars($applicant->postalCode, ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars((string)($applicant->postalCode ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">نام پدر</dt>
-                    <dd class="col-sm-8"><?= htmlspecialchars((string)($applicant->fatherName ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8"><?= htmlspecialchars((string)($row['father_name'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">تاریخ تولد</dt>
-                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars((string)($applicant->birthDate ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars($fmtDateOnly($row['birth_date'] ?? null), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dt class="col-sm-4 text-muted">وضعیت تأهل</dt>
+                    <dd class="col-sm-8">
+                        <?= htmlspecialchars((string)($row['marital_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
+                        <?php if (($row['marital_status'] ?? '') === 'متأهل'): ?>
+                            <small class="text-muted ms-1">— <?= (int)($row['children_count'] ?? 0) ?> فرزند</small>
+                        <?php endif; ?>
+                    </dd>
+                    <dt class="col-sm-4 text-muted">وضعیت جسمانی</dt>
+                    <dd class="col-sm-8">
+                        <?= htmlspecialchars((string)($row['physical_condition'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
+                        <?php if (($row['physical_condition'] ?? '') === 'معلولیت' && !empty($row['disability_details'])): ?>
+                            <small class="text-muted ms-1">— <?= htmlspecialchars((string)$row['disability_details'], ENT_QUOTES, 'UTF-8') ?></small>
+                        <?php endif; ?>
+                    </dd>
+                    <dt class="col-sm-4 text-muted">دهک درآمدی</dt>
+                    <dd class="col-sm-8"><?= isset($row['income_decile']) && $row['income_decile'] !== null ? (int)$row['income_decile'] : '—' ?></dd>
+                    <dt class="col-sm-4 text-muted">پرونده قضایی / وام / اقساط</dt>
+                    <dd class="col-sm-8">
+                        <?= htmlspecialchars((string)($row['has_court_case'] ?? '—'), ENT_QUOTES, 'UTF-8') ?> /
+                        <?= htmlspecialchars((string)($row['has_active_loan'] ?? '—'), ENT_QUOTES, 'UTF-8') ?> /
+                        <?= htmlspecialchars((string)($row['has_overdue_installments'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
+                    </dd>
                     <dt class="col-sm-4 text-muted">نوع خدمت</dt>
                     <dd class="col-sm-8"><?= htmlspecialchars($serviceTypeTitle, ENT_QUOTES, 'UTF-8') ?></dd>
                 </dl>
@@ -161,9 +261,9 @@ $licenseState = $applicant->licenseState;
                                 value="<?= htmlspecialchars($applicant->lastName, ENT_QUOTES, 'UTF-8') ?>">
                         </div>
                         <div class="col-6">
-                            <label class="form-label small">کد ملی</label>
+                            <label class="form-label small">کد ملی <small class="text-muted">(غیرقابل ویرایش)</small></label>
                             <input type="text" class="form-control form-control-sm" name="national_code" dir="ltr"
-                                value="<?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?>">
+                                value="<?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?>" disabled>
                         </div>
                         <div class="col-6">
                             <label class="form-label small">موبایل</label>
@@ -173,12 +273,63 @@ $licenseState = $applicant->licenseState;
                         <div class="col-6">
                             <label class="form-label small">کد پستی</label>
                             <input type="text" class="form-control form-control-sm" name="postal_code" dir="ltr"
-                                value="<?= htmlspecialchars($applicant->postalCode, ENT_QUOTES, 'UTF-8') ?>">
+                                value="<?= htmlspecialchars((string)($applicant->postalCode ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                         </div>
                         <div class="col-6">
                             <label class="form-label small">نام پدر</label>
                             <input type="text" class="form-control form-control-sm" name="father_name"
-                                value="<?= htmlspecialchars((string)($applicant->fatherName ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                value="<?= htmlspecialchars((string)($row['father_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">وضعیت تأهل</label>
+                            <select class="form-select form-select-sm" name="marital_status">
+                                <option value="">—</option>
+                                <option value="مجرد" <?= ($row['marital_status'] ?? '') === 'مجرد' ? 'selected' : '' ?>>مجرد</option>
+                                <option value="متأهل" <?= ($row['marital_status'] ?? '') === 'متأهل' ? 'selected' : '' ?>>متأهل</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">تعداد فرزندان</label>
+                            <input type="number" class="form-control form-control-sm" name="children_count" min="0"
+                                value="<?= (int)($row['children_count'] ?? 0) ?>">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">وضعیت جسمانی</label>
+                            <select class="form-select form-select-sm" name="physical_condition">
+                                <option value="سالم" <?= ($row['physical_condition'] ?? '') === 'سالم' ? 'selected' : '' ?>>سالم</option>
+                                <option value="معلولیت" <?= ($row['physical_condition'] ?? '') === 'معلولیت' ? 'selected' : '' ?>>معلولیت</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">توضیحات معلولیت</label>
+                            <input type="text" class="form-control form-control-sm" name="disability_details"
+                                value="<?= htmlspecialchars((string)($row['disability_details'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">دهک درآمدی</label>
+                            <input type="number" class="form-control form-control-sm" name="income_decile" min="1" max="10"
+                                value="<?= htmlspecialchars((string)($row['income_decile'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">پرونده قضایی</label>
+                            <select class="form-select form-select-sm" name="has_court_case">
+                                <option value="خیر" <?= ($row['has_court_case'] ?? 'خیر') === 'خیر' ? 'selected' : '' ?>>خیر</option>
+                                <option value="بله" <?= ($row['has_court_case'] ?? '') === 'بله' ? 'selected' : '' ?>>بله</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">وام فعال</label>
+                            <select class="form-select form-select-sm" name="has_active_loan">
+                                <option value="خیر" <?= ($row['has_active_loan'] ?? 'خیر') === 'خیر' ? 'selected' : '' ?>>خیر</option>
+                                <option value="بله" <?= ($row['has_active_loan'] ?? '') === 'بله' ? 'selected' : '' ?>>بله</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">اقساط معوقه</label>
+                            <select class="form-select form-select-sm" name="has_overdue_installments">
+                                <option value="خیر" <?= ($row['has_overdue_installments'] ?? 'خیر') === 'خیر' ? 'selected' : '' ?>>خیر</option>
+                                <option value="بله" <?= ($row['has_overdue_installments'] ?? '') === 'بله' ? 'selected' : '' ?>>بله</option>
+                            </select>
                         </div>
                         <div class="col-12 mt-3 d-flex gap-2">
                             <button type="submit" class="btn btn-success btn-sm">
@@ -187,6 +338,10 @@ $licenseState = $applicant->licenseState;
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-cancel-edit">
                                 <i class="bi bi-x-lg"></i> انصراف
                             </button>
+                            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/edit/<?= (int)$applicant->id ?>"
+                               class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-pencil-square"></i> ویرایش کامل
+                            </a>
                         </div>
                     </div>
                 </form>
@@ -203,7 +358,14 @@ $licenseState = $applicant->licenseState;
                     <dt class="col-sm-5 text-muted">شماره درخواست ملی</dt>
                     <dd class="col-sm-7" dir="ltr"><?= htmlspecialchars((string)$applicant->nationalLicenseRequestNumber, ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-5 text-muted">اطمینان تطبیق</dt>
-                    <dd class="col-sm-7"><?= htmlspecialchars((string)$applicant->matchConfidence, ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-7">
+                        <?php $conf = (int)($applicant->matchConfidence ?? 0); ?>
+                        <span class="badge text-bg-<?= $conf >= 80 ? 'success' : ($conf >= 50 ? 'warning' : 'secondary') ?>">
+                            <?= $conf ?>٪
+                        </span>
+                    </dd>
+                    <dt class="col-sm-5 text-muted">تاریخ تطبیق</dt>
+                    <dd class="col-sm-7" dir="ltr"><?= htmlspecialchars($fmtDate($applicant->matchedAt), ENT_QUOTES, 'UTF-8') ?></dd>
                 </dl>
             </div>
         </div>
@@ -220,10 +382,28 @@ $licenseState = $applicant->licenseState;
                     <dd class="col-sm-7"><?= htmlspecialchars((string)($propertyDetail['county'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-5 text-muted">شهر</dt>
                     <dd class="col-sm-7"><?= htmlspecialchars((string)($propertyDetail['city'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <?php if (!empty($propertyDetail['district']) || !empty($propertyDetail['rural_district']) || !empty($propertyDetail['village'])): ?>
+                    <dt class="col-sm-5 text-muted">بخش / دهستان / روستا</dt>
+                    <dd class="col-sm-7">
+                        <?= htmlspecialchars(implode(' / ', array_filter([
+                            (string)($propertyDetail['district'] ?? ''),
+                            (string)($propertyDetail['rural_district'] ?? ''),
+                            (string)($propertyDetail['village'] ?? ''),
+                        ])), ENT_QUOTES, 'UTF-8') ?>
+                    </dd>
+                    <?php endif; ?>
                     <dt class="col-sm-5 text-muted">مالکیت</dt>
                     <dd class="col-sm-7"><?= htmlspecialchars((string)($propertyDetail['ownership_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-5 text-muted">آدرس</dt>
-                    <dd class="col-sm-7"><?= htmlspecialchars((string)($propertyDetail['address_street'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-7">
+                        <?= htmlspecialchars(implode('، ', array_filter([
+                            (string)($propertyDetail['address_street'] ?? ''),
+                            (string)($propertyDetail['address_alley'] ?? ''),
+                            !empty($propertyDetail['address_plaque']) ? 'پلاک ' . $propertyDetail['address_plaque'] : '',
+                        ])), ENT_QUOTES, 'UTF-8') ?>
+                    </dd>
+                    <dt class="col-sm-5 text-muted">شناسهٔ قبض برق</dt>
+                    <dd class="col-sm-7" dir="ltr"><?= htmlspecialchars((string)($propertyDetail['electricity_bill_id'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                 </dl>
             </div>
         </div>
@@ -246,69 +426,108 @@ $licenseState = $applicant->licenseState;
         <?php endif; ?>
     </div>
 
-    <!-- ====== Right column: timeline + documents ====== -->
+    <!-- ====== Right column: documents + timeline ====== -->
     <div class="col-lg-7">
         <!-- Documents -->
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-file-earmark-text"></i> مدارک</span>
+                <span><i class="bi bi-file-earmark-text"></i> مدارک
+                    <span class="badge text-bg-secondary ms-1"><?= count($documents) ?></span>
+                </span>
                 <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
                         data-bs-target="#upload-doc-form">
                     <i class="bi bi-upload"></i> افزودن مدرک
                 </button>
             </div>
-            <div class="card-body p-0">
-                <div class="collapse" id="upload-doc-form">
-                    <div class="p-3 bg-light border-bottom">
+            <div class="card-body">
+                <div class="collapse mb-3" id="upload-doc-form">
+                    <div class="p-3 bg-light border rounded">
                         <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/add-document"
                               enctype="multipart/form-data">
                             <?= $csrfField ?>
                             <input type="hidden" name="applicant_id" value="<?= (int)$applicant->id ?>">
                             <div class="row g-2 align-items-end">
-                                <div class="col-5">
+                                <div class="col-md-4">
                                     <label class="form-label small">نوع مدرک</label>
-                                    <input type="text" class="form-control form-control-sm" name="doc_type"
-                                           placeholder="national_id" required>
+                                    <select class="form-select form-select-sm" name="doc_type">
+                                        <option value="optional">سایر</option>
+                                        <option value="national_card">کارت ملی</option>
+                                        <option value="birth_cert">شناسنامه</option>
+                                        <option value="ownership_doc">مدرک مالکیت</option>
+                                        <option value="vocational_cert">گواهی فنی‌وحرفه‌ای</option>
+                                        <option value="education_degree">مدرک تحصیلی</option>
+                                        <option value="product_photos">تصویر محصولات</option>
+                                    </select>
                                 </div>
-                                <div class="col-5">
-                                    <label class="form-label small">فایل</label>
-                                    <input type="file" class="form-control form-control-sm" name="document" required>
+                                <div class="col-md-6">
+                                    <label class="form-label small">فایل (jpg/png/pdf — حداکثر ۲MB)</label>
+                                    <input type="file" class="form-control form-control-sm" name="document_file"
+                                           accept=".jpg,.jpeg,.png,.pdf" required>
                                 </div>
-                                <div class="col-2">
+                                <div class="col-md-2">
                                     <button type="submit" class="btn btn-primary btn-sm w-100">
-                                        <i class="bi bi-upload"></i>
+                                        <i class="bi bi-upload"></i> بارگذاری
                                     </button>
                                 </div>
                             </div>
                         </form>
                     </div>
                 </div>
+
                 <?php if (!empty($documents)): ?>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0">
-                        <thead class="table-light">
-                            <tr><th>نوع</th><th>نام فایل</th><th>تاریخ</th><th class="text-end">عملیات</th></tr>
-                        </thead>
-                        <tbody>
-                        <?php foreach ($documents as $doc): ?>
-                            <tr>
-                                <td><span class="badge text-bg-secondary"><?= htmlspecialchars((string)$doc['doc_type'], ENT_QUOTES, 'UTF-8') ?></span></td>
-                                <td class="small"><?= htmlspecialchars((string)$doc['original_name'], ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="small text-muted" dir="ltr"><?= htmlspecialchars((string)$doc['uploaded_at'], ENT_QUOTES) ?></td>
-                                <td class="text-end">
-                                    <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/delete-document"
-                                          class="d-inline" onsubmit="return confirm('حذف این مدرک؟')">
-                                        <?= $csrfField ?>
-                                        <input type="hidden" name="document_id" value="<?= (int)$doc['id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                <!-- Phase 36: document thumbnails inline (image thumbnail or PDF icon, linked to /document/inline/{id}) -->
+                <div class="row g-3">
+                    <?php foreach ($documents as $doc): ?>
+                        <?php \assert($doc instanceof Document); ?>
+                        <?php
+                        $docLabels = [
+                            'national_card'    => 'کارت ملی',
+                            'birth_cert'       => 'شناسنامه',
+                            'ownership_doc'    => 'مدرک مالکیت',
+                            'lease_agreement'  => 'اجاره‌نامه',
+                            'vocational_cert'  => 'گواهی فنی‌وحرفه‌ای',
+                            'education_degree' => 'مدرک تحصیلی',
+                            'product_photos'   => 'تصویر محصولات',
+                            'optional'         => 'سایر',
+                        ];
+                        $docLabel = $docLabels[$doc->docType] ?? $doc->docType;
+                        $docThumbUrl = $baseUrl . 'document/thumb/' . (int)$doc->id;
+                        $docInlineUrl = $baseUrl . 'document/inline/' . (int)$doc->id;
+                        ?>
+                        <div class="col-6 col-md-4 col-xl-3">
+                            <div class="card h-100 p-2 text-center" style="border-style:dashed;">
+                                <a href="<?= htmlspecialchars($docInlineUrl, ENT_QUOTES) ?>" target="_blank" rel="noopener">
+                                    <?php if ($doc->isImage()): ?>
+                                        <img src="<?= htmlspecialchars($docThumbUrl, ENT_QUOTES) ?>"
+                                             class="rounded mb-1" style="height:90px;width:100%;object-fit:cover;"
+                                             alt="<?= htmlspecialchars($docLabel, ENT_QUOTES, 'UTF-8') ?>">
+                                    <?php elseif ($doc->isPdf()): ?>
+                                        <div class="py-3" style="color:var(--bs-danger, #dc3545)">
+                                            <i class="bi bi-file-earmark-pdf" style="font-size:2.1rem"></i>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="py-3" style="color:var(--bs-secondary, #6c757d)">
+                                            <i class="bi bi-file-earmark-text" style="font-size:2.1rem"></i>
+                                        </div>
+                                    <?php endif; ?>
+                                </a>
+                                <span class="badge text-bg-info mb-1" style="font-size:.68rem"><?= htmlspecialchars($docLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                                <small class="text-muted text-truncate d-block" dir="ltr"
+                                       title="<?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?>"
+                                       style="font-size:.7rem"><?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?></small>
+                                <small class="text-muted" style="font-size:.68rem" dir="ltr"><?= htmlspecialchars($fmtDate($doc->uploadedAt), ENT_QUOTES, 'UTF-8') ?></small>
+                                <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/delete-document"
+                                      class="mt-1" onsubmit="return confirm('حذف این مدرک؟')">
+                                    <?= $csrfField ?>
+                                    <input type="hidden" name="document_id" value="<?= (int)$doc->id ?>">
+                                    <input type="hidden" name="applicant_id" value="<?= (int)$applicant->id ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger w-100" style="font-size:.7rem">
+                                        <i class="bi bi-trash"></i> حذف
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
                 <?php else: ?>
                 <div class="text-center text-muted py-4">مدارکی ثبت نشده است.</div>
@@ -322,7 +541,7 @@ $licenseState = $applicant->licenseState;
                 <i class="bi bi-clock-history"></i> تاریخچهٔ وضعیت
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive">
+                <div class="table-responsive" style="max-height:480px;overflow-y:auto">
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light">
                             <tr><th>وضعیت</th><th>توسط</th><th>تاریخ</th><th>توضیح</th></tr>
@@ -334,11 +553,25 @@ $licenseState = $applicant->licenseState;
                             $eBy = is_array($entry) ? ($entry['triggered_by'] ?? $entry['triggeredBy'] ?? '—') : ($entry->triggeredBy ?? '—');
                             $eAt = is_array($entry) ? ($entry['created_at'] ?? $entry['createdAt'] ?? '') : ($entry->createdAt ?? '');
                             $eDesc = is_array($entry) ? ($entry['description'] ?? '') : ($entry->description ?? '');
+                            $eColor = $badgeColorFor((string)$eStatus);
+                            // Override for non-status log entries like 'حذف مدرک'.
+                            if (str_contains((string)$eStatus, 'حذف')) {
+                                $eColor = 'danger';
+                            } elseif (str_contains((string)$eStatus, 'افزودن') || str_contains((string)$eStatus, 'بارگذاری')) {
+                                $eColor = 'info';
+                            } elseif (str_contains((string)$eStatus, 'ویرایش')) {
+                                $eColor = 'secondary';
+                            }
                             ?>
                             <tr>
-                                <td><span class="badge text-bg-secondary"><?= htmlspecialchars($eStatus, ENT_QUOTES, 'UTF-8') ?></span></td>
-                                <td class="small"><?= htmlspecialchars($eBy, ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="small text-muted" dir="ltr"><?= htmlspecialchars($eAt, ENT_QUOTES) ?></td>
+                                <td><span class="badge text-bg-<?= htmlspecialchars($eColor, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($eStatus, ENT_QUOTES, 'UTF-8') ?></span></td>
+                                <td class="small">
+                                    <?= htmlspecialchars($eBy, ENT_QUOTES, 'UTF-8') ?>
+                                    <?php if ($eBy === 'auto_sync'): ?>
+                                        <i class="bi bi-link-45deg text-success ms-1" title="اتصال طلایی"></i>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="small text-muted" dir="ltr"><?= htmlspecialchars($fmtDate($eAt), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td class="small"><?= htmlspecialchars((string)$eDesc, ENT_QUOTES, 'UTF-8') ?></td>
                             </tr>
                         <?php endforeach; ?>
