@@ -70,7 +70,7 @@ $showOwnerCard  = $ownerName !== '' || $ownerUsername !== '' || $ownerImageAbs !
     </div>
 
     <?php if ($showOwnerCard): ?>
-    <div class="col-lg-4">
+    <div class="col-lg-4 moj-content-offset-about">
         <div class="card text-center">
             <div class="card-header">
                 <i class="bi bi-person-badge"></i> مدیر سامانه

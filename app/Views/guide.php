@@ -97,7 +97,7 @@ $cycleHousehold = [
             </div>
         </div>
     </div>
-    <div class="col-lg-4">
+    <div class="col-lg-4 moj-content-offset-guide">
         <div class="card mb-3">
             <div class="card-header d-flex align-items-center gap-2">
                 <i class="bi bi-info-circle"></i> وضعیت‌های پرونده
