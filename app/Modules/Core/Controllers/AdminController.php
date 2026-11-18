@@ -399,7 +399,10 @@ final class AdminController extends Controller
      *     with the 13 property fields.
      *   - job_details row via jobAndProperty->upsertJobDetail() with the
      *     3 job fields (license_title, experience_months, training_method).
-     *   - documents rows for the 5 uploaded files via handleDocumentUploads().
+     *   - documents rows for the uploaded files via handleDocumentUploads()
+     *     (v2-style field names: national_card_front, national_card_back,
+     *      birth_cert, ownership_doc, vocational_cert, education_degree,
+     *      product_photos[], optional_1..3).
      *
      * On success: redirect to /admin/view/{id}.
      * On validation error: re-render the form with errors + submitted values.
@@ -595,8 +598,8 @@ final class AdminController extends Controller
             'address_plaque'     => $addressPlaque !== '' ? $addressPlaque : null,
         ]);
 
-        // Documents (5 file uploads) — best-effort: each upload failure is
-        // logged but does not abort the whole registration.
+        // Documents (v2-style named file uploads) — best-effort: each
+        // upload failure is logged but does not abort the whole registration.
         $this->handleDocumentUploads($request, $applicantId, $trackingCode);
 
         // Audit-log the admin creation.
@@ -637,25 +640,37 @@ final class AdminController extends Controller
     }
 
     /**
-     * Best-effort document upload handler. Iterates over the five known
-     * file fields (national_id, personal_photo, ownership_deed,
-     * skill_certificate, optional_document), stores each via FileStorage's
+     * Best-effort document upload handler. Iterates over the v2-style
+     * file fields (national_card_front, national_card_back, birth_cert,
+     * ownership_doc, vocational_cert, education_degree, optional_1..3,
+     * plus the product_photos[] array), stores each via FileStorage's
      * 7-layer pipeline, and inserts a documents row. Failures are logged
      * but never abort the registration.
+     *
+     * Phase 51 (v2.1.7) — widened from the 5 legacy v3 field names
+     * (national_id / personal_photo / ownership_deed / skill_certificate /
+     * optional_document) to the v2-style named fields so the admin
+     * register form and the public wizard step4 store the same doc_type
+     * keys on disk and in the documents table.
      *
      * @return array<string,string>  map of field => error (empty on success)
      */
     private function handleDocumentUploads(Request $request, int $applicantId, string $trackingCode): array
     {
-        $fields = [
-            'national_id'       => 'national_id',
-            'personal_photo'    => 'personal_photo',
-            'ownership_deed'    => 'ownership_deed',
-            'skill_certificate' => 'skill_certificate',
-            'optional_document' => 'optional_document',
+        // Single-file uploads — each maps 1:1 to a documents.doc_type row.
+        $singleFields = [
+            'national_card_front' => 'national_card_front',
+            'national_card_back'  => 'national_card_back',
+            'birth_cert'          => 'birth_cert',
+            'ownership_doc'       => 'ownership_doc',
+            'vocational_cert'     => 'vocational_cert',
+            'education_degree'    => 'education_degree',
+            'optional_1'          => 'optional_1',
+            'optional_2'          => 'optional_2',
+            'optional_3'          => 'optional_3',
         ];
         $errors = [];
-        foreach ($fields as $fieldKey => $docType) {
+        foreach ($singleFields as $fieldKey => $docType) {
             $file = $request->file($fieldKey);
             if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
                 continue;  // optional — admin may skip any subset of files
@@ -678,6 +693,47 @@ final class AdminController extends Controller
                 'original_name'  => $result['original_name'],
                 'file_path'      => $result['file_path'],
             ]);
+        }
+
+        // product_photos[] — multi-file array upload (1..15 photos).
+        // PHP flattens this to $_FILES['product_photos']['name'][i], etc.
+        $productPhotos = $request->file('product_photos');
+        if (
+            $productPhotos !== null
+            && isset($productPhotos['error'])
+            && is_array($productPhotos['error'])
+        ) {
+            $count = count($productPhotos['error']);
+            for ($i = 0; $i < $count; $i++) {
+                if (($productPhotos['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                    continue;
+                }
+                $oneFile = [
+                    'name'     => $productPhotos['name'][$i] ?? '',
+                    'type'     => $productPhotos['type'][$i] ?? '',
+                    'tmp_name' => $productPhotos['tmp_name'][$i] ?? '',
+                    'error'    => $productPhotos['error'][$i] ?? UPLOAD_ERR_NO_FILE,
+                    'size'     => $productPhotos['size'][$i] ?? 0,
+                ];
+                $result = $this->storage->storeUpload($oneFile, $applicantId, $trackingCode, 'product_photos');
+                if (!$result['success']) {
+                    $errors['product_photos_' . $i] = (string)($result['error'] ?? 'خطای ناشناخته');
+                    $this->logger->warning('Manual-register product photo upload failed', [
+                        '_module'      => 'core',
+                        'applicant_id' => $applicantId,
+                        'index'        => $i,
+                        'error'        => $errors['product_photos_' . $i],
+                    ]);
+                    continue;
+                }
+                $this->documents->create([
+                    'applicant_id'   => $applicantId,
+                    'doc_type'       => 'product_photos',
+                    'file_name'      => $result['file_name'],
+                    'original_name'  => $result['original_name'],
+                    'file_path'      => $result['file_path'],
+                ]);
+            }
         }
         return $errors;
     }
@@ -1376,53 +1432,27 @@ final class AdminController extends Controller
     }
 
     /**
-     * GET /admin/status-cycle — visual reference of the 18-status workflow.
+     * GET /admin/status-cycle — placeholder redirect to the public guide.
      *
-     * Phase 22 (v1.9.4) — completes the 18-status workflow cycle. This
-     * is a documentation view: it renders the full 18 statuses (14 shared
-     * + 4 household-only) as Bootstrap cards, grouped by phase
-     * (pre-issue vs post-issue, shared vs household), with their order,
-     * badge color, manual/auto flag, and pre_issue flag. Arrows between
-     * cards show the manual + automatic transitions.
+     * Phase 22 (v1.9.4) — originally rendered the full 18-status workflow
+     * (14 shared + 4 household-only) as Bootstrap cards.
      *
-     * Auth: requireRole(['admin']) — only super-admins see the full
-     * workflow reference. Experts/operators only see their own task
-     * list (via /admin/my-tasks), not the workflow diagram.
+     * Phase 41 (v2.0.7) — the cycle diagram was moved to /guide#status-cycle
+     * so applicants and admins share the same authoritative reference.
      *
-     * Reads from config/statuses.php (the Single Source of Truth for
-     * status definitions). No DB queries — purely a view of config.
+     * Phase 51 (v2.1.7) — removed the last admin UI links pointing here
+     * ("مشاهدهٔ چرخهٔ کامل" in view_application.php, "چرخهٔ ۱۸ وضعیت" on
+     * the dashboard). The 18-status cycle now ONLY appears in guide.php.
+     *
+     * Auth: requireRole(['admin']) — kept so any old bookmark still
+     * resolves to the notice page (which redirects to /guide#status-cycle).
      */
     public function statusCycle(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
-        $statuses = (array)Config::get('statuses.statuses', []);
-        $terminal = (array)Config::get('statuses.terminal', []);
-        $preIssue = (array)Config::get('statuses.pre_issue', []);
-
-        // Split into shared (14) + household-only (4) — the household-only
-        // entries have the 'services' => [2] flag.
-        $shared = [];
-        $household = [];
-        foreach ($statuses as $slug => $meta) {
-            $services = $meta['services'] ?? [];
-            if ($services === [2] || (is_array($services) && in_array(2, $services, true))) {
-                $household[$slug] = $meta;
-            } else {
-                $shared[$slug] = $meta;
-            }
-        }
-
-        // Sort by order (asc).
-        $byOrder = static fn (array $a, array $b): int => ($a['order'] ?? 0) <=> ($b['order'] ?? 0);
-        uasort($shared, $byOrder);
-        uasort($household, $byOrder);
 
         return $this->render('admin/status_cycle', [
-            'title'      => 'چرخهٔ ۱۸ وضعیت',
-            'shared'      => $shared,
-            'household'   => $household,
-            'terminal'    => $terminal,
-            'preIssue'    => $preIssue,
+            'title' => 'چرخهٔ وضعیت‌ها',
         ]);
     }
 
