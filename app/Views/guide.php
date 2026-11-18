@@ -49,28 +49,43 @@ foreach ($socialLinks as $k => $sl) {
 // types) and household-business-only statuses (service_type_id = 2).
 // 'order' is the ApplicantStatus enum ordering (1..12 + 98/99 terminals
 // for shared, 15/25/35/36 for household).
+//
+// Phase 52 (v2.1.8) — the badge colour is now resolved from
+// config/statuses.php via StatusBadge::color() so it stays in sync with
+// the 18-status cycle definitions. The 'badge' key is removed from the
+// arrays below; the colour is computed on the fly from the status title
+// (which is the enum value, the same key used by config/statuses.php).
+use App\Shared\Support\StatusBadge;
+
 $cycleShared = [
-    ['order' => 1,  'title' => 'پیش‌نویس',                'badge' => 'secondary', 'icon' => 'bi-pencil'],
-    ['order' => 2,  'title' => 'تکمیل اطلاعات',           'badge' => 'info',      'icon' => 'bi-clipboard-check'],
-    ['order' => 3,  'title' => 'احراز نشانی',             'badge' => 'primary',   'icon' => 'bi-geo-alt'],
-    ['order' => 4,  'title' => 'بررسی کارشناسی رشته',      'badge' => 'primary',   'icon' => 'bi-search'],
-    ['order' => 5,  'title' => 'ثبت درخواست صدور',         'badge' => 'primary',   'icon' => 'bi-send', 'note' => 'آغاز شمارش ۱۴ روزه'],
-    ['order' => 6,  'title' => 'بارگذاری مدارک به سازمان', 'badge' => 'warning',   'icon' => 'bi-upload'],
-    ['order' => 7,  'title' => 'درخواست اصلاح مدارک',       'badge' => 'warning',   'icon' => 'bi-exclamation-triangle'],
-    ['order' => 8,  'title' => 'تأیید اولیه',              'badge' => 'success',   'icon' => 'bi-check2-square'],
-    ['order' => 9,  'title' => 'تأیید نهایی',              'badge' => 'success',   'icon' => 'bi-check2-all'],
-    ['order' => 10, 'title' => 'صدور مجوز',               'badge' => 'success',   'icon' => 'bi-patch-check'],
-    ['order' => 11, 'title' => 'تحویل مجوز',               'badge' => 'success',   'icon' => 'bi-box-seam', 'terminal' => true],
-    ['order' => 12, 'title' => 'مشاهده و چاپ',             'badge' => 'dark',      'icon' => 'bi-printer'],
-    ['order' => 98, 'title' => 'رد درخواست',               'badge' => 'danger',    'icon' => 'bi-x-octagon', 'terminal' => true],
-    ['order' => 99, 'title' => 'لغو',                       'badge' => 'danger',    'icon' => 'bi-ban',        'terminal' => true],
+    ['order' => 1,  'title' => 'پیش‌نویس',                'icon' => 'bi-pencil'],
+    ['order' => 2,  'title' => 'تکمیل اطلاعات',           'icon' => 'bi-clipboard-check'],
+    ['order' => 3,  'title' => 'احراز نشانی',             'icon' => 'bi-geo-alt'],
+    ['order' => 4,  'title' => 'بررسی کارشناسی رشته',      'icon' => 'bi-search'],
+    ['order' => 5,  'title' => 'ثبت درخواست صدور',         'icon' => 'bi-send', 'note' => 'آغاز شمارش ۱۴ روزه'],
+    ['order' => 6,  'title' => 'بارگذاری مدارک به سازمان', 'icon' => 'bi-upload'],
+    ['order' => 7,  'title' => 'درخواست اصلاح مدارک',       'icon' => 'bi-exclamation-triangle'],
+    ['order' => 8,  'title' => 'تأیید اولیه',              'icon' => 'bi-check2-square'],
+    ['order' => 9,  'title' => 'تأیید نهایی',              'icon' => 'bi-check2-all'],
+    ['order' => 10, 'title' => 'صدور مجوز',               'icon' => 'bi-patch-check'],
+    ['order' => 11, 'title' => 'تحویل مجوز',               'icon' => 'bi-box-seam', 'terminal' => true],
+    ['order' => 12, 'title' => 'مشاهده و چاپ',             'icon' => 'bi-printer'],
+    ['order' => 98, 'title' => 'رد درخواست',               'icon' => 'bi-x-octagon', 'terminal' => true],
+    ['order' => 99, 'title' => 'لغو',                       'icon' => 'bi-ban',        'terminal' => true],
 ];
 $cycleHousehold = [
-    ['order' => 15, 'title' => 'تطبیق آدرس با ثبت احوال',          'badge' => 'primary', 'icon' => 'bi-house-check'],
-    ['order' => 25, 'title' => 'دریافت تصویر مجوز',                'badge' => 'success', 'icon' => 'bi-image'],
-    ['order' => 35, 'title' => 'تأیید اولیه در سامانه مشاغل خانگی', 'badge' => 'success', 'icon' => 'bi-check2-square'],
-    ['order' => 36, 'title' => 'تأیید نهایی دریافت کد رهگیری',     'badge' => 'success', 'icon' => 'bi-check2-all', 'terminal' => true],
+    ['order' => 15, 'title' => 'تطبیق آدرس با ثبت احوال',          'icon' => 'bi-house-check'],
+    ['order' => 25, 'title' => 'دریافت تصویر مجوز',                'icon' => 'bi-image'],
+    ['order' => 35, 'title' => 'تأیید اولیه در سامانه مشاغل خانگی', 'icon' => 'bi-check2-square'],
+    ['order' => 36, 'title' => 'تأیید نهایی دریافت کد رهگیری',     'icon' => 'bi-check2-all', 'terminal' => true],
 ];
+// Compute the Bootstrap badge colour from the config map for each row.
+foreach ($cycleShared as $k => $s) {
+    $cycleShared[$k]['badge'] = StatusBadge::color((string)$s['title']);
+}
+foreach ($cycleHousehold as $k => $s) {
+    $cycleHousehold[$k]['badge'] = StatusBadge::color((string)$s['title']);
+}
 ?>
 <div class="row">
     <div class="col-lg-8">

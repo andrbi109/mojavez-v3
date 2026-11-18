@@ -28,6 +28,7 @@
 /** @var string $csrfField */
 
 use App\Shared\Support\PersianDate;
+use App\Shared\Support\StatusBadge;
 
 $serviceTitle = function (int $id) use ($serviceTypes): string {
     return $serviceTypes[$id] ?? '—';
@@ -88,10 +89,11 @@ $deletableStatuses = ['پیش‌نویس', 'تکمیل اطلاعات'];
                         <?php foreach ($applications as $a): ?>
                             <?php
                                 $st = (string)($a['current_status'] ?? '');
-                                $badge = 'secondary';
-                                if (in_array($st, ['صدور مجوز', 'تحویل مجوز'], true)) $badge = 'success';
-                                elseif ($st === 'لغو') $badge = 'danger';
-                                elseif (in_array($st, ['پیش‌نویس'], true)) $badge = 'light text-dark';
+                                // Phase 52 (v2.1.8) — read the colour from
+                                // config/statuses.php via StatusBadge::color()
+                                // so the badge stays in sync with the
+                                // 18-status cycle definitions.
+                                $badge = StatusBadge::color($st);
                                 $canDelete = in_array($st, $deletableStatuses, true);
                                 $appId = (int)($a['id'] ?? 0);
                                 $trackingCode = (string)($a['tracking_code'] ?? '');

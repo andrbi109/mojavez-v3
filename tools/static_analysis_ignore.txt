@@ -277,3 +277,15 @@ app/Views/admin/fee_tariff/index.php:<?= $itSrt ?>
 app/Views/admin/service_types.php:<?= $licenseTitleCount ?>
 app/Views/admin/service_types.php:<?= $formFieldCount ?>
 app/Views/admin/service_types.php:<?= $wizardStepCount ?>
+
+# 16. Phase 52 (v2.1.8) — StatusBadge helper docblock examples.
+#
+# The two `<?= $color ?>` markers flagged in
+# app/Shared/Support/StatusBadge.php are inside the class-level PHP
+# docblock (lines 36-37 — examples of `text-bg-<?= $color ?>` and
+# `bg-<?= $color ?>` Bootstrap badge markup). They are documentation
+# examples only, not live PHP echo statements — no user input flows
+# into them. The static analyzer's regex parser sees the `<?=` token
+# in the comment text and flags it as a false positive.
+# -----------------------------------------------------------------------------
+app/Shared/Support/StatusBadge.php:<?= $color ?>

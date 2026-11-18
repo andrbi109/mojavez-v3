@@ -17,6 +17,7 @@
 /** @var string $baseUrl */
 
 use App\Shared\Support\PersianDate;
+use App\Shared\Support\StatusBadge;
 
 $serviceTitle = function (int $id) use ($serviceTypes): string {
     return $serviceTypes[$id] ?? '—';
@@ -72,7 +73,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                         <code class="user-select-all"><?= htmlspecialchars((string)($latestApp['tracking_code'] ?? '—'), ENT_QUOTES) ?></code>
                         <span class="mx-2">•</span>
                         وضعیت:
-                        <span class="badge bg-info"><?= htmlspecialchars((string)($latestApp['current_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></span>
+                        <span class="badge bg-<?= htmlspecialchars(StatusBadge::color((string)($latestApp['current_status'] ?? '')), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string)($latestApp['current_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></span>
                     </div>
                     <?php if (!empty($timeline)): ?>
                         <h6 class="small text-uppercase text-muted">خط زمانی وضعیت</h6>

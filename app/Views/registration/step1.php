@@ -22,11 +22,13 @@
 /** @var array<string,string> $values */
 /** @var string $baseUrl */
 /** @var string $csrfField */
+/** @var string $userDisplayName */
 
 $serviceType ??= [];
 $values      ??= [];
 $baseUrl     ??= '';
 $csrfField   ??= '';
+$userDisplayName ??= '';
 $currentStep = 1;
 $totalSteps  = 4;
 $stTitle     = (string)($serviceType['title'] ?? '');
@@ -44,6 +46,16 @@ require __DIR__ . '/_progress.php';
                 </h1>
             </div>
             <div class="card-body p-4">
+                <?php if ($userDisplayName !== '' && trim((string)($values['first_name'] ?? '') . ' ' . (string)($values['last_name'] ?? '')) === ''): ?>
+                    <div class="alert alert-light border small d-flex align-items-center gap-2" role="note">
+                        <i class="bi bi-person-badge text-muted"></i>
+                        <span>
+                            نام نمایشی حساب کاربری شما:
+                            <strong><?= htmlspecialchars($userDisplayName, ENT_QUOTES, 'UTF-8') ?></strong>
+                            — می‌توانید همان را در نام و نام خانوادگی وارد کنید یا نام جدیدی وارد نمایید.
+                        </span>
+                    </div>
+                <?php endif; ?>
                 <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>register/step/1">
                     <?= $csrfField ?>
                     <div class="row g-3">

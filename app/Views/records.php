@@ -29,6 +29,8 @@ $verified  ??= false;
 $error     ??= '';
 $baseUrl   ??= '';
 $csrfField ??= '';
+
+use App\Shared\Support\StatusBadge;
 ?>
 <div class="row justify-content-center">
     <div class="col-lg-8">
@@ -96,7 +98,7 @@ $csrfField ??= '';
                                                 'UTF-8'
                                             ) ?></td>
                                             <td>
-                                                <span class="badge text-bg-secondary">
+                                                <span class="badge text-bg-<?= htmlspecialchars(StatusBadge::color((string)($r['current_status'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                                                     <?= htmlspecialchars((string)($r['current_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
                                                 </span>
                                             </td>

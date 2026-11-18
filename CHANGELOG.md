@@ -149,6 +149,77 @@ planned sections without hitting a dead end.
 
 ---
 
+## [2.1.8] — 2026-11-19
+
+### Phase 52: auto-fill wizard + status-badge colors + tracking-code storage + initial status fix
+
+**v2.1.8** is a SemVer **patch** release on top of v2.1.5 (released at
+commit `dc608ee`'s descendant). It bundles four functional improvements
+that close small UX gaps from the production rollout without
+introducing new routes, schema, or domain abstractions.
+
+#### 1. Registration wizard: auto-fill user info
+- `selectService()` now loads the user's `user_account` row (mobile,
+  display_name) and their most recent previous application (first_name,
+  last_name). The new applicants row is created with these fields
+  pre-filled so step 1 of the wizard shows them automatically.
+- Step 1 view shows a small "نام نمایشی حساب کاربری شما: …" hint when
+  no previous application exists but the user has a `display_name`.
+- Steps 2 and 3 fall back to the most recent previous application's
+  `property_details` / `job_details` when the current applicant has
+  none yet — returning users don't have to re-enter their business
+  address or license title.
+
+#### 2. Status badge colors: single source of truth
+- New `App\Shared\Support\StatusBadge::color()` helper reads the
+  Bootstrap colour class from `config/statuses.php` (the 18-status
+  cycle definitions).
+- `ApplicantStatus::badgeColor()` now delegates to
+  `StatusBadge::color()` instead of duplicating the colour values in
+  a `match` statement — config is the single source of truth.
+- All views that render an applicant `current_status` badge now use
+  `StatusBadge::color()`:
+  - `admin/applications.php` (was hard-coded `text-bg-secondary`).
+  - `admin/applicant_account_view.php` (was hard-coded `text-bg-info`).
+  - `records.php` (was hard-coded `text-bg-secondary`).
+  - `user/overview.php` (was hard-coded `bg-info`).
+  - `user/requests.php` (was an inline if/elseif — now config-driven).
+  - `guide.php` (the 18-status cycle diagram now reads colours from
+    `StatusBadge::color()` instead of hard-coded values per row).
+  - `admin/view_application.php` — already used `$badgeColorFor()`
+    reading `$statusMeta` from the config; now also consults
+    `StatusBadge::color()` so the lookup is the same code path as
+    every other view.
+
+#### 3. Document storage: tracking-code-keyed (v2 style)
+- `config/app.php` `upload_dir` moved from the top-level `uploads/`
+  to `storage/uploads/` so documents share the same parent as the
+  `AvatarService` layout (`storage/uploads/avatars/`).
+- `FileStorage::getUploadDir()` default fallback updated to match.
+- `FileStorage::storeUpload()` already keyed the storage path by the
+  applicant's tracking code (`{upload_dir}/{tracking_code}/{file}`) —
+  no path-building change was needed, only the configured `upload_dir`
+  moved.
+- `DocumentController` needs no code change: `$document->filePath`
+  is the stored relative path `/{tracking_code}/{file_name}`, and
+  `FileStorage::getFullPath()` resolves it against the configured
+  `upload_dir`.
+
+#### 4. Initial status: InfoComplete (was InitialApproval)
+- `RegistrationController::processStep4()` now transitions the
+  applicant to `تکمیل اطلاعات` (`ApplicantStatus::InfoComplete`)
+  instead of `تأیید اولیه` (`ApplicantStatus::InitialApproval`).
+- The wizard leaves the applicant at "InfoComplete" so the admin
+  can review the submission and advance the status manually. Before
+  Phase 52, the wizard skipped the admin-review step by jumping
+  straight to "InitialApproval".
+
+#### 5. Version bump
+- `VERSION` → `2.1.8`
+- `README.md` header updated.
+
+---
+
 ## [2.1.5] — 2026-11-18
 
 ### Phases 45-49: settings management + smarter payments + UX hardening

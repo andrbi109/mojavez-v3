@@ -37,10 +37,15 @@ return [
     'max_page_size'      => 100,
 
     // Uploads — sizes in bytes.
+    // Phase 52 (v2.1.8): the upload directory is moved from the top-level
+    // `uploads/` to `storage/uploads/` so it shares the same parent as
+    // the AvatarService's `storage/uploads/avatars/` folder. Documents
+    // are stored under `storage/uploads/{tracking_code}/{doc_type}_{rand6}.ext`
+    // (v2 style — keyed by tracking code, not applicant row id).
     'max_upload_size'  => 2 * 1024 * 1024,     // 2 MiB — documents
     'max_csv_size'     => 5 * 1024 * 1024,     // 5 MiB — CSV imports
     'allowed_extensions' => ['jpg', 'jpeg', 'png', 'pdf'],
-    'upload_dir'        => dirname(__DIR__) . '/uploads',
+    'upload_dir'        => dirname(__DIR__) . '/storage/uploads',
     'max_image_dim'     => 1920,                // re-encode width/height cap
     'jpeg_quality'      => 85,
     'png_compression'   => 9,

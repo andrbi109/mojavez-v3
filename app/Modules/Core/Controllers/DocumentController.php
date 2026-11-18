@@ -49,6 +49,16 @@ use App\Shared\Support\StructuredLogger;
  *     (never user input).
  *   - The GD thumbnail generation also validates the image via
  *     getimagesize() before imagecreatefrom* — defeats polyglot payloads.
+ *
+ * Phase 52 (v2.1.8) — documents live under
+ * `storage/uploads/{tracking_code}/{doc_type}_{rand6}.ext` (v2 style,
+ * keyed by the applicant's tracking code). The stored `file_path` on
+ * the documents row is the relative path `/{tracking_code}/{file_name}`,
+ * which `FileStorage::getFullPath()` resolves against the configured
+ * `upload_dir` (now `storage/uploads/`). No code change is needed in
+ * this controller for the move — the relative path is opaque to the
+ * resolver; only the `upload_dir` config + the FileStorage default
+ * fallback moved.
  */
 final class DocumentController extends Controller
 {
