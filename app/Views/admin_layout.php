@@ -71,116 +71,6 @@ $renderLinks = function (array $items) use ($baseUrl): void {
 
         <nav>
             <h6>اصلی</h6>
-<<<<<<< HEAD
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/dashboard" class="nav-link">
-                <i class="bi bi-speedometer2"></i> داشبورد
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/applications" class="nav-link">
-                <i class="bi bi-folder2-open"></i> درخواست‌ها
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/my-tasks" class="nav-link">
-                <i class="bi bi-list-task"></i> وظایف من
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/status-cycle" class="nav-link">
-                <i class="bi bi-diagram-3"></i> چرخهٔ ۱۸ وضعیت
-            </a>
-
-            <h6>مدیریت</h6>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/users" class="nav-link">
-                <i class="bi bi-people"></i> کاربران
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/form-fields" class="nav-link">
-                <i class="bi bi-input-cursor-text"></i> فیلدهای فرم
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/fee-tariff" class="nav-link">
-                <i class="bi bi-cash-stack"></i> تعرفهٔ هزینه
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/license-titles" class="nav-link">
-                <i class="bi bi-award"></i> عناوین مجوز
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/service-types" class="nav-link">
-                <i class="bi bi-briefcase"></i> انواع خدمت
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/wizard-steps" class="nav-link">
-                <i class="bi bi-diagram-3"></i> مراحل ویزارد
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sms" class="nav-link">
-                <i class="bi bi-chat-dots"></i> پیامک
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/payments" class="nav-link">
-                <i class="bi bi-credit-card"></i> پرداخت‌ها
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/bulk-import" class="nav-link">
-                <i class="bi bi-cloud-upload"></i> ایمپورت دسته‌جمعی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/settings" class="nav-link">
-                <i class="bi bi-gear"></i> تنظیمات
-            </a>
-
-            <h6>درخواست‌ها</h6>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/postal-requests" class="nav-link">
-                <i class="bi bi-mailbox"></i> درخواست‌های کد پستی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/register" class="nav-link">
-                <i class="bi bi-person-plus"></i> ثبت‌نام دستی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/license-requests" class="nav-link">
-                <i class="bi bi-patch-check"></i> درخواست‌های مجوز
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/revisions" class="nav-link">
-                <i class="bi bi-arrow-clockwise"></i> بازبینی‌ها
-            </a>
-
-            <h6>گزارش‌ها</h6>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/reports/by-province" class="nav-link">
-                <i class="bi bi-geo-alt"></i> گزارش استان
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/reports/by-license" class="nav-link">
-                <i class="bi bi-award"></i> گزارش عنوان مجوز
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/reports/by-date" class="nav-link">
-                <i class="bi bi-calendar"></i> گزارش روزانه
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/output/general" class="nav-link">
-                <i class="bi bi-file-bar-graph"></i> خروجی عمومی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/output/grouped" class="nav-link">
-                <i class="bi bi-table"></i> خروجی گروه‌بندی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/report/csv" class="nav-link">
-                <i class="bi bi-filetype-csv"></i> خروجی CSV
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/report/pdf" class="nav-link">
-                <i class="bi bi-filetype-pdf"></i> خروجی PDF
-            </a>
-
-            <?php if ($adminRole === 'admin' || $adminRole === 'sync_operator'): ?>
-            <h6>درگاه ملی</h6>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway" class="nav-link">
-                <i class="bi bi-cloud"></i> داشبورد درگاه ملی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/search" class="nav-link">
-                <i class="bi bi-search"></i> جستجوی پیشرفته
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/saved" class="nav-link">
-                <i class="bi bi-bookmark"></i> مجوزهای ذخیره‌شده
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/filters" class="nav-link">
-                <i class="bi bi-funnel"></i> فیلترهای ذخیره‌شده
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/batch" class="nav-link">
-                <i class="bi bi-files"></i> جستجوی دسته‌جمعی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status" class="nav-link">
-                <i class="bi bi-cloud-arrow-down"></i> وضعیت همگام‌سازی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/pending" class="nav-link">
-                <i class="bi bi-hourglass-split"></i> در انتظار بررسی
-            </a>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/readiness" class="nav-link">
-                <i class="bi bi-clipboard2-check"></i> آمادگی مرحلهٔ ۲
-            </a>
-=======
             <?php $renderLinks([
                 ['href' => 'admin/dashboard',    'icon' => 'bi-speedometer2', 'label' => 'داشبورد'],
                 ['href' => 'admin/applications', 'icon' => 'bi-folder2-open',  'label' => 'درخواست‌ها'],
@@ -207,7 +97,6 @@ $renderLinks = function (array $items) use ($baseUrl): void {
                 ['href' => 'admin/sync/status',     'icon' => 'bi-cloud-arrow-down', 'label' => 'وضعیت همگام‌سازی'],
                 ['href' => 'admin/sync/pending',    'icon' => 'bi-hourglass-split',  'label' => 'در انتظار بررسی'],
             ]); ?>
->>>>>>> phase/41-docs-gateway-menu-fixes
             <?php endif; ?>
 
             <h6>مدیریت</h6>
