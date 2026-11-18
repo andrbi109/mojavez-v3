@@ -239,6 +239,24 @@ final class Module implements ModuleInterface
     public function routes(): array
     {
         return [
+            // ----- Phase 39 — dedicated gateway admin pages (HTML, not API) -----
+            // These are the 5 admin pages that replaced the 4 raw API JSON
+            // links in the admin sidebar (per the user's request: "no API
+            // links visible to the user"). The /api/v1/* endpoints below
+            // remain registered and accessible programmatically — they're
+            // just no longer linked from admin_layout.php's sidebar.
+            //
+            // GatewayAdminController renders the same Bootstrap 5 RTL +
+            // Vazirmatn admin_layout that the rest of the admin area uses.
+            // Mutations (filter CRUD, batch upload, save/unsave, run-crawl)
+            // go through the existing /api/v1/* JSON endpoints via fetch()
+            // in the views' <script> blocks.
+            ['method' => 'GET', 'path' => '/admin/gateway',          'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'panel'],
+            ['method' => 'GET', 'path' => '/admin/gateway/search',    'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'search'],
+            ['method' => 'GET', 'path' => '/admin/gateway/saved',     'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'saved'],
+            ['method' => 'GET', 'path' => '/admin/gateway/filters',   'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'filters'],
+            ['method' => 'GET', 'path' => '/admin/gateway/batch',     'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'batch'],
+
             // Golden-link sync admin panel — poor man's cron pattern.
             // Each /admin/sync/status poll drains one queued job.
             ['method' => 'GET',  'path' => '/admin/sync/status',     'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'status'],
