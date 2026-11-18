@@ -149,6 +149,99 @@ planned sections without hitting a dead end.
 
 ---
 
+## [2.0.0] — 2026-11-18
+
+### Final release — complete v2 + gateway integration
+
+**v2.0.0** is the final release of mojavez-v3. All features from
+Mojavez-v2 and mojavez-gateway are implemented in v3's modular
+architecture. The national gateway connection is active (the 90-day
+pre-condition removed). All 18 statuses work with manual + automatic
+transitions. All seed data from the andrbi108/mojavez-v3 prototype has
+been extracted and integrated.
+
+### Phases 29-34 (v1.9.11 → v2.0.0) — final implementation
+
+**Phase 29:** Editable application view with 18-status cycle dropdown.
+The admin /admin/view/{id} page now has:
+- 18-status dropdown for changing the applicant's status (sorted by
+  order, terminal-status labels, current status disabled).
+- Inline edit form for applicant identity fields.
+- Documents card with upload/delete.
+- Property + job details cards.
+- Golden-link card.
+- Status history timeline.
+
+**Phase 30:** Removed the 90-day Stage 1 pre-condition. The national
+gateway is now immediately active upon installation. The
+Stage2ReadinessChecker::checkStage1Stable() now passes if at least 1
+inbound log exists (was: required ≥ 90 days).
+
+**Phase 31:** Updated admin sidebar for national gateway. Added 4 new
+links to the 'درگاه ملی' section: کش مجوزهای ملی (/api/v1/licenses),
+لیست‌های مرجع (/api/v1/lookups), صف کارها (/api/v1/admin/jobs), لاگ‌های
+سیستم (/api/v1/admin/logs). All open in new tabs (JSON).
+
+**Phase 32:** Comprehensive seed data from andrbi108/mojavez-v3.
+Migration 015 seeds:
+- Settings: 15 rows (site_name, owner, fees, gateway config).
+- Service types: 5 full rows (صنایع دستی، مشاغل خانگی مستقل/پشتیبان،
+  گردشگری، هنری).
+- Wizard steps: 8 (4 system + 4 service-specific).
+- Form fields: 28 system fields across steps 1-4.
+- License titles: 125 across 4 service types (75 صنایع دستی in 10
+  categories, 27 مشاغل خانگی in 5 categories, 8 گردشگری, 7 هنری).
+- SMS templates: 6.
+- Fee groups: 4.
+- Payment channels: 3.
+
+**Phase 33:** Applied v2 experiences. Confirmed v3 already ports all
+key v2 utilities (FeeCalculatorService, PersianDate, CSV export,
+FileStorage, AutoCancelService, NotificationService, PatternMatcher).
+Added gateway activation settings to migration 015 (sync_direction=
+inbound, sync_two_way_enabled=0, upstream_base, thresholds).
+
+**Phase 34:** Version bump to 2.0.0.
+
+### Final project stats
+
+- **Routes:** 200+ (Core 157 + NationalGateway 43).
+- **Controllers:** 27 (Core 25 + NationalGateway 2).
+- **Views:** 62+ (all v2 views ported + v3 additions).
+- **Migrations:** 22 (Core 15 + NationalGateway 5 + Queue 2).
+- **Tests:** 580 assertions, 0 failures.
+- **Debt:** 0 critical, 0 high, 0 medium, 0 low — **ZERO debt**.
+- **National gateway:** Active (inbound by default, two-way via
+  /admin/settings).
+- **Seed data:** 5 service types, 8 wizard steps, 28 form fields, 125
+  license titles, 6 SMS templates, 4 fee groups, 3 payment channels, 8
+  provinces, 28 townships.
+
+### v2 feature parity — COMPLETE
+
+**Public:** home, guide, about, services, signup, login, tracking,
+health, license view by token.
+**User:** panel (overview + 7 sub-pages), profile + avatar, requests,
+payments, licenses, notifications, tracking, registration wizard (4
+steps), revision request, my-records.
+**Admin:** dashboard, applications (list + view + edit with 18-status
+cycle), manual registration, document upload/delete, status change (18
+statuses, manual + automatic), payment request, license state,
+postal-code requests, my-tasks, users CRUD, service types CRUD, wizard
+steps CRUD + reorder, form fields CRUD + reorder, license titles CRUD +
+toggle + by-service, fee tariff CRUD + groups + items + tick, settings
++ image upload, sms templates + entry review, payments review + csv +
+channels, bulk import (8 routes), reports (5 dimensions), output
+(general + grouped + csv + pdf), revisions (approve/reject + apply
+payload), license requests review, license upload, sync (status +
+pending + run + readiness + API endpoints), status-cycle diagram.
+**National gateway:** 43 API v1 routes, sync orchestrator, stage 2
+readiness checker (90-day pre-condition removed), outbound sync
+service, pattern matcher (fuzzy address), golden-link, 4 admin API
+links in sidebar.
+
+---
+
 ## [1.9.10] — 2026-11-17
 
 ### Phase 28: v2.0.0 preparation — final test + zero debt confirmed
