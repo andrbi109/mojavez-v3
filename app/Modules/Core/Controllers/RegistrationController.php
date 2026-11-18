@@ -8,31 +8,60 @@ use App\Http\Csrf;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\Session;
+use App\Modules\Core\Domain\Applicant;
+use App\Modules\Core\Domain\Enums\ApplicantStatus;
 use App\Modules\Core\Services\FileStorage;
+use App\Shared\Contracts\ApplicantRepositoryInterface;
+use App\Shared\Contracts\DocumentRepositoryInterface;
+use App\Shared\Contracts\JobAndPropertyRepositoryInterface;
+use App\Shared\Contracts\LicenseFileRepositoryInterface;
+use App\Shared\Contracts\LicenseTitleRepositoryInterface;
+use App\Shared\Contracts\ServiceTypeRepositoryInterface;
+use App\Shared\Contracts\StatusLogRepositoryInterface;
+use App\Shared\Persistence\Connection;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
+use App\Shared\Support\Normalizer;
+use App\Shared\Support\PersianDate;
 use App\Shared\Support\StructuredLogger;
+use App\Shared\Support\Validator;
 
 /**
- * RegistrationController — the wizard registration flow.
+ * RegistrationController — the 4-step wizard registration flow.
+ *
+ * Phase 44a (v2.1): the RegistrationController lost 9 methods during a git
+ * merge conflict resolution. This file recreates all 13 methods required by
+ * the routes registered in Core/Module.php.
  *
  * Routes (registered by the Core module):
- *   GET  /register, /register/service/{id}, /register/step/{n}
- *   POST /register/step/{n}
- *   GET  /register/success/{trackingCode}
+ *   GET  /register                       → index           (select service type)
+ *   GET  /register/service/{id}          → selectService    (create applicant, redirect to step 1)
+ *   GET  /register/step/{n}              → stepByPosition   (delegate to step{n})
+ *   POST /register/step/{n}              → processByPosition(delegate to processStep{n})
+ *   GET  /register/step1..4              → step1..4         (legacy aliases)
+ *   POST /register/step1..4              → processStep1..4  (legacy aliases)
+ *   GET  /register/success/{trackingCode} → success         (success page)
  *
- * Phase 41 (v2.0.7) — only the document-upload handler is shipped here.
- * The full wizard (form rendering, step validation, persistence, success
- * page) is implemented in a later phase. handleDocumentUploads() is shipped
- * now so step4.php's v2-style named file inputs
- * (national_card_front, national_card_back, birth_cert, ownership_doc,
- * vocational_cert, education_degree, product_photos[], optional_N) have a
- * matching server-side handler that converts the named $_FILES entries
- * into documents rows via FileStorage::storeUpload().
- *
- * The handler is idempotent: missing optional fields are silently skipped.
- * Required fields are validated by the caller (the step4 POST handler)
- * before this method is called.
+ * Wizard flow:
+ *   1. GET /register → select_service view with active service_types.
+ *   2. GET /register/service/{id} → create applicants row with
+ *      current_status='پیش‌نویس', service_type_id={id},
+ *      user_account_id=session user_id, mobile=session user_mobile,
+ *      tracking_code=HG-XXXXXXXX (via Hash::generateTrackingCode).
+ *      Store applicant_id in session under 'wizard.applicant_id'.
+ *      Redirect to /register/step/1.
+ *   3. GET /register/step/1 → step1 view (identity form).
+ *   4. POST /register/step/1 → save identity, redirect to step 2.
+ *   5. GET /register/step/2 → step2 view (property form with provinces + townships).
+ *   6. POST /register/step/2 → save property via upsertPropertyDetail(),
+ *      update postal_code on applicants, redirect to step 3.
+ *   7. GET /register/step/3 → step3 view (job form with license titles).
+ *   8. POST /register/step/3 → save job via upsertJobDetail(), redirect to step 4.
+ *   9. GET /register/step/4 → step4 view (document upload + review).
+ *  10. POST /register/step/4 → upload docs, set registration_completed_at=NOW(),
+ *      consent_external_share=1, changeStatus to InitialApproval,
+ *      remove wizard.applicant_id, redirect to /register/success/{trackingCode}.
+ *  11. GET /register/success/{trackingCode} → success view with tracking code.
  */
 final class RegistrationController extends Controller
 {
@@ -56,6 +85,9 @@ final class RegistrationController extends Controller
     /** Multi-file field (array of files under one $_FILES key). */
     public const DOC_FIELD_ARRAY = 'product_photos';
 
+    /** Session key under which the in-progress applicant id is stored. */
+    public const SESSION_WIZARD_KEY = 'wizard.applicant_id';
+
     public function __construct(
         Container $container,
         Session $session,
@@ -63,10 +95,716 @@ final class RegistrationController extends Controller
         Environment $environment,
         Hash $hash,
         StructuredLogger $logger,
-        private readonly FileStorage $storage
+        private readonly FileStorage $storage,
+        private readonly ApplicantRepositoryInterface $applicants,
+        private readonly JobAndPropertyRepositoryInterface $jobAndProperty,
+        private readonly ServiceTypeRepositoryInterface $serviceTypes,
+        private readonly LicenseTitleRepositoryInterface $licenseTitles,
+        private readonly StatusLogRepositoryInterface $statusLog,
+        private readonly DocumentRepositoryInterface $documents,
+        private readonly LicenseFileRepositoryInterface $licenseFiles,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
+
+    /* ============================================================
+     * Wizard entry — /register
+     * ============================================================ */
+
+    /**
+     * GET /register — render the select_service view with all active
+     * service_types. This is the wizard's entry point: the user picks a
+     * service type, which sends them to /register/service/{id} to start
+     * a fresh applicant row.
+     */
+    public function index(Request $request, array $params = []): Response
+    {
+        // The wizard requires a logged-in user_account so we can attach
+        // the new applicant row to the user.
+        $this->requireUserLogin();
+
+        $serviceTypes = $this->serviceTypes->getActive();
+        return $this->render('registration/select_service', [
+            'title'        => 'انتخاب نوع خدمت',
+            'serviceTypes' => $serviceTypes,
+        ]);
+    }
+
+    /**
+     * GET /register/service/{id} — create a new applicant row for the
+     * selected service type and redirect to step 1.
+     *
+     * The new row has:
+     *   current_status = 'پیش‌نویس' (Draft)
+     *   service_type_id = {id}
+     *   user_account_id = session user_id
+     *   mobile = session user_mobile
+     *   tracking_code = HG-XXXXXXXX (via Hash::generateTrackingCode, retried on collision)
+     *
+     * The applicant_id is stored in the session under 'wizard.applicant_id'
+     * so the step handlers know which row to update.
+     */
+    public function selectService(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+
+        $serviceId = (int)($params['id'] ?? 0);
+        $service = $this->serviceTypes->findById($serviceId);
+        if ($service === null || (int)($service['is_active'] ?? 0) === 0) {
+            return $this->redirect('/register');
+        }
+
+        $userId = (int)$this->session->get('user_id', 0);
+        $userMobile = (string)$this->session->get('user_mobile', '');
+
+        // Generate a unique tracking code (retry on the rare UNIQUE collision).
+        $trackingCode = null;
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $candidate = $this->hash->generateTrackingCode();
+            $exists = $this->connection()->scalar(
+                'SELECT id FROM applicants WHERE tracking_code = ?',
+                [$candidate]
+            );
+            if ($exists === null) {
+                $trackingCode = $candidate;
+                break;
+            }
+        }
+        if ($trackingCode === null) {
+            return $this->redirect('/register');
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $applicantId = $this->applicants->create([
+            'service_type_id'           => $serviceId,
+            'user_account_id'            => $userId > 0 ? $userId : null,
+            'first_name'                 => '',
+            'last_name'                  => '',
+            'national_code'              => '',
+            'postal_code'                => '',
+            'mobile'                     => $userMobile,
+            'tracking_code'              => $trackingCode,
+            'current_status'             => ApplicantStatus::Draft->value,  // 'پیش‌نویس'
+            'registration_started_at'     => $now,
+            'consent_external_share'     => 0,
+        ]);
+
+        $this->session->set(self::SESSION_WIZARD_KEY, $applicantId);
+
+        $this->logger->info('Wizard applicant created', [
+            '_module'         => 'core',
+            'applicant_id'    => $applicantId,
+            'service_type_id' => $serviceId,
+            'user_id'         => $userId,
+        ]);
+
+        return $this->redirect('/register/step/1');
+    }
+
+    /* ============================================================
+     * Position-based dispatchers — /register/step/{n}
+     * ============================================================ */
+
+    /**
+     * GET /register/step/{n} — dispatch to step{n} based on the position.
+     */
+    public function stepByPosition(Request $request, array $params = []): Response
+    {
+        $n = (int)($params['n'] ?? 0);
+        if ($n < 1 || $n > 4) {
+            return $this->redirect('/register');
+        }
+        $method = 'step' . $n;
+        return $this->$method($request, $params);
+    }
+
+    /**
+     * POST /register/step/{n} — dispatch to processStep{n} based on the position.
+     */
+    public function processByPosition(Request $request, array $params = []): Response
+    {
+        $n = (int)($params['n'] ?? 0);
+        if ($n < 1 || $n > 4) {
+            return $this->redirect('/register');
+        }
+        $method = 'processStep' . $n;
+        return $this->$method($request, $params);
+    }
+
+    /* ============================================================
+     * Step 1 — identity (GET + POST)
+     * ============================================================ */
+
+    /**
+     * GET /register/step1 — render the identity form with the current
+     * applicant's data pre-filled.
+     */
+    public function step1(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        $serviceType = $this->serviceTypes->findById((int)$applicant->serviceTypeId) ?? [];
+        $values = $this->applicantValues($applicant);
+
+        return $this->render('registration/step1', [
+            'title'       => 'مرحلهٔ ۱ — اطلاعات هویتی',
+            'serviceType' => $serviceType,
+            'values'      => $values,
+            'errors'      => [],
+        ]);
+    }
+
+    /**
+     * POST /register/step1 — validate and save identity fields.
+     *
+     * Fields: first_name, last_name, national_code, birth_date, father_name,
+     * mobile, applicant_type, marital_status, children_count,
+     * physical_condition, disability_details.
+     *
+     * The step1 view submits the first 6 fields; the remaining 5 are
+     * accepted from the body if present and otherwise default to:
+     *   applicant_type      = 'حقیقی'
+     *   marital_status      = 'مجرد'
+     *   children_count      = 0
+     *   physical_condition  = 'سالم'
+     *   disability_details  = null
+     *
+     * On success → redirect to /register/step/2.
+     * On error   → re-render step1 with errors + posted values.
+     */
+    public function processStep1(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        $body = $request->body();
+        $serviceType = $this->serviceTypes->findById((int)$applicant->serviceTypeId) ?? [];
+
+        $firstName    = Validator::nonEmptyString($body['first_name'] ?? '', 50);
+        $lastName     = Validator::nonEmptyString($body['last_name'] ?? '', 50);
+        $nationalCode = Validator::nationalCode($body['national_code'] ?? '');
+        $mobile       = Validator::mobile($body['mobile'] ?? '');
+        $fatherName   = Validator::sanitizeText($body['father_name'] ?? '', 50);
+        $applicantType = Validator::inEnum($body['applicant_type'] ?? '', ['حقیقی', 'حقوقی']) ?? 'حقیقی';
+        $maritalStatus = Validator::inEnum($body['marital_status'] ?? '', ['مجرد', 'متأهل']) ?? 'مجرد';
+        $childrenCount = Validator::intInRange($body['children_count'] ?? 0, 0, 50) ?? 0;
+        $physicalCondition = Validator::inEnum($body['physical_condition'] ?? '', ['سالم', 'معلولیت']) ?? 'سالم';
+        $disabilityDetails = Validator::sanitizeText($body['disability_details'] ?? '', 255);
+
+        // Birth date — parse Jalali text "YYYY/MM/DD" (Persian or Latin digits)
+        // into 3 ints, then convert to Gregorian.
+        $birthDate = $this->birthDateFromInputString((string)($body['birth_date'] ?? ''));
+
+        // Marital-status coupling: children_count is only meaningful for متأهل.
+        if ($maritalStatus !== 'متأهل') {
+            $childrenCount = 0;
+        }
+        // Physical-condition coupling: clear disability_details if سالم.
+        if ($physicalCondition !== 'معلولیت') {
+            $disabilityDetails = '';
+        }
+
+        $errors = [];
+        if ($firstName === null) {
+            $errors['first_name'][] = 'نام الزامی است (حداکثر ۵۰ نویسه).';
+        }
+        if ($lastName === null) {
+            $errors['last_name'][] = 'نام خانوادگی الزامی است (حداکثر ۵۰ نویسه).';
+        }
+        if ($nationalCode === null) {
+            $errors['national_code'][] = 'کد ملی نامعتبر است (۱۰ رقم با کنترل parity).';
+        }
+        if ($mobile === null) {
+            $errors['mobile'][] = 'موبایل نامعتبر است (فرمت 09XXXXXXXXX).';
+        }
+        if (($body['birth_date'] ?? '') !== '' && $birthDate === null) {
+            $errors['birth_date'][] = 'تاریخ تولد معتبر نیست (فرمت YYYY/MM/DD شمسی).';
+        }
+
+        if ($errors !== []) {
+            return $this->render('registration/step1', [
+                'title'       => 'مرحلهٔ ۱ — اطلاعات هویتی',
+                'serviceType' => $serviceType,
+                'values'      => $body,
+                'errors'      => $errors,
+            ]);
+        }
+
+        $this->applicants->update($applicant->id, [
+            'first_name'         => $firstName,
+            'last_name'          => $lastName,
+            'national_code'      => $nationalCode,
+            'mobile'             => $mobile,
+            'birth_date'         => $birthDate,
+            'father_name'        => $fatherName !== '' ? $fatherName : null,
+            'applicant_type'     => $applicantType,
+            'marital_status'     => $maritalStatus,
+            'children_count'     => $childrenCount,
+            'physical_condition' => $physicalCondition,
+            'disability_details' => $disabilityDetails !== '' ? $disabilityDetails : null,
+        ]);
+
+        return $this->redirect('/register/step/2');
+    }
+
+    /* ============================================================
+     * Step 2 — property (GET + POST)
+     * ============================================================ */
+
+    /**
+     * GET /register/step2 — render the property form with provinces +
+     * townships from national_lookups.
+     */
+    public function step2(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        // national_lookups has no sort_order column; order by code (which is
+        // the canonical province code '01'..'08' from the seed migration).
+        $provinces = $this->connection()->all(
+            "SELECT id, code, title FROM national_lookups
+             WHERE kind = 'province' AND is_active = 1
+             ORDER BY code"
+        );
+        $townships = $this->connection()->all(
+            "SELECT id, code, title, parent_code AS province_id FROM national_lookups
+             WHERE kind = 'township' AND is_active = 1
+             ORDER BY parent_code, code"
+        );
+
+        // Pre-fill values from existing property_details if present.
+        $values = [];
+        $prop = $this->jobAndProperty->findPropertyDetailByApplicantId($applicant->id);
+        if ($prop !== null) {
+            // Look up the province + township ids by their titles.
+            $values['postal_code']    = $applicant->postalCode ?? '';
+            $values['address_street'] = $prop->addressStreet ?? '';
+            $values['address_alley']   = $prop->addressAlley ?? '';
+            $values['address_plaque']  = $prop->addressPlaque ?? '';
+
+            // Resolve province_id by matching national_lookups.title == property.province.
+            if ($prop->province !== '') {
+                $row = $this->connection()->one(
+                    "SELECT id FROM national_lookups WHERE kind = 'province' AND title = ? LIMIT 1",
+                    [$prop->province]
+                );
+                if ($row !== null) {
+                    $values['province_id'] = (string)$row['id'];
+                }
+            }
+            // Resolve township_id by matching national_lookups.title == property.township (or county).
+            $townshipTitle = $prop->township ?? $prop->county;
+            if ($townshipTitle !== '') {
+                $row = $this->connection()->one(
+                    "SELECT id FROM national_lookups WHERE kind = 'township' AND title = ? LIMIT 1",
+                    [$townshipTitle]
+                );
+                if ($row !== null) {
+                    $values['township_id'] = (string)$row['id'];
+                }
+            }
+        } else {
+            $values['postal_code'] = $applicant->postalCode ?? '';
+        }
+
+        return $this->render('registration/step2', [
+            'title'     => 'مرحلهٔ ۲ — محل کسب‌وکار',
+            'provinces' => $provinces,
+            'townships' => $townships,
+            'values'    => $values,
+            'errors'    => [],
+        ]);
+    }
+
+    /**
+     * POST /register/step2 — validate and save property details via
+     * upsertPropertyDetail(), and update postal_code on the applicants row.
+     *
+     * The step2 view submits: province_id, township_id, address_street,
+     * address_alley, address_plaque, postal_code.
+     *
+     * We resolve the province + township titles from national_lookups by id,
+     * then upsert property_details with all NOT NULL fields populated
+     * (province, county, city, township, electricity_bill_id).
+     *
+     * On success → redirect to /register/step/3.
+     * On error   → re-render step2 with errors + posted values.
+     */
+    public function processStep2(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        $body = $request->body();
+
+        $provinceId  = (int)($body['province_id'] ?? 0);
+        $townshipId  = (int)($body['township_id'] ?? 0);
+        $postalCode  = self::validPostalCode($body['postal_code'] ?? '');
+        $addressStreet = Validator::sanitizeText($body['address_street'] ?? '', 100);
+        $addressAlley  = Validator::sanitizeText($body['address_alley'] ?? '', 100);
+        $addressPlaque = Validator::sanitizeText($body['address_plaque'] ?? '', 20);
+
+        $errors = [];
+        $provinceTitle = '';
+        $townshipTitle = '';
+        if ($provinceId <= 0) {
+            $errors['province_id'][] = 'استان الزامی است.';
+        } else {
+            $row = $this->connection()->one(
+                "SELECT title FROM national_lookups WHERE kind = 'province' AND id = ? LIMIT 1",
+                [$provinceId]
+            );
+            if ($row === null) {
+                $errors['province_id'][] = 'استان انتخاب‌شده یافت نشد.';
+            } else {
+                $provinceTitle = (string)$row['title'];
+            }
+        }
+        if ($townshipId <= 0) {
+            $errors['township_id'][] = 'شهرستان الزامی است.';
+        } else {
+            $row = $this->connection()->one(
+                "SELECT title FROM national_lookups WHERE kind = 'township' AND id = ? LIMIT 1",
+                [$townshipId]
+            );
+            if ($row === null) {
+                $errors['township_id'][] = 'شهرستان انتخاب‌شده یافت نشد.';
+            } else {
+                $townshipTitle = (string)$row['title'];
+            }
+        }
+        if ($postalCode === null) {
+            $errors['postal_code'][] = 'کد پستی نامعتبر است (۱۰ رقم).';
+        }
+
+        if ($errors !== []) {
+            $provinces = $this->connection()->all(
+                "SELECT id, code, title FROM national_lookups
+                 WHERE kind = 'province' AND is_active = 1 ORDER BY code"
+            );
+            $townships = $this->connection()->all(
+                "SELECT id, code, title, parent_code AS province_id FROM national_lookups
+                 WHERE kind = 'township' AND is_active = 1 ORDER BY parent_code, code"
+            );
+            return $this->render('registration/step2', [
+                'title'     => 'مرحلهٔ ۲ — محل کسب‌وکار',
+                'provinces' => $provinces,
+                'townships' => $townships,
+                'values'    => $body,
+                'errors'    => $errors,
+            ]);
+        }
+
+        // Update postal_code on the applicants row.
+        $this->applicants->update($applicant->id, [
+            'postal_code' => $postalCode,
+        ]);
+
+        // Upsert property_details. property_details.province + county + city
+        // + electricity_bill_id are NOT NULL, so we populate them all.
+        // The township column (Phase 24) is preferred by the matcher over
+        // county — we set both to the resolved township title.
+        $this->jobAndProperty->upsertPropertyDetail($applicant->id, [
+            'ownership_status'    => 'شخص',
+            'province'             => $provinceTitle,
+            'county'               => $townshipTitle,
+            'city'                 => $townshipTitle,
+            'township'             => $townshipTitle,
+            'electricity_bill_id'  => '',
+            'address_street'       => $addressStreet !== '' ? $addressStreet : null,
+            'address_alley'        => $addressAlley !== '' ? $addressAlley : null,
+            'address_plaque'       => $addressPlaque !== '' ? $addressPlaque : null,
+        ]);
+
+        return $this->redirect('/register/step/3');
+    }
+
+    /* ============================================================
+     * Step 3 — job / license (GET + POST)
+     * ============================================================ */
+
+    /**
+     * GET /register/step3 — render the job form with license titles for
+     * the applicant's service type.
+     */
+    public function step3(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        $licenseTitles = $this->licenseTitles->getAll((int)$applicant->serviceTypeId);
+
+        // Pre-fill from existing job_details if present.
+        $values = [];
+        $job = $this->jobAndProperty->findJobDetailByApplicantId($applicant->id);
+        if ($job !== null) {
+            // Look up the license_title id by title string.
+            $row = $this->connection()->one(
+                'SELECT id FROM license_titles WHERE title = ? LIMIT 1',
+                [$job->licenseTitle]
+            );
+            if ($row !== null) {
+                $values['license_title_id'] = (string)$row['id'];
+            }
+            $values['business_description'] = '';
+        }
+
+        return $this->render('registration/step3', [
+            'title'         => 'مرحلهٔ ۳ — مشخصات شغلی',
+            'licenseTitles' => $licenseTitles,
+            'fields'        => [],   // custom wizard fields — not implemented in this phase
+            'values'        => $values,
+            'errors'        => [],
+        ]);
+    }
+
+    /**
+     * POST /register/step3 — validate and save job details via
+     * upsertJobDetail() with (license_title, experience_months,
+     * training_method). The step3 view submits license_title_id and
+     * business_description; experience_months and training_method
+     * default to 0 and 'در خانه' respectively (view doesn't collect them).
+     *
+     * On success → redirect to /register/step/4.
+     * On error   → re-render step3 with errors + posted values.
+     */
+    public function processStep3(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        $body = $request->body();
+        $licenseTitleId = (int)($body['license_title_id'] ?? 0);
+        $experienceMonths = Validator::intInRange($body['experience_months'] ?? 0, 0, 1200) ?? 0;
+        $trainingMethod = Validator::inEnum(
+            $body['training_method'] ?? '',
+            ['در خانه', 'استاد شاگردی', 'کارگاهی']
+        ) ?? 'در خانه';
+
+        $errors = [];
+        $licenseTitle = '';
+        if ($licenseTitleId <= 0) {
+            $errors['license_title_id'][] = 'عنوان مجوز الزامی است.';
+        } else {
+            $row = $this->licenseTitles->findById($licenseTitleId);
+            if ($row === null) {
+                $errors['license_title_id'][] = 'عنوان مجوز انتخاب‌شده یافت نشد.';
+            } else {
+                $licenseTitle = (string)$row['title'];
+            }
+        }
+
+        if ($errors !== []) {
+            $licenseTitles = $this->licenseTitles->getAll((int)$applicant->serviceTypeId);
+            return $this->render('registration/step3', [
+                'title'         => 'مرحلهٔ ۳ — مشخصات شغلی',
+                'licenseTitles' => $licenseTitles,
+                'fields'        => [],
+                'values'        => $body,
+                'errors'        => $errors,
+            ]);
+        }
+
+        $this->jobAndProperty->upsertJobDetail($applicant->id, [
+            'license_title'     => $licenseTitle,
+            'experience_months' => $experienceMonths,
+            'training_method'   => $trainingMethod,
+        ]);
+
+        return $this->redirect('/register/step/4');
+    }
+
+    /* ============================================================
+     * Step 4 — documents + review (GET + POST)
+     * ============================================================ */
+
+    /**
+     * GET /register/step4 — render the document upload form with a
+     * read-only summary of the data collected in steps 1..3.
+     */
+    public function step4(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        $property = $this->jobAndProperty->findPropertyDetailByApplicantId($applicant->id);
+        $job = $this->jobAndProperty->findJobDetailByApplicantId($applicant->id);
+
+        $summary = [
+            'first_name'   => $applicant->firstName,
+            'last_name'    => $applicant->lastName,
+            'national_code' => $applicant->nationalCode,
+            'father_name'  => $applicant->fatherName ?? '',
+            'mobile'       => $applicant->mobile,
+            'province'     => $property?->province ?? '',
+            'township'     => $property?->township ?? $property?->county ?? '',
+            'postal_code'  => $applicant->postalCode ?? '',
+            'address'      => $property?->fullAddress() ?? '',
+            'license_title' => $job?->licenseTitle ?? '',
+        ];
+
+        // sysActive: default to all-on (the optional documents show by default).
+        $sysActive = [
+            'national_card_back' => true,
+            'vocational_cert'    => true,
+            'education_degree'   => true,
+            'product_photos'     => true,
+            'optional_1'         => true,
+            'optional_2'         => true,
+            'optional_3'         => true,
+        ];
+
+        return $this->render('registration/step4', [
+            'title'           => 'مرحلهٔ ۴ — مدارک و بازبینی',
+            'sysActive'       => $sysActive,
+            'ownershipStatus' => $property?->ownershipStatus ?? '',
+            'summary'         => $summary,
+            'errors'          => [],
+            'skipDocuments'   => false,
+            'stepPosition'    => 4,
+        ]);
+    }
+
+    /**
+     * POST /register/step4 — handle document uploads, mark the
+     * registration as completed, change status to InitialApproval,
+     * clear the wizard session, and redirect to the success page.
+     */
+    public function processStep4(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+
+        $now = date('Y-m-d H:i:s');
+
+        // Handle document uploads via the v2-style named file inputs.
+        // handleDocumentUploads() is idempotent: missing optional files
+        // are silently skipped. Each stored file is also written to the
+        // documents table via DocumentRepository.
+        $sysActive = [
+            'national_card_back' => true,
+            'vocational_cert'    => true,
+            'education_degree'   => true,
+            'product_photos'     => true,
+            'optional_1'         => true,
+            'optional_2'         => true,
+            'optional_3'         => true,
+        ];
+        $uploadResult = $this->handleDocumentUploads(
+            $applicant->id,
+            $applicant->trackingCode,
+            $sysActive
+        );
+
+        // Persist each stored file as a documents row.
+        foreach ($uploadResult['stored'] as $stored) {
+            $this->documents->create([
+                'applicant_id'   => $applicant->id,
+                'doc_type'       => $stored['doc_type'],
+                'file_name'      => $stored['file_name'],
+                'original_name'  => $stored['file_name'],
+                'file_path'      => $stored['file_path'],
+            ]);
+        }
+
+        // Log upload errors but do not abort the registration — the
+        // admin can request additional documents later via /admin/add-document.
+        foreach ($uploadResult['errors'] as $err) {
+            $this->logger->warning('Wizard document upload failed', [
+                '_module'      => 'core',
+                'applicant_id' => $applicant->id,
+                'field'        => $err['field'] ?? '',
+                'error'        => $err['error'] ?? '',
+            ]);
+        }
+
+        // Mark registration completed + record consent.
+        $this->applicants->update($applicant->id, [
+            'registration_completed_at' => $now,
+            'consent_external_share'   => 1,
+        ]);
+
+        // Transition to InitialApproval (the admin-review starting state).
+        $this->applicants->changeStatus(
+            $applicant->id,
+            ApplicantStatus::InitialApproval,
+            'user',
+            'تکمیل ثبت‌نام توسط کاربر'
+        );
+
+        // Clear the wizard session — the applicant is now in the
+        // normal workflow queue.
+        $this->session->remove(self::SESSION_WIZARD_KEY);
+
+        $this->logger->info('Wizard registration finalised', [
+            '_module'         => 'core',
+            'applicant_id'    => $applicant->id,
+            'tracking_code'   => $applicant->trackingCode,
+            'docs_stored'     => count($uploadResult['stored']),
+            'docs_failed'     => count($uploadResult['errors']),
+        ]);
+
+        return $this->redirect('/register/success/' . urlencode($applicant->trackingCode));
+    }
+
+    /* ============================================================
+     * Success page — /register/success/{trackingCode}
+     * ============================================================ */
+
+    /**
+     * GET /register/success/{trackingCode} — look up the applicant by
+     * tracking code and render the success page with their tracking code
+     * + full name. If the tracking code doesn't match any applicant,
+     * redirect to /.
+     */
+    public function success(Request $request, array $params = []): Response
+    {
+        $trackingCode = (string)($params['trackingCode'] ?? '');
+        if (Validator::trackingCode($trackingCode) === null) {
+            return $this->redirect('/');
+        }
+
+        $applicant = $this->applicants->findByTrackingCode($trackingCode);
+        if ($applicant === null) {
+            return $this->redirect('/');
+        }
+
+        return $this->render('registration/success', [
+            'title'         => 'ثبت‌نام با موفقیت انجام شد',
+            'trackingCode'  => $applicant->trackingCode,
+            'applicantName' => $applicant->fullName(),
+        ]);
+    }
+
+    /* ============================================================
+     * Document upload handler (Phase 41 — kept verbatim)
+     * ============================================================ */
 
     /**
      * Handle v2-style named document uploads from step4.
@@ -184,33 +922,256 @@ final class RegistrationController extends Controller
         return ['stored' => $stored, 'errors' => $errors, 'skipped' => $skipped];
     }
 
+    /* ============================================================
+     * Legacy stubs — kept for backward compatibility (Phase 41).
+     * The routes registered in Core/Module.php use `index` for
+     * GET /register and `stepByPosition` for GET /register/step/{n},
+     * not these stubs. They're preserved so existing code that
+     * might still reference them (e.g. test harnesses) continues to
+     * resolve.
+     * ============================================================ */
+
     /**
-     * Stub for the wizard entry route — implemented in a later phase.
-     *
      * @codeCoverageIgnore
      */
     public function start(Request $request, array $params = []): Response
     {
-        return $this->render('registration/select_service', ['title' => 'انتخاب خدمت']);
+        return $this->index($request, $params);
     }
 
     /**
-     * Stub for the step route — implemented in a later phase.
-     *
      * @codeCoverageIgnore
      */
     public function step(Request $request, array $params = []): Response
     {
-        return $this->render('registration/step4', ['title' => 'مرحلهٔ ۴']);
+        return $this->stepByPosition($request, $params);
+    }
+
+    /* ============================================================
+     * Private helpers
+     * ============================================================ */
+
+    /**
+     * Read the in-progress applicant id from the session and load the
+     * Applicant. Returns null if the session key is missing or the id
+     * no longer matches a row (e.g. soft-deleted).
+     */
+    private function currentWizardApplicant(): ?Applicant
+    {
+        $id = (int)$this->session->get(self::SESSION_WIZARD_KEY, 0);
+        if ($id <= 0) {
+            return null;
+        }
+        return $this->applicants->findById($id);
     }
 
     /**
-     * Stub for the success route — implemented in a later phase.
+     * Render step $n view with the right data (provinces, townships,
+     * license titles, form fields, document types). Used by the GET
+     * handlers and the POST error paths so they share one rendering
+     * code path.
      *
-     * @codeCoverageIgnore
+     * @param int                      $n        Step number (1..4).
+     * @param array<string,mixed>       $errors   Per-field error messages.
+     * @param array<string,mixed>      $postBody Submitted values to re-display.
      */
-    public function success(Request $request, array $params = []): Response
+    private function renderStep(int $n, array $errors = [], array $postBody = []): Response
     {
-        return $this->render('registration/success', ['title' => 'ثبت نهایی شد']);
+        $applicant = $this->currentWizardApplicant();
+        if ($applicant === null) {
+            return $this->redirect('/register');
+        }
+        $values = $postBody !== [] ? $postBody : $this->applicantValues($applicant);
+        $serviceType = $this->serviceTypes->findById((int)$applicant->serviceTypeId) ?? [];
+
+        switch ($n) {
+            case 1:
+                return $this->render('registration/step1', [
+                    'title'       => 'مرحلهٔ ۱ — اطلاعات هویتی',
+                    'serviceType' => $serviceType,
+                    'values'      => $values,
+                    'errors'      => $errors,
+                ]);
+            case 2:
+                return $this->render('registration/step2', [
+                    'title'     => 'مرحلهٔ ۲ — محل کسب‌وکار',
+                    'provinces' => $this->connection()->all(
+                        "SELECT id, code, title FROM national_lookups
+                         WHERE kind = 'province' AND is_active = 1 ORDER BY code"
+                    ),
+                    'townships' => $this->connection()->all(
+                        "SELECT id, code, title, parent_code AS province_id FROM national_lookups
+                         WHERE kind = 'township' AND is_active = 1 ORDER BY parent_code, code"
+                    ),
+                    'values'    => $values,
+                    'errors'    => $errors,
+                ]);
+            case 3:
+                return $this->render('registration/step3', [
+                    'title'         => 'مرحلهٔ ۳ — مشخصات شغلی',
+                    'licenseTitles' => $this->licenseTitles->getAll((int)$applicant->serviceTypeId),
+                    'fields'        => [],
+                    'values'        => $values,
+                    'errors'        => $errors,
+                ]);
+            case 4:
+                $property = $this->jobAndProperty->findPropertyDetailByApplicantId($applicant->id);
+                $job      = $this->jobAndProperty->findJobDetailByApplicantId($applicant->id);
+                $summary = [
+                    'first_name'    => $applicant->firstName,
+                    'last_name'     => $applicant->lastName,
+                    'national_code' => $applicant->nationalCode,
+                    'father_name'   => $applicant->fatherName ?? '',
+                    'mobile'        => $applicant->mobile,
+                    'province'      => $property?->province ?? '',
+                    'township'      => $property?->township ?? $property?->county ?? '',
+                    'postal_code'   => $applicant->postalCode ?? '',
+                    'address'       => $property?->fullAddress() ?? '',
+                    'license_title' => $job?->licenseTitle ?? '',
+                ];
+                return $this->render('registration/step4', [
+                    'title'           => 'مرحلهٔ ۴ — مدارک و بازبینی',
+                    'sysActive'       => [
+                        'national_card_back' => true,
+                        'vocational_cert'    => true,
+                        'education_degree'   => true,
+                        'product_photos'     => true,
+                        'optional_1'         => true,
+                        'optional_2'         => true,
+                        'optional_3'         => true,
+                    ],
+                    'ownershipStatus' => $property?->ownershipStatus ?? '',
+                    'summary'         => $summary,
+                    'errors'          => $errors,
+                    'skipDocuments'   => false,
+                    'stepPosition'    => 4,
+                ]);
+            default:
+                return $this->redirect('/register');
+        }
+    }
+
+    /**
+     * Query document_types for all active non-avatar types.
+     *
+     * The `avatar` type is excluded because it is uploaded separately
+     * via the /panel/avatar endpoint (Phase 12 AvatarService) and is
+     * not part of the wizard's document upload step.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function requiredDocs(): array
+    {
+        return $this->connection()->all(
+            "SELECT id, doc_type_key, label, category, is_active, is_required, sort_order
+             FROM document_types
+             WHERE is_active = 1 AND doc_type_key != 'avatar'
+             ORDER BY sort_order, id"
+        );
+    }
+
+    /**
+     * Look up a national_lookups title by kind + code.
+     *
+     * @param string $kind  'province'|'township'|'main_organization'|'sub_organization'
+     * @param string $code  The natural code (e.g. '01' for Tehran province).
+     * @return string       The title, or '' if not found.
+     */
+    private function lookupTitle(string $kind, string $code): string
+    {
+        $row = $this->connection()->one(
+            'SELECT title FROM national_lookups WHERE kind = ? AND code = ? LIMIT 1',
+            [$kind, $code]
+        );
+        return $row === null ? '' : (string)$row['title'];
+    }
+
+    /**
+     * Get the shared Connection from the container.
+     */
+    private function connection(): Connection
+    {
+        return $this->container->make(Connection::class);
+    }
+
+    /**
+     * Convert 3 Jalali year/month/day inputs into a Gregorian 'YYYY-MM-DD'
+     * string suitable for the applicants.birth_date DATE column. Returns
+     * null when any of the three inputs is missing or out of range.
+     */
+    private function birthDateFromInputs(int $jy, int $jm, int $jd): ?string
+    {
+        if ($jy <= 0 || $jm < 1 || $jm > 12 || $jd < 1 || $jd > 31) {
+            return null;
+        }
+        try {
+            $persian = $this->container->make(PersianDate::class);
+            [$gy, $gm, $gd] = $persian->jalaliToGregorian($jy, $jm, $jd);
+            return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Parse a Jalali date string from a single text input ("YYYY/MM/DD"
+     * with Persian or Latin digits) into 3 ints, then convert to
+     * Gregorian. Returns null if the input is empty or malformed.
+     */
+    private function birthDateFromInputString(string $input): ?string
+    {
+        $input = trim($input);
+        if ($input === '') {
+            return null;
+        }
+        // Normalise Persian/Arabic-Indic digits to Latin.
+        $input = Normalizer::digits($input);
+        if (!preg_match('#^(\d{4})/(\d{1,2})/(\d{1,2})$#', $input, $m)) {
+            return null;
+        }
+        return $this->birthDateFromInputs((int)$m[1], (int)$m[2], (int)$m[3]);
+    }
+
+    /**
+     * Build a $values array (for step1 view pre-fill) from an Applicant
+     * domain object.
+     *
+     * @return array<string,string>
+     */
+    private function applicantValues(Applicant $applicant): array
+    {
+        $values = [
+            'first_name'    => $applicant->firstName,
+            'last_name'     => $applicant->lastName,
+            'national_code' => $applicant->nationalCode,
+            'father_name'   => $applicant->fatherName ?? '',
+            'mobile'        => $applicant->mobile,
+            'birth_date'    => '',
+        ];
+
+        // Render the Gregorian birth_date as a Jalali string for the
+        // single text input.
+        if ($applicant->registrationCompletedAt !== null || $applicant->createdAt !== '') {
+            // No birth_date column on Applicant (it's on the DB row but not
+            // surfaced on the VO); skip pre-filling for now. The view
+            // falls back to ''.
+        }
+
+        return $values;
+    }
+
+    /**
+     * Validate an Iranian postal code (10 digits, no separators).
+     */
+    private static function validPostalCode(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $value = Normalizer::digits(trim($value));
+        if (!preg_match('/^\d{10}$/', $value)) {
+            return null;
+        }
+        return $value;
     }
 }
