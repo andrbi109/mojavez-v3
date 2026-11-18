@@ -92,9 +92,51 @@ final class BulkImportController extends Controller
     {
         $this->requireRole(['admin']);
         return $this->render('admin/bulk_import', [
-            'title'  => 'ایمپورت دسته‌جمعی',
-            'error'  => $this->session->get('bulk_import.error'),
+            'title'       => 'ایمپورت دسته‌جمعی',
+            'error'       => $this->session->get('bulk_import.error'),
+            'columns'     => self::REQUIRED_COLUMNS,
         ]);
+    }
+
+    /**
+     * GET /admin/bulk-import/template — download a sample CSV with the
+     * required headers + one example row. The browser will save it as
+     * `bulk_import_template.csv`. (Phase 37 — ported from v2's column
+     * template help text.)
+     */
+    public function template(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $headers = self::REQUIRED_COLUMNS;
+        // One example row using safe placeholder values (the national_code
+        // is a valid 10-digit checksum, the mobile is a valid Iran prefix).
+        $example = ['1234567890', 'علی', 'احمدی', '09123456789', '1', '1234567890'];
+        $bom     = "\xEF\xBB\xBF";  // UTF-8 BOM so Excel opens UTF-8 correctly.
+        $body    = $bom . $this->csvLine($headers) . "\r\n" . $this->csvLine($example) . "\r\n";
+        return new Response($body, 200, [
+            'Content-Type'        => 'text/csv; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="bulk_import_template.csv"',
+        ]);
+    }
+
+    /**
+     * Convert one row (array of strings) to a CSV line, applying
+     * formula-injection protection to every cell.
+     *
+     * @param array<int,string> $cells
+     */
+    private function csvLine(array $cells): string
+    {
+        $out = [];
+        foreach ($cells as $cell) {
+            $cell = (string)$cell;
+            // Formula-injection protection (inherited from PaymentController::csvLine).
+            if ($cell !== '' && in_array($cell[0], ['=', '+', '-', '@'], true)) {
+                $cell = "'" . $cell;
+            }
+            $out[] = '"' . str_replace('"', '""', $cell) . '"';
+        }
+        return implode(',', $out);
     }
 
     /**
@@ -214,9 +256,12 @@ final class BulkImportController extends Controller
     }
 
     /**
-     * POST /admin/bulk-import/execute — INSERT each valid row as a new
-     * `applicants` row. Store the per-row outcome summary in the session
-     * and redirect to the result page.
+     * POST /admin/bulk-import/execute — INSERT each selected row as a new
+     * `applicants` row. Accepts `selected_rows[]` (array of row indices)
+     * from the preview form; if missing or empty, falls back to all valid
+     * rows in the session (backwards-compat — preserves Phase 18 behaviour
+     * for callers that POST without selected_rows). Stores the per-row
+     * outcome summary in the session and redirects to the result page.
      */
     public function execute(Request $request, array $params = []): Response
     {
@@ -225,6 +270,32 @@ final class BulkImportController extends Controller
         if (!is_array($rows) || $rows === []) {
             $this->session->set('bulk_import.error', 'داده‌ای برای ایمپورت وجود ندارد.');
             return $this->redirect('/admin/bulk-import');
+        }
+
+        // Filter to only the rows the admin selected in the preview. If the
+        // caller POSTed `selected_rows[]`, use it (sparse-array of integer
+        // indices). If absent or empty, fall back to every valid row — this
+        // preserves the Phase 18 contract where the preview's submit button
+        // alone triggers execution of all valid rows.
+        $selected = $request->input('selected_rows', []);
+        if (!is_array($selected)) {
+            $selected = [];
+        }
+        $selectedIdx = array_map('intval', $selected);
+        $selectedSet = array_flip($selectedIdx);  // idx => true
+        $useSelection = $selectedIdx !== [];
+
+        $rowsToProcess = [];
+        foreach ($rows as $row) {
+            $idx = (int)($row['idx'] ?? -1);
+            if ($useSelection && !isset($selectedSet[$idx])) {
+                continue;  // admin unchecked this row.
+            }
+            $rowsToProcess[] = $row;
+        }
+        if ($rowsToProcess === []) {
+            $this->session->set('bulk_import.error', 'هیچ ردیفی برای ایمپورت انتخاب نشده است.');
+            return $this->redirect('/admin/bulk-import/preview');
         }
 
         // Bulk import is potentially slow (per-row INSERT + tracking-code
@@ -238,7 +309,7 @@ final class BulkImportController extends Controller
         $skipped = 0;
         $adminId = (int)$this->session->get('admin_id', 0);
 
-        foreach ($rows as $row) {
+        foreach ($rowsToProcess as $row) {
             $outcome = $this->executeRow($row, $adminId);
             $results[] = $outcome;
             if ($outcome['status'] === 'inserted') {
@@ -255,18 +326,19 @@ final class BulkImportController extends Controller
             'inserted' => $inserted,
             'failed'   => $failed,
             'skipped'  => $skipped,
-            'total'    => count($rows),
+            'total'    => count($rowsToProcess),
         ]);
         // Clear the raw rows so a stale preview can't be re-executed.
         $this->session->remove('bulk_import.rows');
 
         $this->logger->info('Bulk import executed', [
-            '_module'  => 'core',
-            'total'    => count($rows),
-            'inserted' => $inserted,
-            'failed'   => $failed,
-            'skipped'  => $skipped,
-            'admin_id' => $adminId,
+            '_module'      => 'core',
+            'total'        => count($rowsToProcess),
+            'selected_in'  => count($selectedIdx),
+            'inserted'     => $inserted,
+            'failed'       => $failed,
+            'skipped'      => $skipped,
+            'admin_id'     => $adminId,
         ]);
 
         return $this->redirect('/admin/bulk-import/result');
@@ -352,8 +424,14 @@ final class BulkImportController extends Controller
     }
 
     /**
-     * POST /admin/bulk-import/documents/{code}/save — accept file uploads
-     * + applicant_id, store them via FileStorage, redirect back.
+     * POST /admin/bulk-import/documents/{code}/save — accept one file per
+     * document type (named `doc_{key}` in the form) + store them via
+     * FileStorage + INSERT a row per uploaded file via the documents repo.
+     *
+     * Ported from v2's saveDocs() which iterated over DocTypes::allowedForUserUpload()
+     * and saved each provided file. v3 keeps the same shape but uses the
+     * 5 standard doc types from migration 010 (national_id, personal_photo,
+     * ownership_deed, skill_cert, business_license).
      */
     public function saveDocs(Request $request, array $params = []): Response
     {
@@ -366,28 +444,34 @@ final class BulkImportController extends Controller
         }
 
         $applicantId = (int)$applicant->id;
-        $docType = Validator::sanitizeText((string)$request->input('doc_type', ''), 50);
-        if ($docType === '') {
-            $docType = 'optional';
-        }
-
-        $file = $request->file('document_file');
         $uploaded = 0;
         $errors = [];
 
-        if ($file !== null && ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
-            $result = $this->storage->storeUpload($file, $applicantId, $applicant->trackingCode, $docType);
+        // Iterate over the 5 standard doc types. For each, look for a file
+        // uploaded under `doc_{key}` and save it if present.
+        foreach ($this->docTypeOptions() as $dt) {
+            $key = (string)$dt['key'];
+            $file = $request->file('doc_' . $key);
+            if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                continue;
+            }
+            $result = $this->storage->storeUpload(
+                $file,
+                $applicantId,
+                $applicant->trackingCode,
+                $key
+            );
             if ($result['success']) {
                 $this->documents->create([
                     'applicant_id'  => $applicantId,
-                    'doc_type'       => $docType,
+                    'doc_type'      => $key,
                     'file_name'      => $result['file_name'],
                     'original_name'  => $result['original_name'],
                     'file_path'      => $result['file_path'],
                 ]);
                 $uploaded++;
-            } elseif ($result['error']) {
-                $errors[] = $result['error'];
+            } elseif (!empty($result['error'])) {
+                $errors[] = $dt['label'] . ': ' . $result['error'];
             }
         }
 
@@ -400,6 +484,7 @@ final class BulkImportController extends Controller
             '_module'      => 'core',
             'applicant_id' => $applicantId,
             'uploaded'     => $uploaded,
+            'errors'       => count($errors),
         ]);
         return $this->redirect('/admin/bulk-import/documents/' . $applicant->trackingCode);
     }
@@ -548,19 +633,25 @@ final class BulkImportController extends Controller
 
     /**
      * The set of document-type options offered in the upload form. These
-     * are the same keys the wizard's step 4 uses (seed_document_types_default).
+     * are the 5 standard doc types seeded by migration 010 (Phase 16):
+     * national_id, personal_photo, ownership_deed, skill_cert,
+     * business_license. The bulk-upload form renders one file input per
+     * type (matching v2's bulk_upload_docs.php layout).
      *
-     * @return array<int,array{key:string,label:string}>
+     * `required` is informational only (shown as a red asterisk in the
+     * view) — the controller saves every provided file regardless of
+     * this flag, so admins can still upload partial sets.
+     *
+     * @return array<int,array{key:string,label:string,required:bool}>
      */
     private function docTypeOptions(): array
     {
         return [
-            ['key' => 'national_id',     'label' => 'تصویر کارت ملی'],
-            ['key' => 'personal_photo',  'label' => 'عکس پرسنلی'],
-            ['key' => 'ownership_deed',  'label' => 'سند مالکیت'],
-            ['key' => 'skill_cert',      'label' => 'گواهی مهارت'],
-            ['key' => 'business_license','label' => 'مجوز کسب'],
-            ['key' => 'optional',        'label' => 'سایر'],
+            ['key' => 'national_id',     'label' => 'تصویر کارت ملی',       'required' => true],
+            ['key' => 'personal_photo',  'label' => 'عکس پرسنلی',            'required' => true],
+            ['key' => 'ownership_deed',  'label' => 'سند مالکیت محل کسب',   'required' => true],
+            ['key' => 'skill_cert',      'label' => 'گواهی مهارت',          'required' => false],
+            ['key' => 'business_license','label' => 'مجوز کسب',             'required' => false],
         ];
     }
 }

@@ -441,11 +441,12 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/payment-channels/save',     'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'saveChannel'],
             ['method' => 'POST', 'path' => '/admin/payment-channels/delete',   'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'deleteChannel'],
 
-            // ----- Phase 18 — Bulk import (8 routes) -----
+            // ----- Phase 18 — Bulk import (8 routes) + Phase 37 template (1) -----
             // Specific routes (upload, preview, execute, result, missing-docs,
-            // documents/{code}) come in path-disjoint prefixes — no first-match
-            // ordering issue with any catch-all.
+            // documents/{code}, template) come in path-disjoint prefixes — no
+            // first-match ordering issue with any catch-all.
             ['method' => 'GET',  'path' => '/admin/bulk-import',                          'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/template',                  'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'template'],
             ['method' => 'POST', 'path' => '/admin/bulk-import/upload',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'upload'],
             ['method' => 'GET',  'path' => '/admin/bulk-import/preview',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'preview'],
             ['method' => 'POST', 'path' => '/admin/bulk-import/execute',                  'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'execute'],
