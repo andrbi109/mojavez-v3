@@ -132,10 +132,6 @@ $nav = [
 </div>
 <div class="moj-user-body d-flex flex-column flex-lg-row">
     <aside class="moj-user-sidebar">
-        <div class="p-3 d-flex align-items-center gap-2 border-bottom border-secondary border-opacity-25">
-            <i class="bi bi-patch-check-fill text-brand fs-4 brand"></i>
-            <span class="brand fs-5">پنل کاربری</span>
-        </div>
         <nav class="nav flex-column flex-grow-1 py-2">
             <?php foreach ($nav as $key => [$label, $icon, $href]): ?>
                 <a href="<?= htmlspecialchars($baseUrl . ltrim($href, '/'), ENT_QUOTES) ?>"

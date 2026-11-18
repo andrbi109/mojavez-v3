@@ -69,9 +69,6 @@
                 <a href="/admin/sync/status" class="btn btn-outline-primary">
                     <i class="bi bi-cloud-arrow-down"></i> وضعیت همگام‌سازی درگاه ملی
                 </a>
-                <a href="/admin/status-cycle" class="btn btn-outline-primary">
-                    <i class="bi bi-diagram-3"></i> چرخهٔ ۱۸ وضعیت
-                </a>
             </div>
         </div>
     </div>

@@ -356,6 +356,82 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
         }
         .doc-list li .doc-name { direction: ltr; flex: 1; word-break: break-all; }
         .doc-list li .doc-date { color: var(--muted); font-size: .72rem; direction: ltr; }
+        /* === Document thumbnails grid (Phase 51, v2.1.7) ===
+           Five-up row of 130x150px image thumbnails (or filename-only
+           boxes for PDFs/other types). Uses flex+wrap so print output
+           naturally falls into rows of five on A4. */
+        .doc-thumbs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 6px;
+        }
+        .doc-thumb {
+            width: 140px;
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            padding: 4px;
+            background: #fbfaf7;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .doc-thumb img {
+            display: block;
+            margin: 0 auto;
+            border-radius: 3px;
+        }
+        .doc-thumb-fallback {
+            width: 130px;
+            height: 150px;
+            margin: 0.5rem auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed #b8b8b8;
+            border-radius: 4px;
+            color: var(--muted);
+            background: #f3f3f3;
+            text-align: center;
+            direction: ltr;
+            font-size: .62rem;
+            word-break: break-all;
+            padding: 6px;
+            box-sizing: border-box;
+        }
+        .doc-thumb-fallback .ico {
+            font-size: 1.4rem;
+            color: #dc3545;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+        .doc-thumb-fallback .ico-pdf { color: #dc3545; }
+        .doc-thumb-fallback .ico-other { color: var(--muted); }
+        .doc-thumb-meta {
+            margin-top: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            font-size: .68rem;
+            line-height: 1.25;
+        }
+        .doc-thumb-type {
+            font-weight: 600;
+            color: var(--brand-dark);
+            text-align: center;
+        }
+        .doc-thumb-name {
+            direction: ltr;
+            word-break: break-all;
+            font-size: .62rem;
+            color: var(--muted);
+        }
+        .doc-thumb-date {
+            direction: ltr;
+            font-size: .6rem;
+            color: var(--muted);
+        }
         /* === Golden-link callout === */
         .golden-callout {
             background: var(--gold-light);
@@ -698,17 +774,41 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
                 </small>
             </h2>
             <?php if (!empty($documents)): ?>
-                <ul class="doc-list">
+                <!-- Phase 51 (v2.1.7): thumbnails as 130x150px images, 5 per row,
+                     via flex+wrap. PDFs and other non-image files show only the
+                     filename (no thumbnail) inside a same-sized placeholder box
+                     so the 5-up grid stays aligned. Each thumb carries the
+                     doc-type label, original filename and upload date below
+                     the image so the print output stays self-documenting. -->
+                <div class="doc-thumbs">
                     <?php foreach ($documents as $doc): ?>
                         <?php \assert($doc instanceof Document); ?>
                         <?php $label = $docLabels[$doc->docType] ?? $doc->docType; ?>
-                        <li>
-                            <span class="doc-type"><?= $e($label) ?></span>
-                            <span class="doc-name"><?= $e($doc->originalName) ?></span>
-                            <span class="doc-date"><?= $e($fmtDate($doc->uploadedAt)) ?></span>
-                        </li>
+                        <?php $thumbUrl = rtrim((string)$baseUrl, '/') . '/document/thumb/' . (int)$doc->id; ?>
+                        <div class="doc-thumb">
+                            <?php if ($doc->isImage()): ?>
+                                <img src="<?= $e($thumbUrl) ?>"
+                                     style="width:130px;height:150px;object-fit:cover;margin:0.5rem;"
+                                     alt="<?= $e($label) ?>">
+                            <?php elseif ($doc->isPdf()): ?>
+                                <div class="doc-thumb-fallback">
+                                    <span class="ico ico-pdf">PDF</span>
+                                    <span style="word-break:break-all"><?= $e($doc->originalName) ?></span>
+                                </div>
+                            <?php else: ?>
+                                <div class="doc-thumb-fallback">
+                                    <span class="ico ico-other">FILE</span>
+                                    <span style="word-break:break-all"><?= $e($doc->originalName) ?></span>
+                                </div>
+                            <?php endif; ?>
+                            <div class="doc-thumb-meta">
+                                <span class="doc-thumb-type"><?= $e($label) ?></span>
+                                <span class="doc-thumb-name"><?= $e($doc->originalName) ?></span>
+                                <span class="doc-thumb-date"><?= $e($fmtDate($doc->uploadedAt)) ?></span>
+                            </div>
+                        </div>
                     <?php endforeach; ?>
-                </ul>
+                </div>
             <?php else: ?>
                 <p style="font-size:.82rem;color:var(--muted)">مدرکی ثبت نشده است.</p>
             <?php endif; ?>

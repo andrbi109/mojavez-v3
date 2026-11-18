@@ -4,9 +4,16 @@
  *
  * Phase 35 (v2.0.1): ported the full v2 41-field form. The admin fills in
  * identity (11), service (2), property (13), job (3), income (1),
- * documents (5), consent (1), and the controller stamps 5 tracking fields
+ * consent (1), and the controller stamps 5 tracking fields
  * (tracking_code, current_status, registration_started_at,
  * registration_completed_at, version) on the applicants row.
+ *
+ * Phase 51 (v2.1.7): upgraded the documents section to v2-style
+ * `.upload-box` clickable file pickers (national_card_front,
+ * national_card_back, birth_cert, ownership_doc, vocational_cert,
+ * education_degree, product_photos[] 1..15, optional_1..3) — same
+ * set as the public wizard step4. The controller's
+ * handleDocumentUploads() was widened to match these field names.
  *
  * Adapted to v3's Bootstrap 5 RTL + Vazirmatn style. The CSRF field is
  * emitted via $csrfField. Asset URLs use $baseUrl. License titles are
@@ -348,38 +355,120 @@ $currentPersianYear = 1404; // fallback; JS adjusts to today on the client.
                 </div>
             </fieldset>
 
-            <!-- ========== مدارک (Documents) — 5 file uploads ========== -->
+            <!-- ========== مدارک (Documents) — v2-style .upload-box fields ========== -->
             <fieldset class="mb-4">
                 <legend class="h6 mb-3"><i class="bi bi-file-earmark"></i> مدارک</legend>
-                <div class="row g-3">
+                <p class="text-muted small mb-3">
+                    فقط فرمت‌های jpg، jpeg، png و pdf — حداکثر ۲ مگابایت برای هر فایل.
+                </p>
+
+                <!-- مدارک هویتی -->
+                <h2 class="h6 mb-3"><i class="bi bi-person-vcard"></i> مدارک هویتی</h2>
+                <div class="row g-3 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label">کارت ملی (تصویر)</label>
-                        <input type="file" class="form-control" name="national_id"
-                               accept="image/jpeg,image/png,application/pdf">
+                        <div class="upload-box" onclick="document.getElementById('national_card_front').click()">
+                            <input type="file" id="national_card_front" name="national_card_front"
+                                   accept=".jpg,.jpeg,.png,.pdf" style="display:none"
+                                   onchange="mojShowFileName(this)">
+                            <div class="mb-1"><i class="bi bi-person-vcard fs-3 text-brand"></i></div>
+                            <strong class="small">تصویر کارت ملی (رو)</strong>
+                            <p class="text-muted small mb-0" id="file_national_card_front">فایلی انتخاب نشده</p>
+                        </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">تصویر شخصی</label>
-                        <input type="file" class="form-control" name="personal_photo"
-                               accept="image/jpeg,image/png,application/pdf">
+                        <div class="upload-box" onclick="document.getElementById('national_card_back').click()">
+                            <input type="file" id="national_card_back" name="national_card_back"
+                                   accept=".jpg,.jpeg,.png,.pdf" style="display:none"
+                                   onchange="mojShowFileName(this)">
+                            <div class="mb-1"><i class="bi bi-person-vcard-fill fs-3 text-brand"></i></div>
+                            <strong class="small">تصویر کارت ملی (پشت)</strong>
+                            <p class="text-muted small mb-0" id="file_national_card_back">فایلی انتخاب نشده</p>
+                        </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">مدرک مالکیت</label>
-                        <input type="file" class="form-control" name="ownership_deed"
-                               accept="image/jpeg,image/png,application/pdf">
+                        <div class="upload-box" onclick="document.getElementById('birth_cert').click()">
+                            <input type="file" id="birth_cert" name="birth_cert"
+                                   accept=".jpg,.jpeg,.png,.pdf" style="display:none"
+                                   onchange="mojShowFileName(this)">
+                            <div class="mb-1"><i class="bi bi-file-earmark-text fs-3 text-brand"></i></div>
+                            <strong class="small">تصویر شناسنامه</strong>
+                            <p class="text-muted small mb-0" id="file_birth_cert">فایلی انتخاب نشده</p>
+                        </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">گواهینامه فنی‌وحرفه‌ای</label>
-                        <input type="file" class="form-control" name="skill_certificate"
-                               accept="image/jpeg,image/png,application/pdf">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">مدرک اختیاری</label>
-                        <input type="file" class="form-control" name="optional_document"
-                               accept="image/jpeg,image/png,application/pdf">
+                        <div class="upload-box" onclick="document.getElementById('ownership_doc').click()">
+                            <input type="file" id="ownership_doc" name="ownership_doc"
+                                   accept=".jpg,.jpeg,.png,.pdf" style="display:none"
+                                   onchange="mojShowFileName(this)">
+                            <div class="mb-1"><i class="bi bi-house-door fs-3 text-brand"></i></div>
+                            <strong class="small">مدرک مالکیت</strong>
+                            <p class="text-muted small mb-0" id="file_ownership_doc">فایلی انتخاب نشده</p>
+                        </div>
                     </div>
                 </div>
-                <div class="form-text small text-muted mt-2">
-                    پسوندهای مجاز: jpg، jpeg، png، pdf. حداکثر حجم هر فایل: ۲ مگابایت.
+
+                <!-- مدارک تکمیلی -->
+                <hr class="my-3">
+                <h2 class="h6 mb-3"><i class="bi bi-patch-plus"></i> مدارک تکمیلی</h2>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="upload-box" onclick="document.getElementById('vocational_cert').click()">
+                            <input type="file" id="vocational_cert" name="vocational_cert"
+                                   accept=".jpg,.jpeg,.png,.pdf" style="display:none"
+                                   onchange="mojShowFileName(this)">
+                            <div class="mb-1"><i class="bi bi-award fs-3 text-brand"></i></div>
+                            <strong class="small">گواهینامه فنی‌وحرفه‌ای</strong>
+                            <p class="text-muted small mb-0" id="file_vocational_cert">فایلی انتخاب نشده</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="upload-box" onclick="document.getElementById('education_degree').click()">
+                            <input type="file" id="education_degree" name="education_degree"
+                                   accept=".jpg,.jpeg,.png,.pdf" style="display:none"
+                                   onchange="mojShowFileName(this)">
+                            <div class="mb-1"><i class="bi bi-mortarboard fs-3 text-brand"></i></div>
+                            <strong class="small">آخرین مدرک تحصیلی</strong>
+                            <p class="text-muted small mb-0" id="file_education_degree">فایلی انتخاب نشده</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تصاویر متقاضی با محصولات -->
+                <hr class="my-3">
+                <h2 class="h6 mb-3"><i class="bi bi-images"></i> تصاویر متقاضی با محصولات حین تولید</h2>
+                <p class="text-muted small">حداقل ۵ و حداکثر ۱۵ عکس روشن و واضح بارگذاری کنید.</p>
+                <div class="row g-2 mb-3" id="product-photos">
+                    <?php for ($i = 1; $i <= 15; $i++): ?>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <div class="upload-box p-2" onclick="document.getElementById('product_photo_<?= $i ?>').click()">
+                                <input type="file" id="product_photo_<?= $i ?>" name="product_photos[]"
+                                       accept=".jpg,.jpeg,.png" style="display:none"
+                                       onchange="mojShowFileName(this)">
+                                <div><i class="bi bi-camera fs-4 text-brand"></i></div>
+                                <strong class="small">عکس <?= $i ?></strong>
+                                <p class="text-muted mb-0" style="font-size:.68rem"
+                                   id="file_product_photo_<?= $i ?>">انتخاب نشده</p>
+                            </div>
+                        </div>
+                    <?php endfor; ?>
+                </div>
+
+                <!-- مدارک اختیاری -->
+                <hr class="my-3">
+                <h2 class="h6 mb-3"><i class="bi bi-paperclip"></i> سایر مدارک (حداکثر ۳ فایل)</h2>
+                <div class="row g-3">
+                    <?php for ($i = 1; $i <= 3; $i++): ?>
+                        <div class="col-md-4">
+                            <div class="upload-box" onclick="document.getElementById('optional_<?= $i ?>').click()">
+                                <input type="file" id="optional_<?= $i ?>" name="optional_<?= $i ?>"
+                                       accept=".jpg,.jpeg,.png,.pdf" style="display:none"
+                                       onchange="mojShowFileName(this)">
+                                <div class="mb-1"><i class="bi bi-file-earmark-arrow-up fs-3 text-brand"></i></div>
+                                <strong class="small">سایر <?= $i ?></strong>
+                                <p class="text-muted small mb-0" id="file_optional_<?= $i ?>">فایلی انتخاب نشده</p>
+                            </div>
+                        </div>
+                    <?php endfor; ?>
                 </div>
             </fieldset>
 
@@ -495,4 +584,28 @@ $currentPersianYear = 1404; // fallback; JS adjusts to today on the client.
 
     // Initial custom-license toggle.
     toggleCustomLicenseReg();
+
+    // ---- v2-style .upload-box filename display (Phase 51, v2.1.7) ----
+    // Mirrors the helper in registration/step4.php. Each `.upload-box` wraps
+    // a hidden <input type=file> plus a <p id="file_{input_id}">; when the
+    // admin picks a file, we replace the <p> text with the file's name and
+    // flag the box with the `.has-file` success state.
+    function mojShowFileName(input) {
+        var hasFile = input.files && input.files.length > 0;
+        var p = document.getElementById('file_' + input.id);
+        if (p) {
+            if (!p.dataset.default) p.dataset.default = p.textContent.trim();
+            p.textContent = hasFile ? input.files[0].name : p.dataset.default;
+        }
+        var box = input.closest('.upload-box');
+        if (box) box.classList.toggle('has-file', hasFile);
+        if (hasFile && input.files[0].size > 2 * 1024 * 1024) {
+            alert('⚠️ حجم فایل «' + input.files[0].name + '» بیش از ۲ مگابایت است و پذیرفته نمی‌شود.');
+        }
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('#product-photos [id^="file_"], [id^="file_national_card_"], [id^="file_birth_cert"], [id^="file_ownership_doc"], [id^="file_vocational_cert"], [id^="file_education_degree"], [id^="file_optional_"]').forEach(function (el) {
+            el.dataset.default = el.textContent.trim();
+        });
+    });
 </script>

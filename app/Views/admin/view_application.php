@@ -189,9 +189,6 @@ $flashKindClass = match ($flashKind) {
                 <button type="submit" class="btn btn-primary" id="btn-change-status">
                     <i class="bi bi-check2-circle"></i> اعمال تغییر وضعیت
                 </button>
-                <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/status-cycle" class="btn btn-outline-secondary" target="_blank">
-                    <i class="bi bi-diagram-3"></i> مشاهدهٔ چرخهٔ کامل
-                </a>
             </div>
         </form>
 
@@ -587,7 +584,10 @@ $flashKindClass = match ($flashKind) {
                 </div>
 
                 <?php if (!empty($documents)): ?>
-                <!-- Phase 36: document thumbnails inline (image thumbnail or PDF icon, linked to /document/inline/{id}) -->
+                <!-- Phase 36: document thumbnails inline (image thumbnail or PDF icon).
+                     Phase 51 (v2.1.7): thumbnails now open a Bootstrap modal
+                     (image inline, PDF in iframe, other as download link)
+                     instead of jumping to /document/inline/{id} in a new tab. -->
                 <div class="row g-3">
                     <?php foreach ($documents as $doc): ?>
                         <?php \assert($doc instanceof Document); ?>
@@ -608,7 +608,16 @@ $flashKindClass = match ($flashKind) {
                         ?>
                         <div class="col-6 col-md-4 col-xl-3">
                             <div class="card h-100 p-2 text-center" style="border-style:dashed;">
-                                <a href="<?= htmlspecialchars($docInlineUrl, ENT_QUOTES) ?>" target="_blank" rel="noopener">
+                                <a href="#"
+                                   class="d-block text-decoration-none"
+                                   data-bs-toggle="modal"
+                                   data-bs-target="#docViewerModal"
+                                   data-doc-id="<?= (int)$doc->id ?>"
+                                   data-doc-is-image="<?= $doc->isImage() ? '1' : '0' ?>"
+                                   data-doc-is-pdf="<?= $doc->isPdf() ? '1' : '0' ?>"
+                                   data-doc-name="<?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?>"
+                                   data-doc-label="<?= htmlspecialchars($docLabel, ENT_QUOTES, 'UTF-8') ?>"
+                                   data-doc-url="<?= htmlspecialchars($docInlineUrl, ENT_QUOTES) ?>">
                                     <?php if ($doc->isImage()): ?>
                                         <img src="<?= htmlspecialchars($docThumbUrl, ENT_QUOTES) ?>"
                                              class="rounded mb-1" style="height:90px;width:100%;object-fit:cover;"
@@ -698,6 +707,40 @@ $flashKindClass = match ($flashKind) {
     </div>
 </div>
 
+<!-- ====== Phase 51 (v2.1.7): Document viewer modal ====== -->
+<!-- Clicking a document thumbnail opens this modal. JS swaps the body:
+     - image → <img class="img-fluid">
+     - PDF   → <iframe height="500px">
+     - other → a download link + file name.
+     The src for both <img> and <iframe> is the existing /document/inline/{id}
+     route (logged-in, ownership-checked). -->
+<div class="modal fade" id="docViewerModal" tabindex="-1"
+     aria-labelledby="docViewerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="docViewerModalLabel">
+                    <i class="bi bi-file-earmark"></i>
+                    <span id="docViewerModalTitle">مشاهدهٔ مدرک</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-0" id="docViewerModalBody"
+                 style="background:#f8f9fa;min-height:320px;">
+                <!-- filled by JS on show.bs.modal -->
+            </div>
+            <div class="modal-footer d-flex justify-content-between align-items-center">
+                <a id="docViewerModalDownload" class="btn btn-outline-secondary btn-sm"
+                   href="#" download>
+                    <i class="bi bi-download"></i> دانلود
+                </a>
+                <span class="text-muted small text-truncate d-none d-md-inline" id="docViewerModalName" style="max-width:60%"></span>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // Toggle edit form
 (function() {
@@ -778,6 +821,75 @@ $flashKindClass = match ($flashKind) {
         if (!window.confirm('درخواست پرداخت ' + toPersianDigits(n.toLocaleString('en-US')) + ' تومان برای این متقاضی ثبت شود؟')) {
             e.preventDefault();
         }
+    });
+})();
+
+// Phase 51 (v2.1.7) — document viewer modal.
+// Clicking a thumbnail (which carries data-doc-* attributes) opens
+// #docViewerModal. We swap the modal body to:
+//   - image  → <img class="img-fluid"> inline (scaled to fit width)
+//   - PDF    → <iframe width="100%" height="500px"> (browser PDF viewer)
+//   - other  → a centered download link + file name
+// The download footer is always wired to /document/inline/{id} so the
+// admin can save the file regardless of type. On hide we clear the
+// body so the previous iframe does not keep loading in the background.
+(function() {
+    var modal = document.getElementById('docViewerModal');
+    if (!modal) return;
+    var body = document.getElementById('docViewerModalBody');
+    var titleEl = document.getElementById('docViewerModalTitle');
+    var nameEl = document.getElementById('docViewerModalName');
+    var dl = document.getElementById('docViewerModalDownload');
+
+    function escAttr(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    modal.addEventListener('show.bs.modal', function (event) {
+        var trigger = event.relatedTarget;
+        if (!trigger) return;
+        var url = trigger.dataset.docUrl || '';
+        var isImage = trigger.dataset.docIsImage === '1';
+        var isPdf = trigger.dataset.docIsPdf === '1';
+        var name = trigger.dataset.docName || '';
+        var label = trigger.dataset.docLabel || '';
+        var safeUrl = escAttr(url);
+        var safeName = escAttr(name);
+        var safeLabel = escAttr(label);
+
+        if (titleEl) titleEl.textContent = label ? (label + ' — ' + name) : name;
+        if (nameEl) nameEl.textContent = name;
+
+        if (isImage) {
+            body.innerHTML =
+                '<img src="' + safeUrl + '" class="img-fluid w-100 d-block mx-auto" ' +
+                'style="background:#fff" alt="' + safeLabel + '">';
+        } else if (isPdf) {
+            body.innerHTML =
+                '<iframe src="' + safeUrl + '" title="' + safeLabel + '" ' +
+                'style="width:100%;height:500px;border:0;background:#fff;"></iframe>';
+        } else {
+            body.innerHTML =
+                '<div class="p-5 text-center text-muted">' +
+                  '<i class="bi bi-file-earmark-text" style="font-size:4rem"></i>' +
+                  '<p class="mt-3 mb-0" dir="ltr">' + safeName + '</p>' +
+                  '<p class="small mb-0">نمایش پیش‌نمایش برای این نوع فایل پشتیبانی نمی‌شود — ' +
+                  'برای دانلود روی دکمهٔ «دانلود» بزنید.</p>' +
+                '</div>';
+        }
+
+        if (dl) {
+            dl.href = url;
+            dl.setAttribute('download', name);
+        }
+    });
+
+    modal.addEventListener('hidden.bs.modal', function () {
+        if (body) body.innerHTML = '';
+        if (dl) { dl.href = '#'; dl.removeAttribute('download'); }
+        if (titleEl) titleEl.textContent = 'مشاهدهٔ مدرک';
+        if (nameEl) nameEl.textContent = '';
     });
 })();
 </script>
