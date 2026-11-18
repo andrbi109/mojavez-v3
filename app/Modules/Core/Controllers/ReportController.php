@@ -261,8 +261,11 @@ final class ReportController extends Controller
             [$applicantId]
         ) ?? [];
 
-        // Site name from settings (with a sensible default).
-        $siteName = $this->settings->get('site_name', 'سامانهٔ مجوز');
+        // Site name + owner name from settings (with sensible defaults).
+        // Phase 43 (v2.0.9) — owner_name added so the printable A4 footer
+        // carries the actual manager's name instead of a blank.
+        $siteName  = $this->settings->get('site_name',  'سامانهٔ مجوز');
+        $ownerName = $this->settings->get('owner_name', '');
 
         return $this->render('admin/print_single', [
             'title'            => 'پروندهٔ چاپی متقاضی - ' . $applicant->trackingCode,
@@ -274,6 +277,7 @@ final class ReportController extends Controller
             'statusLog'        => $statusLog,
             'serviceTypeTitle' => $serviceTypeTitle,
             'siteName'         => $siteName,
+            'ownerName'        => $ownerName,
             'persianDate'      => $this->persianDate,
         ], 'none');
     }

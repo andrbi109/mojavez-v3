@@ -58,6 +58,7 @@
 /** @var array<int,\App\Modules\Core\Domain\StatusLogEntry> $statusLog */
 /** @var string $serviceTypeTitle */
 /** @var string $siteName */
+/** @var string $ownerName */
 /** @var \App\Shared\Support\PersianDate $persianDate */
 /** @var string $baseUrl */
 /** @var string $csrfField */
@@ -77,6 +78,7 @@ $documents        ??= [];
 $statusLog        ??= [];
 $serviceTypeTitle ??= '';
 $siteName         ??= 'سامانهٔ مجوز';
+$ownerName        ??= '';
 $persianDate      ??= null;
 
 // htmlspecialchars short helper — same idiom as v2 print.php.
@@ -780,6 +782,9 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
         <!-- ====== Footer ====== -->
         <div class="print-footer">
             این برگه به‌صورت خودکار توسط <?= $e($siteName) ?> تولید شده است —
+            <?php if ($ownerName !== ''): ?>
+                مدیریت: <?= $e($ownerName) ?> —
+            <?php endif; ?>
             تاریخ چاپ: <?= $e($printStamp) ?> —
             کد رهگیری: <span dir="ltr"><?= $e($applicant->trackingCode) ?></span>
         </div>

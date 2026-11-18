@@ -61,14 +61,24 @@ final class PdoSettingRepository extends PdoRepository implements SettingReposit
 
     public function editableKeys(): array
     {
+        // Phase 43 (v2.0.9) — extended to mirror SettingsController::KNOWN_SETTINGS
+        // so any caller of SettingRepositoryInterface::editableKeys() (e.g. a
+        // future bulk-import / migration helper) gets the same whitelist the
+        // admin panel uses. The settings table itself has no FK constraint
+        // against this list, so this is a UX/audit whitelist only.
         return [
-            'site_name', 'site_description', 'about_text', 'guide_text',
-            'owner_name', 'owner_contact', 'social_links',
+            'site_name', 'site_description', 'about_title', 'about_content',
+            'guide_text', 'owner_name', 'owner_username', 'owner_image',
+            'social_eitaa', 'social_rubika', 'social_bale',
+            'social_links', 'owner_contact',
+            'success_message_template',
+            'registration_fee_amount', 'license_reissue_fee_amount',
             'fee_tariff_active', 'fee_tariff_valid_until',
             'fee_default_amount', 'fee_rural_auto_eligible',
             'fee_modal_enabled', 'fee_modal_dismissable',
             'fee_fallback_group_code', 'fee_min_amount_percent',
             'fee_max_discount_without_reason', 'fee_max_discount_with_reason',
+            'default_service_type_id',
             // NEW in v3: golden-link rollout toggle (per docs/00-MASTER.md §29.3).
             'sync_two_way_enabled',
         ];

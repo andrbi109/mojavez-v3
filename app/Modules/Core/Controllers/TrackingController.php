@@ -11,6 +11,7 @@ use App\Http\Session;
 use App\Modules\Core\Services\AutoCancelService;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\JobAndPropertyRepositoryInterface;
+use App\Shared\Contracts\SettingRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
@@ -47,6 +48,10 @@ final class TrackingController extends Controller
         private readonly JobAndPropertyRepositoryInterface $jobAndProperty,
         private readonly StatusLogRepositoryInterface $statusLog,
         private readonly AutoCancelService $autoCancel,
+        // Phase 43 (v2.0.9) — used to inject site_name + owner_name into
+        // the printable A4 view (print.php) instead of hardcoding the
+        // fallback. Autowired by the Container (singleton).
+        private readonly SettingRepositoryInterface $settings,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -136,7 +141,16 @@ final class TrackingController extends Controller
             return Response::html('<!doctype html><meta charset="utf-8"><h1>۴۰۴</h1><p>پرونده یافت نشد.</p>', 404);
         }
         $statusLog = $this->statusLog->findByApplicantId($applicant->id);
-        return $this->render('print', ['applicant' => $applicant, 'statusLog' => $statusLog], 'none');
+        // Phase 43 (v2.0.9) — pull site_name + owner_name from settings
+        // so the printable A4 footer carries the actual owner's name.
+        $siteName  = $this->settings->get('site_name',  'سامانهٔ مجوزهای صنایع دستی');
+        $ownerName = $this->settings->get('owner_name', '');
+        return $this->render('print', [
+            'applicant'  => $applicant,
+            'statusLog'  => $statusLog,
+            'siteName'   => $siteName,
+            'ownerName'  => $ownerName,
+        ], 'none');
     }
 
     /**

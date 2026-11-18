@@ -20,6 +20,25 @@ $canGateway = ($adminRole === 'admin' || $adminRole === 'sync_operator');
 $roleLabel  = $adminRole === 'admin' ? 'مدیر کل'
             : ($adminRole === 'sync_operator' ? 'اپراتور همگام‌سازی' : 'کارشناس');
 
+// Phase 43 (v2.0.9) — fetch owner_name + owner_image from the settings
+// repository. The admin sidebar header now shows the manager's photo
+// (when set), and a small footer at the bottom of the main column shows
+// the manager's name. Wrapped in try-catch so a DB hiccup never breaks
+// the admin panel render.
+$ownerName  = '';
+$ownerImage = '';
+try {
+    $settingsRepo = $this->container->make(\App\Shared\Contracts\SettingRepositoryInterface::class);
+    $ownerName  = $settingsRepo->get('owner_name',  '');
+    $ownerImage = $settingsRepo->get('owner_image', '');
+} catch (\Throwable) {
+    // best-effort — empty strings, the sidebar header just shows the
+    // admin-display-name as before.
+}
+$ownerImageAbs = $ownerImage !== '' && is_file(ROOT_PATH . '/' . $ownerImage)
+    ? $ownerImage
+    : '';
+
 /** @param array<int,array{href:string,icon:string,label:string}> $items */
 $renderLinks = function (array $items) use ($baseUrl): void {
     foreach ($items as $it) {
@@ -53,9 +72,16 @@ $renderLinks = function (array $items) use ($baseUrl): void {
 <body>
 <div class="moj-admin-body">
     <aside class="moj-admin-sidebar">
-        <div class="d-flex align-items-center justify-content-between mb-3 px-2">
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/dashboard" class="text-decoration-none text-brand fw-bold fs-5 d-flex align-items-center gap-2">
-                <i class="bi bi-patch-check-fill"></i>
+        <div class="d-flex align-items-center justify-content-between mb-3 px-2 gap-2">
+            <?php if ($ownerImageAbs !== ''): ?>
+                <img src="<?= htmlspecialchars($baseUrl . $ownerImageAbs, ENT_QUOTES) ?>"
+                     alt="تصویر مدیر"
+                     class="rounded-circle flex-shrink-0"
+                     style="width: 36px; height: 36px; object-fit: cover;">
+            <?php else: ?>
+                <i class="bi bi-patch-check-fill fs-3 text-brand flex-shrink-0"></i>
+            <?php endif; ?>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/dashboard" class="text-decoration-none text-brand fw-bold fs-5">
                 <span>پنل مدیریت</span>
             </a>
         </div>
@@ -150,6 +176,13 @@ $renderLinks = function (array $items) use ($baseUrl): void {
             <span class="text-muted small">نسخهٔ <?= htmlspecialchars(\App\Shared\Support\Environment::version(), ENT_QUOTES, 'UTF-8') ?></span>
         </div>
         <?= $content ?>
+        <footer class="moj-admin-footer mt-5 pt-3 border-top text-muted small">
+            <span>© <?= htmlspecialchars(date('Y'), ENT_QUOTES, 'UTF-8') ?> <?= htmlspecialchars(\App\Shared\Support\Environment::version(), ENT_QUOTES, 'UTF-8') ?></span>
+            <?php if ($ownerName !== ''): ?>
+                <span class="mx-2">·</span>
+                <span><i class="bi bi-person-badge"></i> مدیریت: <?= htmlspecialchars($ownerName, ENT_QUOTES, 'UTF-8') ?></span>
+            <?php endif; ?>
+        </footer>
     </main>
 </div>
 

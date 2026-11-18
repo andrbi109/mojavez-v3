@@ -42,10 +42,20 @@ use App\Shared\Support\StructuredLogger;
  * layout name slot), so the page was rendered without admin_layout. Both
  * fixed: the title is now passed via the $data array ('title' => ...) and
  * the render() call relies on the auto-detect of admin/* views.
+ *
+ * Phase 43 (v2.0.9) — KNOWN_SETTINGS extended from 5 → 20 keys to cover
+ * ALL v2 settings used by the public-facing views: about_title, about_content
+ * (textarea), owner_name, owner_username, owner_image (image type),
+ * social_eitaa/rubika/bale, success_message_template (textarea), and the
+ * fee-* keys (registration_fee_amount, license_reissue_fee_amount,
+ * fee_tariff_active, fee_default_amount, fee_rural_auto_eligible,
+ * fee_modal_enabled). The update() loop now respects the `textarea` type
+ * (no 500-char truncation) and the `image` type (treats the value as a
+ * filesystem path; the actual upload is handled by uploadImage()).
  */
 final class SettingsController extends Controller
 {
-    /** @var array<string,string> Settings known to the UI (key → Persian label + hint). */
+    /** @var array<string,array<string,mixed>> Settings known to the UI (key → Persian label + hint + type). */
     private const KNOWN_SETTINGS = [
         'sync_direction' => [
             'label' => 'جهت همگام‌سازی درگاه ملی',
@@ -74,6 +84,85 @@ final class SettingsController extends Controller
             'hint'  => '۱ = صنایع دستی، ۲ = مشاغل خانگی.',
             'type'  => 'select',
             'options' => ['1' => 'صنایع دستی', '2' => 'مشاغل خانگی'],
+        ],
+        // ===== Phase 43 (v2.0.9) — v2 settings missing from v3 =====
+        'about_title' => [
+            'label' => 'عنوان صفحهٔ درباره',
+            'hint'  => 'عنوانی که در بالای صفحهٔ /about نمایش داده می‌شود.',
+            'type'  => 'text',
+        ],
+        'about_content' => [
+            'label' => 'محتوای صفحهٔ درباره',
+            'hint'  => 'متن کامل صفحهٔ دربارهٔ ما. می‌تواند چندخطی باشد. در صورت خالی بودن، محتوای پیش‌فرض نمایش داده می‌شود.',
+            'type'  => 'textarea',
+        ],
+        'owner_name' => [
+            'label' => 'نام مدیر سامانه',
+            'hint'  => 'نام کامل مدیر سامانه که در پاصفحه و کارت مدیر صفحهٔ درباره نمایش داده می‌شود.',
+            'type'  => 'text',
+        ],
+        'owner_username' => [
+            'label' => 'نام کاربری شبکه‌های اجتماعی',
+            'hint'  => 'آیدی پیش‌فرض برای شبکه‌های اجتماعی اگر آیدی هر شبکه به‌تنظیم وارد نشده باشد.',
+            'type'  => 'text',
+        ],
+        'owner_image' => [
+            'label' => 'تصویر مدیر',
+            'hint'  => 'مسیر تصویر مدیر سامانه. از فرم آپلود بالا با کلید owner_image آپلود کنید یا مسیر مستقیم وارد کنید.',
+            'type'  => 'image',
+        ],
+        'social_eitaa' => [
+            'label' => 'آیدی ایتا',
+            'hint'  => 'آیدی پیام‌رسان ایتا (بدون @). در صورت خالی بودن از «نام کاربری شبکه‌های اجتماعی» استفاده می‌شود.',
+            'type'  => 'text',
+        ],
+        'social_rubika' => [
+            'label' => 'آیدی روبیکا',
+            'hint'  => 'آیدی پیام‌رسان روبیکا (بدون @). در صورت خالی بودن از «نام کاربری شبکه‌های اجتماعی» استفاده می‌شود.',
+            'type'  => 'text',
+        ],
+        'social_bale' => [
+            'label' => 'آیدی بله',
+            'hint'  => 'آیدی پیام‌رسان بله (بدون @). در صورت خالی بودن از «نام کاربری شبکه‌های اجتماعی» استفاده می‌شود.',
+            'type'  => 'text',
+        ],
+        'success_message_template' => [
+            'label' => 'قالب پیام موفقیت',
+            'hint'  => 'قالب پیام موفقیت پس از ثبت‌نام. از {name} برای نام متقاضی و {code} برای کد رهگیری استفاده کنید.',
+            'type'  => 'textarea',
+        ],
+        'registration_fee_amount' => [
+            'label' => 'مبلغ ثبت‌نام (تومان)',
+            'hint'  => 'مبلغ ثابت هزینهٔ ثبت‌نام اولیه به تومان. در صورت خالی بودن، از نرخ‌نامه استفاده می‌شود.',
+            'type'  => 'text',
+        ],
+        'license_reissue_fee_amount' => [
+            'label' => 'مبلغ صدور مجدد مجوز (تومان)',
+            'hint'  => 'مبلغ هزینهٔ صدور مجدد مجوز به تومان.',
+            'type'  => 'text',
+        ],
+        'fee_tariff_active' => [
+            'label' => 'نرخ‌نامه فعال',
+            'hint'  => 'اگر فعال باشد، مبلغ هزینه از نرخ‌نامه خوانده می‌شود؛ در غیر این صورت از مبلغ ثابت بالا استفاده می‌گردد.',
+            'type'  => 'select',
+            'options' => ['0' => 'غیرفعال', '1' => 'فعال'],
+        ],
+        'fee_default_amount' => [
+            'label' => 'مبلغ پیش‌فرض هزینه (تومان)',
+            'hint'  => 'مبلغ هزینه برای مواردی که نرخ‌نامه فعال نیست یا مورد در نرخ‌نامه یافت نشد.',
+            'type'  => 'text',
+        ],
+        'fee_rural_auto_eligible' => [
+            'label' => 'معافیت روستایی خودکار',
+            'hint'  => 'اگر فعال باشد، متقاضیان دارای نشانی روستایی به‌طور خودکار از هزینه معاف می‌شوند.',
+            'type'  => 'select',
+            'options' => ['0' => 'غیرفعال', '1' => 'فعال'],
+        ],
+        'fee_modal_enabled' => [
+            'label' => 'نمایش مودال هزینه',
+            'hint'  => 'نمایش مودال اطلاع‌رسانی هزینه پیش از تکمیل ثبت‌نام.',
+            'type'  => 'select',
+            'options' => ['0' => 'غیرفعال', '1' => 'فعال'],
         ],
     ];
 
@@ -118,6 +207,21 @@ final class SettingsController extends Controller
             if ($meta['type'] === 'select') {
                 if (!array_key_exists($value, $meta['options'])) {
                     continue;  // skip invalid option
+                }
+            } elseif ($meta['type'] === 'textarea') {
+                // Multi-line settings (about_content, success_message_template)
+                // can be long — cap at 16 KB to keep the column reasonable
+                // but never silently truncate the user's content to 500 chars.
+                if (mb_strlen($value) > 16384) {
+                    $value = mb_substr($value, 0, 16384);
+                }
+            } elseif ($meta['type'] === 'image') {
+                // Image-typed settings store a filesystem path. Strip any
+                // surrounding whitespace and keep the existing 500-char cap
+                // (paths are short — 500 is plenty).
+                $value = trim($value);
+                if (mb_strlen($value) > 500) {
+                    $value = mb_substr($value, 0, 500);
                 }
             } elseif ($meta['type'] === 'text') {
                 if (mb_strlen($value) > 500) {
@@ -299,6 +403,22 @@ final class SettingsController extends Controller
             'site_name' => 'سامانهٔ مجوز',
             'site_description' => 'صدور مجوز کسب‌وکار خانگی',
             'default_service_type_id' => '1',
+            // Phase 43 (v2.0.9) — sensible defaults for the new v2 keys.
+            'about_title' => 'دربارهٔ ما',
+            'about_content' => '',
+            'owner_name' => '',
+            'owner_username' => '',
+            'owner_image' => '',
+            'social_eitaa' => '',
+            'social_rubika' => '',
+            'social_bale' => '',
+            'success_message_template' => "باسلام\n{name} هستم .\nدر سامانه مدارک رو بارگذاری کردم و کد رهگیری {code} را اخذ نمودم .\nبا تشکر {name}",
+            'registration_fee_amount' => '',
+            'license_reissue_fee_amount' => '',
+            'fee_tariff_active' => '0',
+            'fee_default_amount' => '',
+            'fee_rural_auto_eligible' => '0',
+            'fee_modal_enabled' => '0',
             default => '',
         };
     }
