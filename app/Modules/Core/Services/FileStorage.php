@@ -275,7 +275,7 @@ final class FileStorage
             $newHeight = (int)($height * $ratio);
             $resized = imagecreatetruecolor($newWidth, $newHeight);
             imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-            imagedestroy($image);
+            @imagedestroy($image);
             $image = $resized;
         }
         $result = match ($ext) {
@@ -283,7 +283,7 @@ final class FileStorage
             'png'         => imagepng($image, $destPath, self::PNG_COMPRESSION),
             default       => false,
         };
-        imagedestroy($image);
+        @imagedestroy($image);
         return $result;
     }
 

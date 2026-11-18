@@ -205,7 +205,7 @@ final class DocumentController extends Controller
         $w = imagesx($image);
         $h = imagesy($image);
         if ($w <= 0 || $h <= 0) {
-            imagedestroy($image);
+            @imagedestroy($image);
             return $this->placeholderPng();
         }
         $srcSize = min($w, $h);
@@ -214,7 +214,7 @@ final class DocumentController extends Controller
 
         $thumb = imagecreatetruecolor(self::THUMB_SIZE, self::THUMB_SIZE);
         if ($thumb === false) {
-            imagedestroy($image);
+            @imagedestroy($image);
             return $this->placeholderPng();
         }
         // Flatten transparency to white (output is always JPEG).
@@ -229,12 +229,12 @@ final class DocumentController extends Controller
             self::THUMB_SIZE, self::THUMB_SIZE,
             $srcSize, $srcSize
         );
-        imagedestroy($image);
+        @imagedestroy($image);
 
         ob_start();
         imagejpeg($thumb, null, self::THUMB_QUALITY);
         $blob = (string)ob_get_clean();
-        imagedestroy($thumb);
+        @imagedestroy($thumb);
 
         return $this->binaryResponse($blob, 'image/jpeg', cacheable: true);
     }

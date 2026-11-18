@@ -829,28 +829,6 @@ final class AdminController extends Controller
     }
 
     /**
-     * Convert three Jalali select inputs (year, month, day) into a
-     * Gregorian 'YYYY-MM-DD' string for storage in applicants.birth_date.
-     *
-     * Returns null if any of the three inputs are zero/missing or if the
-     * conversion fails (so the caller can simply omit the field from the
-     * update array — the existing DB value is preserved).
-     */
-    private function birthDateFromInputs(int $jy, int $jm, int $jd): ?string
-    {
-        if ($jy <= 0 || $jm <= 0 || $jd <= 0) {
-            return null;
-        }
-        try {
-            $persianDate = $this->container->make(PersianDate::class);
-            [$gy, $gm, $gd] = $persianDate->jalaliToGregorian($jy, $jm, $jd);
-            return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    /**
      * POST /admin/add-document — upload a new document file to an
      * applicant's case. Saves to {upload_dir}/{tracking_code}/ via
      * FileStorage (7-layer secure upload), inserts a documents row.
