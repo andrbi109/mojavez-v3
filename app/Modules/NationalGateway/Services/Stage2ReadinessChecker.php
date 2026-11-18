@@ -131,7 +131,13 @@ final class Stage2ReadinessChecker
     }
 
     /**
-     * Condition 1: Stage 1 has run for ≥ 90 days in production.
+     * Condition 1: Stage 1 has been activated (at least one inbound log).
+     *
+     * Phase 30 (v1.9.11): the 90-day stabilization pre-condition has been
+     * REMOVED per user request. The gateway connection is now immediately
+     * active. The only requirement is that at least one inbound sync has
+     * occurred (to confirm the gateway is reachable). The 90-day threshold
+     * is kept as an informational metric but no longer blocks readiness.
      */
     private function checkStage1Stable(): array
     {
@@ -149,12 +155,15 @@ final class Stage2ReadinessChecker
         }
         $firstInbound = strtotime($row['created_at']);
         $daysRunning = (int)floor((time() - $firstInbound) / 86400);
-        $passed = $daysRunning >= self::STAGE1_MIN_DAYS;
+        // Phase 30: removed the 90-day threshold. Pass if at least 1 inbound
+        // log exists (daysRunning >= 0). The 90-day threshold is shown as
+        // informational but no longer blocks.
+        $passed = true;
         return [
             'passed' => $passed,
             'value' => $daysRunning . ' روز',
             'detail' => sprintf(
-                'اولین inbound log: %s (%d روز پیش). آستانه: ≥ %d روز.',
+                'اولین inbound log: %s (%d روز پیش). آستانهٔ قبلی: ≥ %d روز — اکنون حذف شده. اتصال درگاه ملی فعال است.',
                 $row['created_at'],
                 $daysRunning,
                 self::STAGE1_MIN_DAYS
