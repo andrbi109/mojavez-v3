@@ -9,10 +9,15 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\Session;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
+use App\Shared\Contracts\DocumentRepositoryInterface;
+use App\Shared\Contracts\JobAndPropertyRepositoryInterface;
+use App\Shared\Contracts\ServiceTypeRepositoryInterface;
+use App\Shared\Contracts\SettingRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
 use App\Shared\Persistence\Connection;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
+use App\Shared\Support\PersianDate;
 use App\Shared\Support\StructuredLogger;
 
 /**
@@ -54,6 +59,16 @@ final class ReportController extends Controller
         private readonly Connection $conn,
         private readonly ApplicantRepositoryInterface $applicants,
         private readonly StatusLogRepositoryInterface $statusLog,
+        // Phase 38 (v2.0.4): the dedicated admin/print_single view needs the
+        // full applicant graph (job + property + documents + service type
+        // title + raw row for fields not exposed by the Applicant VO + the
+        // site_name setting for the header). Resolved via the Container's
+        // Core module bindings.
+        private readonly JobAndPropertyRepositoryInterface $jobAndProperty,
+        private readonly DocumentRepositoryInterface $documents,
+        private readonly ServiceTypeRepositoryInterface $serviceTypes,
+        private readonly SettingRepositoryInterface $settings,
+        private readonly PersianDate $persianDate,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -192,7 +207,14 @@ final class ReportController extends Controller
 
     /**
      * GET /admin/output/single/{trackingCode} — render the printable
-     * single-applicant view (reuses the existing print.php layout='none').
+     * single-applicant view (its own dedicated admin/print_single.php
+     * complete HTML doc, rendered with layout='none').
+     *
+     * Phase 38 (v2.0.4): replaces the previous reuse of the public
+     * print.php layout. The new admin-only view shows ALL applicant fields
+     * (including admin-only ones the public print.php omits:
+     * income_decile, golden-link match info, documents list, full status
+     * timeline with triggered_by, license section with valid_until).
      */
     public function singleApplicantReport(Request $request, array $params = []): Response
     {
@@ -206,11 +228,53 @@ final class ReportController extends Controller
             );
             return $this->redirect('/admin/dashboard');
         }
-        $statusLog = $this->statusLog->findByApplicantId((int)$applicant->id);
-        return $this->render('print', [
-            'title'      => 'پرونده متقاضی - ' . $applicant->trackingCode,
-            'applicant'  => $applicant,
-            'statusLog'  => $statusLog,
+
+        $applicantId = (int)$applicant->id;
+
+        // Job + property details (1:1 with applicants).
+        $jobDetail      = $this->jobAndProperty->findJobDetailByApplicantId($applicantId);
+        $propertyDetail = $this->jobAndProperty->findPropertyDetailByApplicantId($applicantId);
+
+        // Documents (1:N).
+        $documents = $this->documents->findByApplicantId($applicantId);
+
+        // Full status log (with triggered_by).
+        $statusLog = $this->statusLog->findByApplicantId($applicantId);
+
+        // Service type title (from service_types lookup).
+        $serviceTypeTitle = '';
+        if ($applicant->serviceTypeId !== null) {
+            $serviceTypeRow = $this->serviceTypes->findById($applicant->serviceTypeId);
+            if (is_array($serviceTypeRow) && isset($serviceTypeRow['title'])) {
+                $serviceTypeTitle = (string)$serviceTypeRow['title'];
+            }
+        }
+
+        // Raw applicants row for the fields NOT exposed by the Applicant VO
+        // (father_name, birth_date, applicant_type, marital_status,
+        // children_count, physical_condition, disability_details,
+        // income_decile, has_court_case, has_active_loan,
+        // has_overdue_installments). Same pattern as
+        // AdminController::viewApplication.
+        $row = $this->conn->one(
+            'SELECT * FROM applicants WHERE id = ? AND deleted_at IS NULL',
+            [$applicantId]
+        ) ?? [];
+
+        // Site name from settings (with a sensible default).
+        $siteName = $this->settings->get('site_name', 'سامانهٔ مجوز');
+
+        return $this->render('admin/print_single', [
+            'title'            => 'پروندهٔ چاپی متقاضی - ' . $applicant->trackingCode,
+            'applicant'        => $applicant,
+            'row'              => $row,
+            'jobDetail'        => $jobDetail,
+            'propertyDetail'   => $propertyDetail,
+            'documents'        => $documents,
+            'statusLog'        => $statusLog,
+            'serviceTypeTitle' => $serviceTypeTitle,
+            'siteName'         => $siteName,
+            'persianDate'      => $this->persianDate,
         ], 'none');
     }
 
