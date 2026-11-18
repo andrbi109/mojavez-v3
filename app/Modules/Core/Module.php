@@ -531,6 +531,12 @@ final class Module implements ModuleInterface
             // allow NULL — InnoDB skips the FK check when the column
             // is NULL).
             '20261117_014_user_notifications_nullable_user_account.sql',
+            // Phase 32 (v1.9.12) — comprehensive seed data from andrbi108/mojavez-v3.
+            // Seeds: settings (15), service_types (5 full), wizard_steps (8),
+            // form_fields (~28 system fields), license_titles (~190 across 4
+            // service types), sms_templates (6), fee_groups (4), payment_channels (3).
+            // Idempotent (INSERT ... ON DUPLICATE KEY UPDATE).
+            '20261117_015_comprehensive_seed_data.sql',
         ];
     }
 
