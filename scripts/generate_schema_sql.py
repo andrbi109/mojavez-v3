@@ -145,7 +145,7 @@ def write_schema(tables: list[str], create_lines: list[str]) -> None:
 -- ============================================================================
 
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
-SET time_zone = '+00:00';
+SET time_zone = '+03:30';
 SET sql_mode = 'STRICT_ALL_TABLES,NO_ENGINE_SUBSTITUTION';
 
 """

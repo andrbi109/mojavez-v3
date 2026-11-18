@@ -11,6 +11,7 @@ use App\Http\Session;
 use App\Shared\Persistence\Connection;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
+use App\Shared\Support\PersianDate;
 use App\Shared\Support\StructuredLogger;
 
 /**
@@ -56,6 +57,26 @@ final class PaymentController extends Controller
     /** Pending-review status — only payments in this state may be reviewed. */
     private const STATUS_PENDING = 'در انتظار رسید';
 
+    /**
+     * Whitelisted payment status values accepted by the index()/csv()
+     * `status` filter. Phase 50 (v2.1.6) added `'در انتظار'` — a new
+     * status used by AdminController::requestPayment for rows it
+     * creates on the admin's behalf (the user hasn't paid yet). The
+     * previously-existing `'در انتظار رسید'` is a different status
+     * (the user has uploaded a receipt and is awaiting admin review).
+     *
+     * @var array<int,string>
+     */
+    private const STATUS_FILTERS = ['', 'در انتظار', 'در انتظار رسید', 'تأیید شده', 'رد شده'];
+
+    /**
+     * Phase 50 — PersianDate helper, lazy-loaded from the Container on
+     * first use (so the constructor signature doesn't change for existing
+     * callers/tests). Used by parseDateRange() to convert Jalali
+     * YYYY/MM/DD input strings to Gregorian Y-m-d for the DB query.
+     */
+    private ?PersianDate $persianDate = null;
+
     public function __construct(
         Container $container,
         Session $session,
@@ -77,6 +98,13 @@ final class PaymentController extends Controller
      * (a regex check before any DB call) and applied via bound parameters.
      * The filters are also forwarded to the CSV export link so the admin
      * can download exactly the window they're viewing.
+     *
+     * Phase 50 (v2.1.6) — the date inputs are now Jalali (YYYY/MM/DD);
+     * parseDateRange() converts them to Gregorian internally. The
+     * `filters` array passed to the view still contains the original
+     * Jalali strings (so the inputs re-populate with what the admin
+     * typed, not the Gregorian equivalent). The status filter now
+     * also accepts 'در انتظار' (the new admin-requested status).
      */
     public function index(Request $request, array $params = []): Response
     {
@@ -86,8 +114,11 @@ final class PaymentController extends Controller
         $pageSize = 20;
 
         // Whitelisted filters — anything not in the allowed set becomes ''.
+        // Phase 50 (v2.1.6) — the status whitelist now includes 'در انتظار'
+        // (admin-requested, awaiting user payment) on top of the existing
+        // 'در انتظار رسید' (awaiting admin receipt review).
         $status = (string)$request->queryParam('status', '');
-        if (!in_array($status, ['', 'در انتظار رسید', 'تأیید شده', 'رد شده'], true)) {
+        if (!in_array($status, self::STATUS_FILTERS, true)) {
             $status = '';
         }
         $purpose = (string)$request->queryParam('purpose', '');
@@ -95,11 +126,14 @@ final class PaymentController extends Controller
             $purpose = '';
         }
         $q = trim((string)$request->queryParam('q', ''));
-        // Phase 49 (v2.1.5) — date range filters (strict Y-m-d, optional).
-        [$from, $to] = $this->parseDateRange(
-            (string)$request->queryParam('from', ''),
-            (string)$request->queryParam('to', '')
-        );
+        // Phase 50 (v2.1.6) — the from/to inputs in the admin/payments.php
+        // view are now Jalali (YYYY/MM/DD); the controller converts each
+        // to Gregorian via PersianDate::jalaliStringToGregorian before
+        // applying the filter, so the DB query still uses bound Y-m-d.
+        // Keep the original Jalali strings so the input values re-populate.
+        $fromJalali = (string)$request->queryParam('from', '');
+        $toJalali = (string)$request->queryParam('to', '');
+        [$from, $to] = $this->parseDateRange($fromJalali, $toJalali);
 
         // Build the WHERE clause + params array. The LIMIT/OFFSET are
         // appended as the last two params so the WHERE args stay in
@@ -116,10 +150,13 @@ final class PaymentController extends Controller
         $offset = ($page - 1) * $pageSize;
         $limitArgs = array_merge($args, [$pageSize, $offset]);
 
+        // Phase 50 (v2.1.6) — also fetch `p.description` (added by migration
+        // 20261118_001) so the admin/payments.php view can show the note
+        // the admin attached when creating the payment request.
         $payments = $this->conn->all(
             "SELECT p.id, p.applicant_id, a.tracking_code, a.first_name, a.last_name,
                     a.national_code, p.purpose, p.amount, p.reference_code, p.paid_at,
-                    p.status, p.created_at, p.reviewed_at, p.reject_reason,
+                    p.status, p.created_at, p.reviewed_at, p.reject_reason, p.description,
                     pc.title AS channel_title,
                     ru.display_name AS reviewer_name
                FROM payments p
@@ -152,8 +189,10 @@ final class PaymentController extends Controller
                 'status'  => $status,
                 'purpose' => $purpose,
                 'q'       => $q,
-                'from'    => $from,
-                'to'      => $to,
+                // Phase 50 — pass the original Jalali strings to the view so
+                // the date inputs re-populate with what the admin typed.
+                'from'    => $fromJalali,
+                'to'      => $toJalali,
             ],
             'page'         => $page,
             'totalPages'   => $totalPages,
@@ -231,13 +270,19 @@ final class PaymentController extends Controller
      *
      * Phase 49 (v2.1.5) — also forwards the `from` / `to` date range so
      * the export matches the page filter window exactly.
+     *
+     * Phase 50 (v2.1.6) — the `from` / `to` params are now Jalali
+     * (matching the admin/payments.php date inputs). parseDateRange()
+     * converts them to Gregorian. The status whitelist now also accepts
+     * 'در انتظار'. The CSV header includes a new "توضیحات" column for
+     * the admin-entered description.
      */
     public function csv(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
 
         $status = (string)$request->queryParam('status', '');
-        if (!in_array($status, ['', 'در انتظار رسید', 'تأیید شده', 'رد شده'], true)) {
+        if (!in_array($status, self::STATUS_FILTERS, true)) {
             $status = '';
         }
         $purpose = (string)$request->queryParam('purpose', '');
@@ -254,7 +299,8 @@ final class PaymentController extends Controller
         $rows = $this->conn->all(
             "SELECT p.id, a.tracking_code, a.first_name, a.last_name, a.national_code,
                     p.purpose, p.amount, pc.title AS channel_title, p.reference_code,
-                    p.paid_at, p.status, ru.display_name AS reviewer_name, p.reviewed_at
+                    p.paid_at, p.status, ru.display_name AS reviewer_name, p.reviewed_at,
+                    p.description, p.created_at
                FROM payments p
                INNER JOIN applicants a ON a.id = p.applicant_id
                LEFT  JOIN payment_channels pc ON pc.id = p.payment_channel_id
@@ -265,7 +311,8 @@ final class PaymentController extends Controller
         );
 
         $headers = ['شناسه', 'کد رهگیری', 'متقاضی', 'کد ملی', 'هدف پرداخت', 'مبلغ (تومان)',
-            'کانال', 'کد پیگیری', 'تاریخ واریز', 'وضعیت', 'بررسی‌کننده', 'تاریخ بررسی'];
+            'کانال', 'کد پیگیری', 'تاریخ واریز', 'وضعیت', 'بررسی‌کننده', 'تاریخ بررسی',
+            'تاریخ ثبت', 'توضیحات'];
         $out = [];
         foreach ($rows as $p) {
             $out[] = [
@@ -281,6 +328,8 @@ final class PaymentController extends Controller
                 (string)$p['status'],
                 (string)($p['reviewer_name'] ?? ''),
                 (string)($p['reviewed_at'] ?? ''),
+                (string)($p['created_at'] ?? ''),
+                (string)($p['description'] ?? ''),
             ];
         }
         $filename = 'payments-' . date('Ymd') . '.csv';
@@ -415,36 +464,57 @@ final class PaymentController extends Controller
     /**
      * Validate + normalize the `from` / `to` date-range query params.
      *
-     * Phase 49 (v2.1.5). Both are optional; if either is missing or fails
-     * the strict Y-m-d check (regex + strtotime round-trip), it is
-     * treated as empty (no filter applied). Swapping is done if `to`
-     * comes before `from` so the admin doesn't get an empty result by
-     * accident.
+     * Phase 49 (v2.1.5): both params were strict Gregorian `Y-m-d`.
+     * Phase 50 (v2.1.6): the admin/payments.php view now uses Jalali
+     * text inputs (`YYYY/MM/DD` with a pattern attribute + JS
+     * validation), so this method now accepts Jalali strings and
+     * converts them to Gregorian via PersianDate::jalaliStringToGregorian
+     * before returning. Both are optional; if either is missing or
+     * fails the strict `YYYY/MM/DD` regex + PersianDate round-trip, it
+     * is treated as empty (no filter applied). Swapping is done if `to`
+     * comes before `from` (lexicographic Y-m-d compare) so the admin
+     * doesn't get an empty result by accident.
      *
-     * @return array{0:string,1:string}  normalized [from, to] (Y-m-d, or '' if unset)
+     * @return array{0:string,1:string}  normalized [from, to] (Gregorian Y-m-d, or '' if unset)
      */
     private function parseDateRange(string $fromRaw, string $toRaw): array
     {
         $from = '';
         $to = '';
-        // Strict Y-m-d regex + strtotime round-trip (rejects 2026-13-40 etc.).
-        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $fromRaw) === 1) {
-            $ts = strtotime($fromRaw);
-            if ($ts !== false && date('Y-m-d', $ts) === $fromRaw) {
-                $from = $fromRaw;
+        // Strict Jalali YYYY/MM/DD regex (with 1-2 digit month/day so
+        // users can type "1405/8/9" or "1405/08/09"). PersianDate then
+        // validates the round-trip (rejects 1405/13/40 etc.).
+        $jalaliPattern = '#^\d{4}/\d{1,2}/\d{1,2}$#';
+        if (preg_match($jalaliPattern, $fromRaw) === 1) {
+            $g = $this->persianDate()->jalaliStringToGregorian($fromRaw);
+            if ($g !== null) {
+                $from = $g;
             }
         }
-        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $toRaw) === 1) {
-            $ts = strtotime($toRaw);
-            if ($ts !== false && date('Y-m-d', $ts) === $toRaw) {
-                $to = $toRaw;
+        if (preg_match($jalaliPattern, $toRaw) === 1) {
+            $g = $this->persianDate()->jalaliStringToGregorian($toRaw);
+            if ($g !== null) {
+                $to = $g;
             }
         }
-        // Swap if `to` < `from`.
+        // Swap if `to` < `from` (lexicographic Y-m-d compare).
         if ($from !== '' && $to !== '' && $to < $from) {
             [$from, $to] = [$to, $from];
         }
         return [$from, $to];
+    }
+
+    /**
+     * Lazy-resolved PersianDate helper (builds the instance from the
+     * DI Container on first call, then memoizes — the Container always
+     * returns the same instance for a stateless class).
+     */
+    private function persianDate(): PersianDate
+    {
+        if ($this->persianDate === null) {
+            $this->persianDate = $this->container->make(PersianDate::class);
+        }
+        return $this->persianDate;
     }
 
     /**
@@ -456,11 +526,17 @@ final class PaymentController extends Controller
      * admin sees the gross flow through the system, not just the approved
      * slice). The 30-day approved sum is kept for backward compatibility.
      *
+     * Phase 50 (v2.1.6) — added `requestedCount` + `requestedSum` for the
+     * new `'در انتظار'` status (admin-requested, awaiting user payment).
+     * The pendingCount/pendingSum (for `'در انتظار رسید'`) remain
+     * unchanged since they're a distinct status.
+     *
      * @return array{
      *   approvedMonth:int, approvedTotal:int, approvedCount:int,
      *   pendingCount:int, pendingSum:int,
      *   rejectedCount:int, rejectedSum:int,
-     *   totalCount:int, totalAmount:int
+     *   totalCount:int, totalAmount:int,
+     *   requestedCount:int, requestedSum:int
      * }
      */
     private function computeStats(): array
@@ -493,6 +569,12 @@ final class PaymentController extends Controller
             ),
             'totalAmount'    => (int)$this->conn->scalar(
                 'SELECT COALESCE(SUM(amount), 0) FROM payments'
+            ),
+            'requestedCount' => (int)$this->conn->scalar(
+                "SELECT COUNT(*) FROM payments WHERE status = 'در انتظار'"
+            ),
+            'requestedSum'   => (int)$this->conn->scalar(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'در انتظار'"
             ),
         ];
     }

@@ -230,6 +230,43 @@ final class AdminController extends Controller
         // PersianDate helper for Jalali date formatting in the view.
         $persianDate = $this->container->make(PersianDate::class);
 
+        // Phase 50 (v2.1.6) — read the flash message set by
+        // requestPayment() (success or error) and clear it after read
+        // so it shows once. Defaults to a success-kind alert.
+        $flashMessage = (string)$this->session->get('view_app_message', '');
+        $flashKind    = (string)$this->session->get('view_app_message_kind', 'success');
+        if ($flashMessage !== '') {
+            $this->session->remove('view_app_message');
+            $this->session->remove('view_app_message_kind');
+        }
+
+        // Phase 50 (v2.1.6) — suggested payment amount for the modal
+        // pre-fill. Read from settings (registration_fee_amount →
+        // fee_default_amount → 500000 sensible default in Toman).
+        // Pull both keys in one query (more efficient than 2 round-trips).
+        $suggestedAmount = 0;
+        try {
+            $settings = $this->conn->all(
+                "SELECT setting_key, setting_value FROM settings
+                 WHERE setting_key IN ('registration_fee_amount', 'fee_default_amount')"
+            );
+            foreach ($settings as $s) {
+                $v = (int)preg_replace('/[^0-9]/', '', (string)$s['setting_value']);
+                if ($s['setting_key'] === 'registration_fee_amount' && $v > 0) {
+                    $suggestedAmount = $v;
+                    break;
+                }
+                if ($s['setting_key'] === 'fee_default_amount' && $v > 0 && $suggestedAmount === 0) {
+                    $suggestedAmount = $v;
+                }
+            }
+        } catch (\Throwable) {
+            // best-effort — fall back to the hard-coded default below.
+        }
+        if ($suggestedAmount <= 0) {
+            $suggestedAmount = 500000;  // sensible fallback (Toman)
+        }
+
         return $this->render('admin/view_application', [
             'applicant'        => $applicant,
             'statusLog'        => $statusLog,
@@ -241,6 +278,9 @@ final class AdminController extends Controller
             'row'              => $row,
             'statusMeta'       => $statusMeta,
             'persianDate'      => $persianDate,
+            'flashMessage'     => $flashMessage,
+            'flashKind'        => $flashKind,
+            'suggestedAmount'  => $suggestedAmount,
         ]);
     }
 
@@ -974,12 +1014,31 @@ final class AdminController extends Controller
 
     /**
      * POST /admin/request-payment — mark an applicant as needing payment
-     * (set payment_required=1 + payment_requested_at=NOW()). Adds an
-     * audit-log entry "درخواست پرداخت".
+     * (set payment_required=1 + payment_requested_at=NOW()), insert a row
+     * into the `payments` table so the request shows up on the user's
+     * payments list AND on the admin payments list, add an audit-log
+     * entry "درخواست پرداخت", and notify the user in their panel.
+     *
+     * Phase 50 (v2.1.6) — rewritten:
+     *   - Now accepts `amount` (positive integer in Toman) and
+     *     `description` (free-form Persian note) from the POST body.
+     *     A Bootstrap modal in `admin/view_application.php` collects
+     *     these (with the suggested amount pre-filled from settings).
+     *   - Inserts a `payments` row with `status='در انتظار'` (a new
+     *     status meaning "payment requested, awaiting the user to pay"
+     *     — distinct from `'در انتظار رسید'` which means "user has
+     *     uploaded a receipt, awaiting admin review"). The schema
+     *     default is `'در انتظار رسید'` so we set the column explicitly.
+     *     `purpose='هزینهٔ ثبت‌نام'` (matches the schema default and
+     *     PaymentController's purpose whitelist).
+     *     `description` is stored in the new `description` column added
+     *     by migration `20261118_001_payments_description_column.sql`.
+     *   - Returns a redirect to `/admin/view/{id}` (NOT JSON) so the
+     *     admin stays on the case page. A flash message
+     *     (`view_app_message`) is shown via the admin/view_application
+     *     view's flash banner.
      *
      * Auth: role='admin'.
-     *
-     * Returns JSON: {success:true, data:{applicant_id, payment_required:true}}
      */
     public function requestPayment(Request $request, array $params = []): Response
     {
@@ -987,29 +1046,79 @@ final class AdminController extends Controller
         $applicantId = (int)$request->input('applicant_id', 0);
         $applicant = $this->applicants->findById($applicantId);
         if ($applicant === null) {
-            return $this->jsonError(404, 'not_found', 'پرونده یافت نشد.');
+            $this->session->set('view_app_message', 'پرونده یافت نشد.');
+            $this->session->set('view_app_message_kind', 'danger');
+            return $this->redirect('/admin/applications');
         }
 
+        // Amount: positive integer in Toman. The modal pre-fills the
+        // suggested amount from settings (registration_fee_amount →
+        // fee_default_amount → 500000 fallback). The admin can edit
+        // the value before submitting. Reject anything ≤ 0 or non-numeric.
+        $amountRaw = (string)$request->input('amount', '');
+        $amount = (int)preg_replace('/[^0-9]/', '', $amountRaw);
+        if ($amount <= 0) {
+            $this->session->set('view_app_message', 'مبلغ پرداخت باید یک عدد مثبت باشد.');
+            $this->session->set('view_app_message_kind', 'danger');
+            return $this->redirect('/admin/view/' . $applicantId);
+        }
+        // Description: free-form Persian note, max 500 chars (the
+        // migration's column is VARCHAR(500)). Trim + cap.
+        $description = mb_substr(trim((string)$request->input('description', '')), 0, 500);
+
+        // 1) Insert a payments row so the request shows up on:
+        //    - the user's /panel/payments (PdoUserAccountRepository
+        //      ::getPayments filters by user_account_id)
+        //    - the admin's /admin/payments (PaymentController::index
+        //      lists all payments, joined with applicants).
+        //    status='در انتظار' (new — distinct from 'در انتظار رسید').
+        //    user_account_id is set if the applicant is linked to a
+        //    user account (so the user sees the row in their panel).
+        $userAccountId = $applicant->userAccountId;
+        try {
+            $this->conn->insert(
+                'INSERT INTO payments (applicant_id, user_account_id, purpose, amount, description, status, created_at) '
+                . 'VALUES (?, ?, ?, ?, ?, ?, NOW())',
+                [
+                    $applicantId,
+                    ($userAccountId !== null && $userAccountId > 0) ? $userAccountId : null,
+                    'هزینهٔ ثبت‌نام',
+                    $amount,
+                    $description !== '' ? $description : null,
+                    'در انتظار',
+                ]
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to insert payment row on requestPayment', [
+                '_module'        => 'core',
+                'applicant_id'   => $applicantId,
+                'error'          => $e->getMessage(),
+            ]);
+            $this->session->set('view_app_message', 'خطا در ثبت درخواست پرداخت.');
+            $this->session->set('view_app_message_kind', 'danger');
+            return $this->redirect('/admin/view/' . $applicantId);
+        }
+
+        // 2) Mark the applicant as needing payment (legacy flag, still
+        //    used by the user panel to show the "payment required" badge).
         $this->conn->execute(
             'UPDATE applicants SET payment_required = 1, payment_requested_at = NOW(), updated_at = NOW() WHERE id = ?',
             [$applicantId]
         );
+        // 3) Status-log entry (audit trail).
         $this->statusLog->create([
             'applicant_id' => $applicantId,
             'status_name'   => 'درخواست پرداخت',
-            'description'   => 'درخواست پرداخت هزینه توسط '
-                . (string)$this->session->get('admin_display_name', 'مدیر'),
+            'description'   => 'درخواست پرداخت هزینه (' . number_format($amount) . ' تومان) توسط '
+                . (string)$this->session->get('admin_display_name', 'مدیر')
+                . ($description !== '' ? ' — ' . $description : ''),
             'triggered_by'  => 'admin',
         ]);
 
-        // Phase 46 (v2.1.2) — also notify the user (applicant) so they see
-        // the payment request in their panel (/panel/notifications).
-        // Mirrors the pattern in changeStatus(): best-effort, never rolls
-        // back the payment_required update if the notification insert
-        // fails (logged but not re-thrown). Skips silently if the
-        // applicant has no user_account_id (e.g. admin-created cases).
+        // 4) Best-effort user notification (so they see it in their
+        //    panel even before checking the payments page). Skips
+        //    silently if the applicant has no user_account_id.
         try {
-            $userAccountId = $applicant->userAccountId;
             if ($userAccountId !== null && $userAccountId > 0) {
                 $adminName = (string)$this->session->get('admin_display_name', 'مدیر');
                 $this->conn->execute(
@@ -1021,8 +1130,9 @@ final class AdminController extends Controller
                         'payment_request',
                         'درخواست پرداخت هزینه',
                         sprintf(
-                            'برای پروندهٔ شما (کد پیگیری: %s) درخواست پرداخت هزینه ثبت شد — توسط %s.',
+                            'برای پروندهٔ شما (کد پیگیری: %s) درخواست پرداخت %s تومان ثبت شد — توسط %s.',
                             $applicant->trackingCode,
+                            number_format($amount),
                             $adminName
                         ),
                     ]
@@ -1039,12 +1149,15 @@ final class AdminController extends Controller
         $this->logger->info('Admin requested payment', [
             '_module'      => 'core',
             'applicant_id' => $applicantId,
+            'amount'       => $amount,
         ]);
-        return $this->jsonSuccess([
-            'applicant_id'      => $applicantId,
-            'payment_required'  => true,
-            'payment_requested_at' => date('Y-m-d H:i:s'),
-        ]);
+
+        $this->session->set(
+            'view_app_message',
+            sprintf('درخواست پرداخت %s تومان با موفقیت ثبت شد.', number_format($amount))
+        );
+        $this->session->set('view_app_message_kind', 'success');
+        return $this->redirect('/admin/view/' . $applicantId);
     }
 
     /**

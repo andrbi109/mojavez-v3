@@ -277,3 +277,16 @@ app/Views/admin/fee_tariff/index.php:<?= $itSrt ?>
 app/Views/admin/service_types.php:<?= $licenseTitleCount ?>
 app/Views/admin/service_types.php:<?= $formFieldCount ?>
 app/Views/admin/service_types.php:<?= $wizardStepCount ?>
+
+# 16. Phase 50 (v2.1.6) — Bootstrap CSS class literal in admin/view_application.php.
+#
+# $flashKindClass is assigned via a `match { ... }` against fixed Bootstrap
+# alert-class literals ('alert-success', 'alert-danger', 'alert-warning',
+# 'alert-info') based on the controller-set $flashKind ('success'|'danger'
+# |'warning'|'info'). Same pattern as Phase 15/17's $badge — not user input.
+# $rowClass in admin/payments.php is the same pattern as Phase 25's
+# $rowClass in bulk_preview/bulk_result (match against fixed Bootstrap
+# table-* class literals '' | 'table-warning' | 'table-info').
+# -----------------------------------------------------------------------------
+app/Views/admin/view_application.php:<?= $flashKindClass ?>
+app/Views/admin/payments.php:<?= $rowClass ?>
