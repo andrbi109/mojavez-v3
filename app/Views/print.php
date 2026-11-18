@@ -2,7 +2,9 @@
 /** @var \App\Modules\Core\Domain\Applicant $applicant */
 /** @var array $statusLog */
 /** @var string $siteName */
+/** @var string $ownerName */
 $siteName ??= 'سامانهٔ مجوز';
+$ownerName ??= '';
 ?>
 <!doctype html>
 <html lang="fa" dir="rtl">
@@ -236,7 +238,10 @@ $siteName ??= 'سامانهٔ مجوز';
 
         <div class="print-footer">
             این برگه توسط <?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?> تولید شده است.
-            تاریخ چاپ: <?= htmlspecialchars(date('Y-m-d H:i'), ENT_QUOTES, 'UTF-8') ?>
+            <?php if ($ownerName !== ''): ?>
+                · مدیریت: <?= htmlspecialchars($ownerName, ENT_QUOTES, 'UTF-8') ?>
+            <?php endif; ?>
+            · تاریخ چاپ: <?= htmlspecialchars(date('Y-m-d H:i'), ENT_QUOTES, 'UTF-8') ?>
         </div>
     </div>
 

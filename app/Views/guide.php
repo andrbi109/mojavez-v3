@@ -7,14 +7,42 @@
  * section at the bottom ("چرخه وضعیت‌ها"). The 18 statuses are listed in
  * their workflow order with Bootstrap badges colored per status type.
  *
+ * Phase 43 (v2.0.9) — adds:
+ *   - $siteName: shown in the intro paragraph under the heading.
+ *   - $ownerUsername: shown as a contact handle in the sidebar card.
+ *   - $socialLinks: rendered in the sidebar card under the contact.
+ *
  * Expected $data:
- *   $guideText  string — guide body from the settings table (optional).
+ *   $guideText     string — guide body from the settings table (optional).
+ *   $siteName      string — site_name setting (with a sensible default).
+ *   $ownerName     string — owner_name setting (used in the contact card).
+ *   $ownerUsername string — owner_username setting (used as a contact handle).
+ *   $socialLinks   array  — social-eitaa/rubika/bale link map.
  */
 /** @var string $guideText */
+/** @var string $siteName */
+/** @var string $ownerName */
+/** @var string $ownerUsername */
+/** @var array<string,array{label:string,handle:string,url:string}> $socialLinks */
 /** @var string $baseUrl */
 /** @var string $csrfField */
 
 $guideText ??= '';
+$siteName ??= 'سامانهٔ مجوزهای صنایع دستی';
+$ownerName ??= '';
+$ownerUsername ??= '';
+$socialLinks ??= [];
+
+// Filter out social entries with no URL so we don't render dead anchors.
+$activeSocial = [];
+foreach ($socialLinks as $k => $sl) {
+    if (!is_array($sl)) {
+        continue;
+    }
+    if ((string)($sl['url'] ?? '') !== '') {
+        $activeSocial[$k] = $sl;
+    }
+}
 
 // The 18 applicant workflow statuses, in their workflow order (matching
 // ApplicantStatus::order()). Two columns: shared statuses (all service
@@ -46,9 +74,13 @@ $cycleHousehold = [
 ?>
 <div class="row">
     <div class="col-lg-8">
-        <h1 class="h3 mb-4">
+        <h1 class="h3 mb-2">
             <i class="bi bi-question-circle text-brand"></i> راهنمای کاربر
         </h1>
+        <p class="text-muted small mb-4">
+            <i class="bi bi-building"></i>
+            راهنمای کامل سامانهٔ <?= htmlspecialchars((string)$siteName, ENT_QUOTES, 'UTF-8') ?>
+        </p>
         <div class="card">
             <div class="card-body">
             <?php if (!empty($guideText)): ?>
@@ -66,7 +98,7 @@ $cycleHousehold = [
         </div>
     </div>
     <div class="col-lg-4">
-        <div class="card">
+        <div class="card mb-3">
             <div class="card-header d-flex align-items-center gap-2">
                 <i class="bi bi-info-circle"></i> وضعیت‌های پرونده
             </div>
@@ -81,6 +113,38 @@ $cycleHousehold = [
                 </ul>
             </div>
         </div>
+        <?php if ($ownerName !== '' || $ownerUsername !== '' || !empty($activeSocial)): ?>
+        <div class="card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-telephone"></i> تماس با مدیر سامانه
+            </div>
+            <div class="card-body">
+                <?php if ($ownerName !== ''): ?>
+                    <p class="mb-1"><i class="bi bi-person-badge"></i>
+                        <?= htmlspecialchars((string)$ownerName, ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                <?php endif; ?>
+                <?php if ($ownerUsername !== ''): ?>
+                    <p class="text-muted small mb-2" dir="ltr">
+                        <i class="bi bi-at"></i> @<?= htmlspecialchars((string)$ownerUsername, ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                <?php endif; ?>
+                <?php if (!empty($activeSocial)): ?>
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <?php foreach ($activeSocial as $k => $sl): ?>
+                        <a href="<?= htmlspecialchars((string)$sl['url'], ENT_QUOTES) ?>"
+                           target="_blank" rel="noopener noreferrer"
+                           class="btn btn-sm btn-outline-secondary"
+                           title="<?= htmlspecialchars((string)$sl['label'], ENT_QUOTES, 'UTF-8') ?>">
+                            <i class="bi bi-chat-dots"></i>
+                            <?= htmlspecialchars((string)$sl['label'], ENT_QUOTES, 'UTF-8') ?>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 

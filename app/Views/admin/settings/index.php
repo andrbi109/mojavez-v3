@@ -8,6 +8,75 @@
 $baseUrl ??= '/';
 $errors ??= [];
 $siteLogoPath = $settings['site_logo'] ?? '';
+
+/**
+ * Phase 43 (v2.0.9) — single field renderer for known settings.
+ *
+ * Reads the per-key metadata ($known[$key]) and renders the correct
+ * control based on `type`:
+ *   - 'select'   → <select> with $meta['options'] as <option>s.
+ *   - 'textarea' → <textarea> (multi-line, used by about_content +
+ *                  success_message_template).
+ *   - 'image'    → preview of the currently-stored path (if file exists)
+ *                  + link to the upload form (top of the page) with the
+ *                  key pre-filled + a plain text input for the raw path.
+ *   - 'text' (default) → <input type="text">.
+ *
+ * All output goes through htmlspecialchars(). Persian UI text, RTL.
+ */
+$renderField = static function (string $key) use ($known, $settings, $baseUrl): void {
+    $meta    = $known[$key] ?? null;
+    $current = (string)($settings[$key] ?? '');
+    if (!is_array($meta)) {
+        return;
+    }
+    $label = htmlspecialchars($meta['label'] ?? $key, ENT_QUOTES, 'UTF-8');
+    $hint  = htmlspecialchars($meta['hint'] ?? '',     ENT_QUOTES, 'UTF-8');
+    $type  = (string)($meta['type'] ?? 'text');
+    $id    = 'setting-' . htmlspecialchars($key, ENT_QUOTES);
+    ?>
+    <div class="mb-3">
+        <label class="form-label" for="<?= $id ?>"><?= $label ?></label>
+        <?php if ($type === 'select' && isset($meta['options']) && is_array($meta['options'])): ?>
+            <select class="form-select" id="<?= $id ?>" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>">
+                <?php foreach ($meta['options'] as $val => $optLabel): ?>
+                    <option value="<?= htmlspecialchars((string)$val, ENT_QUOTES) ?>" <?= $current === (string)$val ? 'selected' : '' ?>>
+                        <?= htmlspecialchars((string)$optLabel, ENT_QUOTES, 'UTF-8') ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        <?php elseif ($type === 'textarea'): ?>
+            <textarea class="form-control" id="<?= $id ?>" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>"
+                      rows="6" dir="rtl"><?= htmlspecialchars($current, ENT_QUOTES, 'UTF-8') ?></textarea>
+        <?php elseif ($type === 'image'): ?>
+            <?php if ($current !== '' && is_file(ROOT_PATH . '/' . $current)): ?>
+                <div class="mb-2 d-flex align-items-center gap-3">
+                    <img src="<?= htmlspecialchars($baseUrl . $current, ENT_QUOTES) ?>" alt=""
+                         class="img-thumbnail"
+                         style="max-height: 80px; max-width: 240px;">
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/settings#upload-image-form">
+                        <i class="bi bi-cloud-upload"></i> تغییر تصویر
+                    </a>
+                </div>
+            <?php else: ?>
+                <div class="small text-muted mb-2">
+                    <i class="bi bi-info-circle"></i> هنوز تصویری آپلود نشده. از فرم آپلود بالا با کلید
+                    <code dir="ltr"><?= htmlspecialchars($key, ENT_QUOTES) ?></code> استفاده کنید.
+                </div>
+            <?php endif; ?>
+            <input type="text" class="form-control" id="<?= $id ?>" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>"
+                   value="<?= htmlspecialchars($current, ENT_QUOTES, 'UTF-8') ?>" dir="ltr">
+        <?php else: ?>
+            <input type="text" class="form-control" id="<?= $id ?>" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>"
+                   value="<?= htmlspecialchars($current, ENT_QUOTES, 'UTF-8') ?>">
+        <?php endif; ?>
+        <?php if ($hint !== ''): ?>
+            <div class="form-text"><?= $hint ?></div>
+        <?php endif; ?>
+    </div>
+    <?php
+};
 ?>
 <h2 class="h5 mb-3"><i class="bi bi-gear"></i> تنظیمات سامانه</h2>
 
@@ -29,12 +98,16 @@ $siteLogoPath = $settings['site_logo'] ?? '';
 <?php endif; ?>
 
 <!-- Phase 20 (v1.9.2): image upload (site_logo + similar brand assets). -->
+<!-- Phase 43 (v2.0.9): the same upload form is used for owner_image — set the
+     `setting_key` input to `owner_image` to upload the owner avatar that
+     appears on the about page and the admin sidebar header. -->
 <div class="card mb-3">
-    <div class="card-header"><i class="bi bi-image"></i> تصویر سامانه (لوگو)</div>
+    <div class="card-header"><i class="bi bi-image"></i> تصویر سامانه (لوگو) و تصویر مدیر</div>
     <div class="card-body">
         <p class="text-muted small">
-            تصویر لوگوی سرصفحه/پاصفحه را آپلود کنید. فقط JPEG/PNG/WEBP حداکثر ۲ مگابایت.
-            مسیر فایل در تنظیم <code dir="ltr">site_logo</code> ذخیره می‌شود.
+            تصویر لوگوی سرصفحه/پاصفحه یا تصویر مدیر را آپلود کنید. فقط JPEG/PNG/WEBP حداکثر ۲ مگابایت.
+            مسیر فایل در تنظیمی که در فیلد «کلید تنظیم» وارد می‌کنید ذخیره می‌شود
+            (پیش‌فرض: <code dir="ltr">site_logo</code>؛ برای تصویر مدیر: <code dir="ltr">owner_image</code>).
         </p>
         <?php if ($siteLogoPath !== '' && is_file(ROOT_PATH . '/' . $siteLogoPath)): ?>
             <div class="mb-3 d-flex align-items-center gap-3">
@@ -60,7 +133,7 @@ $siteLogoPath = $settings['site_logo'] ?? '';
                     <input type="text" class="form-control form-control-sm" name="setting_key"
                            value="site_logo" dir="ltr" required
                            pattern="[a-zA-Z0-9_.\-]+">
-                    <div class="form-text">پیش‌فرض: site_logo. فقط حروف انگلیسی/اعداد/_/.-</div>
+                    <div class="form-text">پیش‌فرض: site_logo. برای تصویر مدیر: owner_image. فقط حروف انگلیسی/اعداد/_/.-</div>
                 </div>
                 <div class="col-12 col-sm-7">
                     <label class="form-label small">فایل تصویر</label>
@@ -113,18 +186,7 @@ $siteLogoPath = $settings['site_logo'] ?? '';
         <div class="card-header"><i class="bi bi-cloud-arrow-down"></i> همگام‌سازی درگاه ملی</div>
         <div class="card-body">
             <?php foreach (['sync_direction', 'sync_two_way_enabled'] as $key): ?>
-                <?php $meta = $known[$key]; $current = $settings[$key] ?? ''; ?>
-                <div class="mb-3">
-                    <label class="form-label"><?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></label>
-                    <select class="form-select" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>">
-                        <?php foreach ($meta['options'] as $val => $label): ?>
-                            <option value="<?= htmlspecialchars($val, ENT_QUOTES) ?>" <?= $current === $val ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <div class="form-text"><?= htmlspecialchars($meta['hint'], ENT_QUOTES, 'UTF-8') ?></div>
-                </div>
+                <?php $renderField($key); ?>
             <?php endforeach; ?>
             <div class="alert alert-info small mb-0">
                 <i class="bi bi-info-circle"></i>
@@ -139,23 +201,53 @@ $siteLogoPath = $settings['site_logo'] ?? '';
         <div class="card-header"><i class="bi bi-ui-radios"></i> عمومی</div>
         <div class="card-body">
             <?php foreach (['site_name', 'site_description', 'default_service_type_id'] as $key): ?>
-                <?php $meta = $known[$key]; $current = $settings[$key] ?? ''; ?>
-                <div class="mb-3">
-                    <label class="form-label"><?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></label>
-                    <?php if ($meta['type'] === 'select'): ?>
-                        <select class="form-select" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>">
-                            <?php foreach ($meta['options'] as $val => $label): ?>
-                                <option value="<?= htmlspecialchars($val, ENT_QUOTES) ?>" <?= $current === $val ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    <?php else: ?>
-                        <input type="text" class="form-control" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>"
-                               value="<?= htmlspecialchars($current, ENT_QUOTES, 'UTF-8') ?>">
-                    <?php endif; ?>
-                    <div class="form-text"><?= htmlspecialchars($meta['hint'], ENT_QUOTES, 'UTF-8') ?></div>
-                </div>
+                <?php $renderField($key); ?>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ===== Phase 43 (v2.0.9) — دربارهٔ ما و مدیر سامانه ===== -->
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-info-circle"></i> صفحهٔ دربارهٔ ما و مدیر سامانه</div>
+        <div class="card-body">
+            <?php foreach (['about_title', 'about_content', 'owner_name', 'owner_username', 'owner_image'] as $key): ?>
+                <?php $renderField($key); ?>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ===== Phase 43 (v2.0.9) — شبکه‌های اجتماعی ===== -->
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-chat-dots"></i> شبکه‌های اجتماعی</div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                آیدی هر پیام‌رسان را وارد کنید (بدون @). اگر آیدی یک پیام‌رسان خالی باشد،
+                مقدار «نام کاربری شبکه‌های اجتماعی» به‌عنوان آیدی پیش‌فرض استفاده می‌شود.
+            </p>
+            <?php foreach (['social_eitaa', 'social_rubika', 'social_bale'] as $key): ?>
+                <?php $renderField($key); ?>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ===== Phase 43 (v2.0.9) — قالب پیام موفقیت ===== -->
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-chat-left-text"></i> قالب پیام موفقیت</div>
+        <div class="card-body">
+            <?php $renderField('success_message_template'); ?>
+        </div>
+    </div>
+
+    <!-- ===== Phase 43 (v2.0.9) — هزینه‌ها ===== -->
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-cash-stack"></i> هزینه‌ها</div>
+        <div class="card-body">
+            <?php foreach ([
+                'registration_fee_amount', 'license_reissue_fee_amount',
+                'fee_tariff_active', 'fee_default_amount',
+                'fee_rural_auto_eligible', 'fee_modal_enabled',
+            ] as $key): ?>
+                <?php $renderField($key); ?>
             <?php endforeach; ?>
         </div>
     </div>

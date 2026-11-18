@@ -1,6 +1,28 @@
 <?php
+/**
+ * admin/login.php — admin login form (standalone HTML, layout='none').
+ *
+ * Phase 43 (v2.0.9) — the page title and the header card now show the
+ * configured site_name setting instead of a hardcoded "پنل مدیریت
+ * سامانهٔ مجوز". Falls back to "سامانهٔ مجوزهای صنایع دستی" if the
+ * setting is missing or the settings query fails.
+ */
 /** @var string $csrfField */
 $csrfField ??= $GLOBALS['csrfField'] ?? '';
+
+// Best-effort fetch of site_name from the settings repo. $this is the
+// Controller that invoked render(); its Container has the
+// SettingRepositoryInterface binding (registered by Core module).
+$siteName = 'سامانهٔ مجوزهای صنایع دستی';
+try {
+    $repo = $this->container->make(\App\Shared\Contracts\SettingRepositoryInterface::class);
+    $configured = $repo->get('site_name', '');
+    if ($configured !== '') {
+        $siteName = $configured;
+    }
+} catch (\Throwable) {
+    // best-effort — keep the default.
+}
 ?>
 <!doctype html>
 <html lang="fa" dir="rtl" data-bs-theme="light">
@@ -9,7 +31,7 @@ $csrfField ??= $GLOBALS['csrfField'] ?? '';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
     <meta name="theme-color" content="#0f766e">
-    <title>ورود مدیر — پنل مدیریت</title>
+    <title>ورود مدیر — <?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?></title>
     <link rel="stylesheet" href="/assets/vendor/bootstrap/css/bootstrap.rtl.min.css">
     <link rel="stylesheet" href="/assets/vendor/bootstrap/css/bootstrap-icons.css">
     <link rel="stylesheet" href="/assets/vendor/vazirmatn/css/vazirmatn.css">
@@ -25,7 +47,7 @@ $csrfField ??= $GLOBALS['csrfField'] ?? '';
                         <div class="text-center mb-4">
                             <i class="bi bi-shield-lock display-5 text-brand"></i>
                             <h1 class="h4 mt-3 mb-1">ورود مدیر</h1>
-                            <p class="text-muted small mb-0">پنل مدیریت سامانهٔ مجوز</p>
+                            <p class="text-muted small mb-0"><?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?></p>
                         </div>
                         <form method="post" action="/admin/login">
                             <?= $csrfField ?>

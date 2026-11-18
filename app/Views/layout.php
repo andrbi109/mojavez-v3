@@ -1,13 +1,70 @@
 <?php
+/**
+ * layout.php — public-facing site shell.
+ *
+ * Phase 43 (v2.0.9) — the footer now shows the manager's name (if set in
+ * the `owner_name` setting) and the three Persian messenger social links
+ * (eitaa / rubika / bale) when the corresponding `social_*` settings are
+ * non-empty. The owner-name + social-links data is sourced from the
+ * SettingRepositoryInterface (fetched lazily via the Controller's Container
+ * — `$this` in a view is the Controller that called render()). When the
+ * controller already injected the values into the view (HomeController::
+ * index/guide/about does), the layout uses those without re-querying the
+ * settings table — the `??=` pattern below.
+ */
 /** @var string $content */
 /** @var string $siteName */
 /** @var string $siteDescription */
 /** @var string $title */
 /** @var string $csrfField */
+/** @var string $ownerName */
+/** @var array<string,array{label:string,handle:string,url:string}> $socialLinks */
+
 $siteName ??= 'سامانهٔ مجوز';
 $siteDescription ??= 'صدور مجوز کسب‌وکار خانگی';
 $title ??= $siteName;
 $baseUrl ??= '/';
+$ownerName ??= '';
+$socialLinks ??= [];
+
+// Best-effort fallback: if the controller didn't pass ownerName / socialLinks
+// (e.g. tracking, services, records pages that still use this layout), pull
+// them from the settings repository via the Container. Wrapped in try-catch
+// so a DB hiccup never breaks the page render — the footer just falls back
+// to its base state (siteName + version).
+if ($ownerName === '' || $socialLinks === []) {
+    try {
+        $repo = $this->container->make(\App\Shared\Contracts\SettingRepositoryInterface::class);
+        if ($ownerName === '') {
+            $ownerName = $repo->get('owner_name', '');
+        }
+        if ($socialLinks === []) {
+            $username = $repo->get('owner_username', '');
+            $eitaa    = $repo->get('social_eitaa',  $username);
+            $rubika   = $repo->get('social_rubika', $username);
+            $bale     = $repo->get('social_bale',   $username);
+            $socialLinks = [
+                'eitaa'  => ['label' => 'ایتا',   'handle' => $eitaa,  'url' => $eitaa  !== '' ? 'https://eitaa.com/'  . $eitaa  : ''],
+                'rubika' => ['label' => 'روبیکا', 'handle' => $rubika, 'url' => $rubika !== '' ? 'https://rubika.ir/' . $rubika : ''],
+                'bale'   => ['label' => 'بله',   'handle' => $bale,   'url' => $bale   !== '' ? 'https://bale.ai/'   . $bale   : ''],
+            ];
+        }
+    } catch (\Throwable) {
+        // best-effort — leave $ownerName / $socialLinks at their defaults.
+    }
+}
+
+// Filter out social links with no handle/url so we don't render dead anchors.
+$activeSocial = [];
+foreach ($socialLinks as $k => $sl) {
+    if (!is_array($sl)) {
+        continue;
+    }
+    $url = (string)($sl['url'] ?? '');
+    if ($url !== '') {
+        $activeSocial[$k] = $sl;
+    }
+}
 ?>
 <!doctype html>
 <html lang="fa" dir="rtl" data-bs-theme="light">
@@ -65,9 +122,32 @@ $baseUrl ??= '/';
     </main>
 
     <footer class="moj-footer">
-        <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <span><?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?> — <?= htmlspecialchars($siteDescription, ENT_QUOTES, 'UTF-8') ?></span>
-            <span class="text-muted">نسخهٔ <?= htmlspecialchars(\App\Shared\Support\Environment::version(), ENT_QUOTES, 'UTF-8') ?></span>
+        <div class="container">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>
+                    <?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?> — <?= htmlspecialchars($siteDescription, ENT_QUOTES, 'UTF-8') ?>
+                    <?php if ($ownerName !== ''): ?>
+                        <span class="moj-footer-owner text-muted small ms-1">
+                            · مدیریت: <?= htmlspecialchars($ownerName, ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    <?php endif; ?>
+                </span>
+                <span class="text-muted">نسخهٔ <?= htmlspecialchars(\App\Shared\Support\Environment::version(), ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+            <?php if (!empty($activeSocial)): ?>
+            <div class="moj-footer-social d-flex flex-wrap justify-content-center gap-3 mt-2 pt-2 border-top border-light-subtle">
+                <?php foreach ($activeSocial as $k => $sl): ?>
+                    <a href="<?= htmlspecialchars((string)$sl['url'], ENT_QUOTES) ?>"
+                       target="_blank" rel="noopener noreferrer"
+                       class="text-decoration-none small"
+                       title="<?= htmlspecialchars((string)$sl['label'], ENT_QUOTES, 'UTF-8') ?>">
+                        <i class="bi bi-chat-dots"></i>
+                        <?= htmlspecialchars((string)$sl['label'], ENT_QUOTES, 'UTF-8') ?>
+                        <span dir="ltr">@<?= htmlspecialchars((string)($sl['handle'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
         </div>
     </footer>
 
