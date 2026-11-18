@@ -149,6 +149,69 @@ planned sections without hitting a dead end.
 
 ---
 
+## [2.0.6] — 2026-11-18
+
+### Phases 35-40: complete page parity with v2 + gateway
+
+**v2.0.6** completes the final page parity gap between v3 and v2 +
+gateway. All admin pages that were stubbed or sparse are now full
+implementations matching v2's detail level.
+
+### Phase 35 (v2.0.1): complete manual registration form
+- Ported all 41 v2 form fields to `/admin/register` (was 7).
+- Identity (11), service (2), property (13), job (3), income (1),
+  documents (5), consent (1), tracking (5).
+- Dynamic license-title dropdown via JS fetch.
+- AdminController::registerProcess() now creates applicants +
+  property_details + job_details + documents in one transaction.
+
+### Phase 36 (v2.0.2): complete view_application + edit_application
+- view_application: golden-link section with matched_at, document
+  thumbnails inline, print button, color-coded status badges, license
+  state section with valid_until.
+- edit_application: all 19 identity fields + status dropdown, document
+  management, 3-Jalali-select birth date.
+
+### Phase 37 (v2.0.3): complete bulk-import workflow
+- Enhanced all 5 bulk-import views with per-row validation status,
+  summary cards, document upload per applicant.
+- CSV template download endpoint.
+- Execute with row selection (checkboxes).
+
+### Phase 38 (v2.0.4): dedicated admin print_single view
+- New `admin/print_single.php` (802 lines) — complete A4 print view
+  with all admin-only fields (income_decile, golden-link, documents
+  list, full status timeline with triggered_by).
+- ReportController::singleApplicantReport() now loads full data and
+  renders the dedicated view.
+
+### Phase 39 (v2.0.5): dedicated gateway admin pages
+- 5 new gateway pages replacing the 4 API JSON links:
+  - `/admin/gateway` — dashboard with stats + quick search.
+  - `/admin/gateway/search` — advanced multi-field search.
+  - `/admin/gateway/saved` — saved licenses with CSV export.
+  - `/admin/gateway/filters` — saved filter management (CRUD).
+  - `/admin/gateway/batch` — batch CSV search.
+- New GatewayAdminController with 5 methods.
+- admin_layout.php: replaced API links with dedicated HTML page links.
+
+### Phase 40 (v2.0.6): version bump + documentation
+- VERSION bumped to 2.0.6.
+- README + CHANGELOG updated.
+
+### Final stats
+
+- **Routes:** 205+ (Core 160 + NationalGateway 48).
+- **Controllers:** 28 (Core 25 + NationalGateway 3).
+- **Views:** 70+ (all v2 views + gateway pages + v3 additions).
+- **Migrations:** 22.
+- **Tests:** 580 assertions, 0 failures.
+- **Debt:** ZERO.
+- **Gateway:** Active, 5 dedicated HTML admin pages (no API links in
+  sidebar).
+
+---
+
 ## [2.0.0] — 2026-11-18
 
 ### Final release — complete v2 + gateway integration
