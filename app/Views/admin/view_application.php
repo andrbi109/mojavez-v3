@@ -157,7 +157,7 @@ $fmtDateOnly = static function (?string $greg) use ($persianDate): string {
                            placeholder="دلیل تغییر وضعیت..." maxlength="500">
                 </div>
             </div>
-            <div class="mt-3 d-flex gap-2">
+            <div class="mt-3 d-flex gap-2 flex-wrap align-items-center">
                 <button type="submit" class="btn btn-primary" id="btn-change-status">
                     <i class="bi bi-check2-circle"></i> اعمال تغییر وضعیت
                 </button>
@@ -166,6 +166,26 @@ $fmtDateOnly = static function (?string $greg) use ($persianDate): string {
                 </a>
             </div>
         </form>
+
+        <!-- Phase 46 (v2.1.2) — request payment button. POSTs to
+             /admin/request-payment (AdminController::requestPayment)
+             which sets payment_required=1 + payment_requested_at=NOW()
+             and inserts a user_notification so the applicant sees the
+             request in their panel. Lives inside the same card body
+             so it's visually grouped with the status change section
+             but OUTSIDE the status-change-form (forms cannot be
+             nested in HTML — the previous inline placement inside
+             the parent form was invalid). -->
+        <div class="mt-3 border-top pt-3">
+            <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/request-payment" class="d-inline">
+                <?= $csrfField ?>
+                <input type="hidden" name="applicant_id" value="<?= (int)$applicant->id ?>">
+                <button type="submit" class="btn btn-warning btn-sm"
+                        onclick="return confirm('درخواست پرداخت برای این متقاضی ثبت شود؟')">
+                    <i class="bi bi-cash"></i> درخواست پرداخت
+                </button>
+            </form>
+        </div>
     </div>
 </div>
 

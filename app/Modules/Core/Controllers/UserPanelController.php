@@ -10,12 +10,14 @@ use App\Http\Response;
 use App\Http\Session;
 use App\Modules\Core\Services\AvatarService;
 use App\Modules\Core\Support\ProfileUpdateValidator;
+use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\LicenseFileRepositoryInterface;
 use App\Shared\Contracts\PaymentRepositoryInterface;
 use App\Shared\Contracts\ServiceTypeRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
 use App\Shared\Contracts\UserAccountRepositoryInterface;
 use App\Shared\Contracts\UserNotificationRepositoryInterface;
+use App\Shared\Persistence\Connection;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
 use App\Shared\Support\StructuredLogger;
@@ -71,6 +73,8 @@ final class UserPanelController extends Controller
         private readonly ServiceTypeRepositoryInterface $serviceTypes,
         private readonly StatusLogRepositoryInterface $statusLog,
         private readonly AvatarService $avatars,
+        private readonly ApplicantRepositoryInterface $applicants,
+        private readonly Connection $conn,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -350,6 +354,209 @@ final class UserPanelController extends Controller
         ], 'user_layout');
     }
 
+    /**
+     * POST /panel/requests/{id}/delete — let the user delete their own
+     * incomplete/unwanted application.
+     *
+     * Phase 46 (v2.1.2) — closes the v2→v3 gap reported by the user
+     * (no way to discard an unwanted draft). Strictly scoped:
+     *   - The applicant's user_account_id MUST match the current user's
+     *     session user_id (no cross-account deletes).
+     *   - current_status MUST be in ['پیش‌نویس', 'تکمیل اطلاعات'] (Draft
+     *     or InfoComplete — i.e. pre-issue + the user hasn't pushed it
+     *     forward yet). Anything further along the workflow is
+     *     non-deletable by the user (the admin can hard-delete via
+     *     applicant admin tools if absolutely needed).
+     *   - The applicant row is SOFT-deleted (deleted_at = NOW()) — the
+     *     audit trail stays intact.
+     *   - Related rows in property_details, job_details, documents,
+     *     status_log are HARD-deleted (cascade) — they have
+     *     ON DELETE CASCADE FKs but soft-delete on applicants won't
+     *     fire those, so we delete them manually here. This matches
+     *     the spec wording: "soft-delete applicants, cascade the rest".
+     *   - On success: flash a success message and redirect to
+     *     /panel/requests. On any authorization failure: flash an
+     *     error and redirect to /panel/requests (no 403 page — the
+     *     user might have hit a stale "delete" button on an old
+     *     page render).
+     */
+    public function deleteApplication(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $account = $this->currentAccount();
+        $applicantId = (int)($params['id'] ?? 0);
+
+        $applicant = $this->applicants->findById($applicantId);
+        if ($applicant === null) {
+            $this->flash('درخواست مورد نظر یافت نشد.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // Authorization: the applicant's user_account_id must match the
+        // current user's session user_id. findById() does NOT filter by
+        // user_account_id — explicit check is required.
+        if ($applicant->userAccountId === null
+            || (int)$applicant->userAccountId !== (int)$account['id']
+        ) {
+            $this->flash('شما اجازهٔ حذف این درخواست را ندارید.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // State guard: only Draft ('پیش‌نویس') and InfoComplete
+        // ('تکمیل اطلاعات') are deletable. The isPreIssue() check would
+        // also include AddressVerification, FieldExpertReview, etc. — too
+        // permissive. Use the explicit two-value whitelist from the spec.
+        $deletable = ['پیش‌نویس', 'تکمیل اطلاعات'];
+        if (!in_array($applicant->currentStatus->value, $deletable, true)) {
+            $this->flash(
+                'حذف درخواست تنها در وضعیت «پیش‌نویس» یا «تکمیل اطلاعات» ممکن است.',
+                'danger'
+            );
+            return $this->redirect('/panel/requests');
+        }
+
+        // Soft-delete the applicant + hard-delete the related rows
+        // (property_details, job_details, documents, status_log).
+        // Run inside a transaction so a partial delete never happens —
+        // either the whole case is gone or none of it.
+        try {
+            $this->conn->transactional(function () use ($applicantId): void {
+                $this->conn->execute(
+                    'DELETE FROM property_details WHERE applicant_id = ?',
+                    [$applicantId]
+                );
+                $this->conn->execute(
+                    'DELETE FROM job_details WHERE applicant_id = ?',
+                    [$applicantId]
+                );
+                $this->conn->execute(
+                    'DELETE FROM documents WHERE applicant_id = ?',
+                    [$applicantId]
+                );
+                $this->conn->execute(
+                    'DELETE FROM status_log WHERE applicant_id = ?',
+                    [$applicantId]
+                );
+                $this->applicants->softDelete($applicantId);
+            });
+        } catch (\Throwable $e) {
+            $this->logger->error('User delete application failed', [
+                '_module'      => 'core',
+                'applicant_id' => $applicantId,
+                'account_id'   => $account['id'],
+                'error'        => $e->getMessage(),
+            ]);
+            $this->flash(
+                'حذف درخواست با خطا روبه‌رو شد. لطفاً دوباره تلاش کنید.',
+                'danger'
+            );
+            return $this->redirect('/panel/requests');
+        }
+
+        $this->logger->info('User deleted their own application', [
+            '_module'      => 'core',
+            'applicant_id' => $applicantId,
+            'account_id'   => $account['id'],
+            'tracking_code' => $applicant->trackingCode,
+        ]);
+        $this->flash('درخواست با موفقیت حذف شد.', 'success');
+        return $this->redirect('/panel/requests');
+    }
+
+    /**
+     * POST /panel/change-postal-code — request a postal-code change
+     * for one of the user's own applications.
+     *
+     * Phase 46 (v2.1.2) — lets the user request a postal-code change
+     * from the panel without contacting support. Strictly scoped:
+     *   - The applicant is located by tracking_code (submitted by the
+     *     form) and must belong to the current user (user_account_id
+     *     matches the session user_id).
+     *   - The new postal code must be exactly 10 digits (Iran standard).
+     *   - A row is inserted into postal_code_changes with
+     *     status='در انتظار' for admin review (the admin approves
+     *     via /admin/postal-requests/approve, which already exists).
+     *   - The old postal_code from the applicants row is captured in
+     *     postal_code_changes.old_postal_code for the audit trail.
+     *   - On success: flash + redirect to /panel/requests.
+     *   - On any failure: flash error + redirect to /panel/requests.
+     */
+    public function changePostalCode(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $account = $this->currentAccount();
+        $trackingCode = trim((string)$request->input('tracking_code', ''));
+        $newPostalCode = trim((string)$request->input('new_postal_code', ''));
+
+        if ($trackingCode === '') {
+            $this->flash('کد پیگیری الزامی است.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // Iran postal codes are exactly 10 digits. The form also has
+        // pattern="\d{10}" on the client side; the server enforces too.
+        if (!preg_match('/^\d{10}$/', $newPostalCode)) {
+            $this->flash('کد پستی باید دقیقاً ۱۰ رقم باشد.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+
+        $applicant = $this->applicants->findByTrackingCode($trackingCode);
+        if ($applicant === null) {
+            $this->flash('درخواستی با این کد پیگیری یافت نشد.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // Authorization: the applicant must belong to the current user.
+        if ($applicant->userAccountId === null
+            || (int)$applicant->userAccountId !== (int)$account['id']
+        ) {
+            $this->flash('شما اجازهٔ تغییر کد پستی این درخواست را ندارید.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // No-op guard: if the new code equals the current code, refuse.
+        $oldPostalCode = (string)($applicant->postalCode ?? '');
+        if ($oldPostalCode === $newPostalCode) {
+            $this->flash('کد پستی جدید با کد پستی فعلی یکی است.', 'warning');
+            return $this->redirect('/panel/requests');
+        }
+
+        try {
+            $this->conn->execute(
+                'INSERT INTO postal_code_changes '
+                . '(applicant_id, old_postal_code, new_postal_code, status, requested_at) '
+                . 'VALUES (?, ?, ?, ?, NOW())',
+                [
+                    $applicant->id,
+                    $oldPostalCode,
+                    $newPostalCode,
+                    'در انتظار',
+                ]
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('Postal-code change insert failed', [
+                '_module'      => 'core',
+                'applicant_id' => $applicant->id,
+                'account_id'   => $account['id'],
+                'error'        => $e->getMessage(),
+            ]);
+            $this->flash(
+                'ثبت درخواست تغییر کد پستی با خطا روبه‌رو شد.',
+                'danger'
+            );
+            return $this->redirect('/panel/requests');
+        }
+
+        $this->logger->info('User requested postal-code change', [
+            '_module'        => 'core',
+            'applicant_id'   => $applicant->id,
+            'account_id'     => $account['id'],
+            'tracking_code'  => $trackingCode,
+            'old_postal_code' => $oldPostalCode,
+            'new_postal_code' => $newPostalCode,
+        ]);
+        $this->flash(
+            'درخواست تغییر کد پستی ثبت شد و پس از بررسی مدیر تأیید خواهد شد.',
+            'success'
+        );
+        return $this->redirect('/panel/requests');
+    }
+
     /* ------------------------------------------------------------------ */
 
     /**
@@ -368,6 +575,26 @@ final class UserPanelController extends Controller
             $this->redirect('/login');
         }
         return $account;
+    }
+
+    /**
+     * Flash a one-shot message for the next render — stored in the
+     * session under `panel_flash` as ['message' => string, 'type' => string].
+     * The view (user/requests.php) consumes it once via
+     * `$this->session->get('panel_flash')` + `$this->session->remove('panel_flash')`.
+     *
+     * Phase 46 (v2.1.2) — used by deleteApplication() and changePostalCode()
+     * to surface success/error feedback after a redirect to /panel/requests.
+     *
+     * @param string $message Persian message body.
+     * @param 'success'|'danger'|'warning'|'info' $type Bootstrap alert color.
+     */
+    private function flash(string $message, string $type = 'info'): void
+    {
+        $this->session->set('panel_flash', [
+            'message' => $message,
+            'type'    => $type,
+        ]);
     }
 
     /**
