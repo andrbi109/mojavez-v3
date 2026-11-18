@@ -48,13 +48,23 @@ final class ServiceTypeController extends Controller
     /**
      * GET /admin/service-types — list all service types with their
      * applicant usage counts (for the delete-protection hint).
+     *
+     * Phase 48 (v2.1.4): the query now also returns three counts
+     * per service type — license_title_count, form_field_count and
+     * wizard_step_count — so the admin can see at a glance what each
+     * service type has wired up. The view links each count to the
+     * matching admin page (filtered by service_type_id where the
+     * target controller supports it; otherwise to the index page).
      */
     public function index(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
         $rows = $this->conn->all(
             'SELECT st.*,
-                    (SELECT COUNT(*) FROM applicants a WHERE a.service_type_id = st.id) AS applicant_count
+                    (SELECT COUNT(*) FROM applicants a WHERE a.service_type_id = st.id) AS applicant_count,
+                    (SELECT COUNT(*) FROM license_titles lt WHERE lt.service_type_id = st.id) AS license_title_count,
+                    (SELECT COUNT(*) FROM form_fields ff WHERE ff.service_type_id = st.id) AS form_field_count,
+                    (SELECT COUNT(*) FROM wizard_steps ws WHERE ws.service_type_id = st.id) AS wizard_step_count
                FROM service_types st
               ORDER BY st.sort_order, st.id'
         );
@@ -106,7 +116,10 @@ final class ServiceTypeController extends Controller
         if ($errors !== []) {
             $rows = $this->conn->all(
                 'SELECT st.*,
-                        (SELECT COUNT(*) FROM applicants a WHERE a.service_type_id = st.id) AS applicant_count
+                        (SELECT COUNT(*) FROM applicants a WHERE a.service_type_id = st.id) AS applicant_count,
+                        (SELECT COUNT(*) FROM license_titles lt WHERE lt.service_type_id = st.id) AS license_title_count,
+                        (SELECT COUNT(*) FROM form_fields ff WHERE ff.service_type_id = st.id) AS form_field_count,
+                        (SELECT COUNT(*) FROM wizard_steps ws WHERE ws.service_type_id = st.id) AS wizard_step_count
                    FROM service_types st
                   ORDER BY st.sort_order, st.id'
             );

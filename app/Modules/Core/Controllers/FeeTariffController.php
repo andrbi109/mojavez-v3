@@ -48,6 +48,22 @@ final class FeeTariffController extends Controller
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
 
+    /**
+     * GET /admin/fee-tariff — list all tariffs (joined with service_type title)
+     * plus the decile-based fee_groups + their fee_group_items.
+     *
+     * Phase 48 (v2.1.4): the index now also loads every fee_group with its
+     * fee_group_items pre-grouped, so the view can render a per-group card
+     * showing the items, their amounts and the sum total per group (which
+     * is what `FeeCalculatorService` charges for an applicant whose income
+     * decile falls in the group's range). The view also exposes an inline
+     * "add item" form for each group that posts to itemsSave() (the
+     * existing bulk-upsert handler accepts a single-key items map).
+     *
+     * The original fee_tariffs list (the per-service-type decile tariff
+     * table that pre-dates fee_groups) is still rendered above the groups
+     * section so the existing CRUD flows keep working.
+     */
     public function index(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
@@ -57,9 +73,35 @@ final class FeeTariffController extends Controller
                LEFT JOIN service_types st ON st.id = ft.service_type_id
               ORDER BY ft.service_type_id, ft.decile_min, ft.id'
         );
+
+        // Phase 48: load fee_groups + their items + the per-group sum.
+        $groups = $this->conn->all(
+            'SELECT g.*,
+                    (SELECT COALESCE(SUM(amount), 0) FROM fee_group_items i WHERE i.fee_group_id = g.id) AS items_total
+               FROM fee_groups g
+              ORDER BY g.sort_order, g.id'
+        );
+        $items = $this->conn->all(
+            'SELECT i.*
+               FROM fee_group_items i
+              ORDER BY i.fee_group_id, i.sort_order, i.id'
+        );
+
+        // Group items by fee_group_id so the view can iterate one group at a time.
+        $itemsByGroup = [];
+        foreach ($items as $it) {
+            $gid = (int)$it['fee_group_id'];
+            if (!isset($itemsByGroup[$gid])) {
+                $itemsByGroup[$gid] = [];
+            }
+            $itemsByGroup[$gid][] = $it;
+        }
+
         return $this->render('admin/fee_tariff/index', [
-            'title' => 'تعرفهٔ هزینه',
-            'rows'  => $rows,
+            'title'         => 'تعرفهٔ هزینه',
+            'rows'          => $rows,
+            'groups'        => $groups,
+            'itemsByGroup'  => $itemsByGroup,
         ]);
     }
 

@@ -28,9 +28,38 @@ $q = static function (string $key) use ($filter): string {
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <h2 class="h5 mb-0"><i class="bi bi-search"></i> جستجوی پیشرفتهٔ درگاه ملی</h2>
     <span class="badge text-bg-secondary">کش محلی</span>
-    <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway" class="btn btn-sm btn-outline-secondary ms-auto">
-        <i class="bi bi-arrow-return-right"></i> داشبورد
-    </a>
+    <div class="ms-auto d-flex gap-2">
+        <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/run"
+            class="d-inline"
+            onsubmit="return confirm('یک دور کامل همگام‌سازی اجرا شود؟ پس از پایان، نتایج در همین صفحه نمایش داده می‌شوند.');">
+            <?= $csrfField ?>
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-play-circle"></i> اجرای همگام‌سازی
+            </button>
+        </form>
+        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status" class="btn btn-sm btn-outline-info">
+            <i class="bi bi-cloud-arrow-down"></i> وضعیت همگام‌سازی
+        </a>
+        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-return-right"></i> داشبورد
+        </a>
+    </div>
+</div>
+
+<!-- Phase 48 (v2.1.4): explicit help on how the cache gets populated. -->
+<div class="alert alert-info small py-2 mb-3 d-flex align-items-start gap-2">
+    <i class="bi bi-info-circle-fill mt-1"></i>
+    <div>
+        این صفحه فقط مجوزهای <strong>کش‌شده</strong> در درگاه محلی را جستجو می‌کند. برای
+        پر کردن کش، به صفحهٔ <a class="alert-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status">«وضعیت همگام‌سازی»</a>
+        بروید و دکمهٔ «اجرای همگام‌سازی» را بزنید (یا از دکمهٔ سبز همین صفحه استفاده کنید).
+        پس از اجرای همگام‌سازی، نتایج در این صفحه نمایش داده می‌شوند.
+        <span class="text-muted d-block mt-1">
+            <i class="bi bi-arrow-repeat"></i>
+            هر بار که صفحهٔ وضعیت همگام‌سازی را باز می‌کنید، یک کار از صف تخلیه می‌شود
+            (الگوی poor man's cron)؛ برای اجرای یک دور کامل، دکمهٔ «اجرای همگام‌سازی» را بزنید.
+        </span>
+    </div>
 </div>
 
 <!-- Filter form -->
@@ -172,7 +201,20 @@ $q = static function (string $key) use ($filter): string {
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="8" class="text-center text-muted py-4">نتیجه‌ای یافت نشد. فیلتر را تغییر دهید یا ابتدا مجوزهایی از درگاه ملی کش کنید.</td></tr>
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            <div class="d-flex flex-column align-items-center gap-2">
+                                <span>
+                                    <i class="bi bi-inbox"></i>
+                                    نتیجه‌ای یافت نشد — کش محلی خالی است یا فیلتر بیش‌ازحد سخت‌گیرانه است.
+                                </span>
+                                <span class="small">
+                                    برای پر کردن کش از درگاه ملی، دکمهٔ «اجرای همگام‌سازی» را بزنید
+                                    یا به صفحهٔ <a class="link-primary" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status">وضعیت همگام‌سازی</a> بروید.
+                                </span>
+                            </div>
+                        </td>
+                    </tr>
                 <?php endif; ?>
                 </tbody>
             </table>
