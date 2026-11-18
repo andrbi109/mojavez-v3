@@ -1,15 +1,44 @@
 <?php
-/** @var array $payments */
-/** @var array $filters */
-/** @var int $page */
-/** @var int $totalPages */
-/** @var int $total */
-/** @var array $stats */
-/** @var array $byChannel */
-/** @var array $channels */
-/** @var string $message */
-/** @var string $csrfField */
-/** @var string $baseUrl */
+/**
+ * admin/payments.php — list of all payments (Phase 18), filterable,
+ * with summary stat cards (Phase 49), single-review modal (Phase 49),
+ * and Jalali date-range filter (Phase 50).
+ *
+ * Phase 50 (v2.1.6):
+ *   - The `from` / `to` date inputs are now Jalali text inputs
+ *     (`pattern="\d{4}/\d{1,2}/\d{1,2}"` + placeholder) — the
+ *     PaymentController converts them to Gregorian before the DB
+ *     query via PersianDate::jalaliStringToGregorian. The filters
+ *     array carries the original Jalali strings so the inputs
+ *     re-populate with what the admin typed.
+ *   - The status filter dropdown gained `'در انتظار'` — a new status
+ *     set by AdminController::requestPayment for rows it creates
+ *     (the user hasn't paid yet, so the admin shouldn't see a
+ *     "review" button on those rows — only on `'در انتظار رسید'`).
+ *   - New summary card: "درخواست‌شده" (count + sum for `'در انتظار'`).
+ *     The total / approved / pending-review / rejected cards are kept.
+ *   - New "توضیحات" column shows the admin-entered description that
+ *     was inserted into the new `payments.description` column.
+ *   - New "تاریخ ثبت" column shows the row's `created_at` formatted
+ *     as a Jalali date (via PersianDate::format).
+ *   - The badge palette now distinguishes `'در انتظار'` (warning,
+ *     admin-requested) from `'در انتظار رسید'` (info, awaiting
+ *     admin receipt review).
+ *
+ * @var array $payments
+ * @var array $filters
+ * @var int $page
+ * @var int $totalPages
+ * @var int $total
+ * @var array $stats
+ * @var array $byChannel
+ * @var array $channels
+ * @var string $message
+ * @var string $csrfField
+ * @var string $baseUrl
+ */
+use App\Shared\Support\PersianDate;
+
 $message  ??= '';
 $filters  ??= ['status' => '', 'purpose' => '', 'q' => '', 'from' => '', 'to' => ''];
 $stats    ??= [
@@ -17,7 +46,9 @@ $stats    ??= [
     'pendingCount'  => 0, 'pendingSum'  => 0,
     'rejectedCount' => 0, 'rejectedSum' => 0,
     'totalCount'    => 0, 'totalAmount' => 0,
+    'requestedCount' => 0, 'requestedSum' => 0,
 ];
+
 /**
  * Phase 49 (v2.1.5) — small helper to build a query-string for the
  * CSV export link / pagination links / form reset, preserving the
@@ -41,12 +72,13 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
     <div class="alert alert-info py-2"><?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
 
-<!-- ===== Phase 49 (v2.1.5) — summary stat cards (restructured) =====
-     Total amount | Approved (count + sum) | Pending (count + sum) | Rejected (count + sum)
+<!-- ===== Phase 50 (v2.1.6) — summary stat cards =====
+     Total amount | Approved | Pending-review | Requested (new) | Rejected
      Each card uses a single primary metric + small secondary detail, so the
-     admin gets the gross flow + per-status breakdown at a glance. -->
+     admin gets the gross flow + per-status breakdown at a glance. The 5th
+     card (Requested, "درخواست‌شده") covers the new 'در انتظار' status. -->
 <div class="row g-3 mb-4">
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100">
             <div class="card-body d-flex align-items-center gap-2">
                 <i class="bi bi-wallet2 fs-3 text-secondary"></i>
@@ -57,7 +89,7 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
             </div>
         </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100">
             <div class="card-body d-flex align-items-center gap-2">
                 <i class="bi bi-check-circle fs-3 text-success"></i>
@@ -68,18 +100,29 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
             </div>
         </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100">
             <div class="card-body d-flex align-items-center gap-2">
-                <i class="bi bi-hourglass-split fs-3 text-warning"></i>
+                <i class="bi bi-hourglass-split fs-3 text-info"></i>
                 <div>
                     <div class="fw-bold"><?= (int)$stats['pendingCount'] ?></div>
-                    <small class="text-muted">در انتظار بررسی (<?= number_format((int)$stats['pendingSum']) ?> تومان)</small>
+                    <small class="text-muted">در انتظار بررسی رسید (<?= number_format((int)$stats['pendingSum']) ?> تومان)</small>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-md-6 col-xl">
+        <div class="card h-100">
+            <div class="card-body d-flex align-items-center gap-2">
+                <i class="bi bi-cash-coin fs-3 text-warning"></i>
+                <div>
+                    <div class="fw-bold"><?= (int)$stats['requestedCount'] ?></div>
+                    <small class="text-muted">درخواست پرداخت (<?= number_format((int)$stats['requestedSum']) ?> تومان)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-6 col-xl">
         <div class="card h-100">
             <div class="card-body d-flex align-items-center gap-2">
                 <i class="bi bi-x-circle fs-3 text-danger"></i>
@@ -102,7 +145,7 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                 </a>
             </div>
             <div class="card-body pb-2">
-                <form method="get" action="/admin/payments" class="row g-2 align-items-end">
+                <form method="get" action="/admin/payments" class="row g-2 align-items-end" id="paymentsFilterForm">
                     <div class="col-12 col-md-6">
                         <label class="form-label small mb-1">جستجو (کد رهگیری / ملی / نام / پیگیری)</label>
                         <input type="text" class="form-control form-control-sm" name="q" value="<?= htmlspecialchars((string)$filters['q'], ENT_QUOTES, 'UTF-8') ?>">
@@ -110,7 +153,19 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                     <div class="col-6 col-md-3">
                         <label class="form-label small mb-1">وضعیت</label>
                         <select class="form-select form-select-sm" name="status">
-                            <?php foreach (['' => 'همه', 'در انتظار رسید' => 'در انتظار', 'تأیید شده' => 'تأییدشده', 'رد شده' => 'ردشده'] as $k => $lbl): ?>
+                            <?php
+                            // Phase 50 — added 'در انتظار' (admin-requested) as a
+                            // distinct filter option. The label clarifies it's
+                            // "awaiting user payment" vs. "در انتظار رسید" which is
+                            // "awaiting admin receipt review".
+                            $statusOptions = [
+                                ''                => 'همه',
+                                'در انتظار'         => 'در انتظار پرداخت (درخواست مدیر)',
+                                'در انتظار رسید'    => 'در انتظار بررسی رسید',
+                                'تأیید شده'          => 'تأییدشده',
+                                'رد شده'            => 'ردشده',
+                            ];
+                            foreach ($statusOptions as $k => $lbl): ?>
                                 <option value="<?= htmlspecialchars((string)$k, ENT_QUOTES, 'UTF-8') ?>" <?= $filters['status'] === $k ? 'selected' : '' ?>><?= htmlspecialchars($lbl, ENT_QUOTES, 'UTF-8') ?></option>
                             <?php endforeach; ?>
                         </select>
@@ -123,20 +178,35 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                             <option value="هزینهٔ دریافت مجدد تصویر مجوز" <?= $filters['purpose'] === 'هزینهٔ دریافت مجدد تصویر مجوز' ? 'selected' : '' ?>>دریافت مجدد تصویر مجوز</option>
                         </select>
                     </div>
-                    <!-- ===== Phase 49 (v2.1.5) — date range filter ===== -->
+                    <!-- ===== Phase 50 (v2.1.6) — Jalali date range filter =====
+                         The inputs are now Jalali text inputs (pattern-validated
+                         client-side; the controller re-validates server-side via
+                         PersianDate::jalaliStringToGregorian). A small inline
+                         hint shows the expected format + today's Jalali date
+                         as a clickable suggestion. -->
                     <div class="col-6 col-md-3">
-                        <label class="form-label small mb-1">از تاریخ (میلادی)</label>
-                        <input type="date" class="form-control form-control-sm" name="from"
+                        <label class="form-label small mb-1">از تاریخ (جلالی)</label>
+                        <input type="text" class="form-control form-control-sm" name="from" dir="ltr"
+                               pattern="\d{4}/\d{1,2}/\d{1,2}"
+                               placeholder="YYYY/MM/DD"
+                               title="تاریخ جلالی به فرمت YYYY/MM/DD — مثال: 1405/08/21"
                                value="<?= htmlspecialchars((string)$filters['from'], ENT_QUOTES, 'UTF-8') ?>">
                     </div>
                     <div class="col-6 col-md-3">
-                        <label class="form-label small mb-1">تا تاریخ (میلادی)</label>
-                        <input type="date" class="form-control form-control-sm" name="to"
+                        <label class="form-label small mb-1">تا تاریخ (جلالی)</label>
+                        <input type="text" class="form-control form-control-sm" name="to" dir="ltr"
+                               pattern="\d{4}/\d{1,2}/\d{1,2}"
+                               placeholder="YYYY/MM/DD"
+                               title="تاریخ جلالی به فرمت YYYY/MM/DD — مثال: 1405/08/21"
                                value="<?= htmlspecialchars((string)$filters['to'], ENT_QUOTES, 'UTF-8') ?>">
                     </div>
-                    <div class="col-12">
+                    <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
                         <button class="btn btn-primary btn-sm"><i class="bi bi-search"></i> فیلتر</button>
                         <a class="btn btn-outline-secondary btn-sm" href="/admin/payments">پاک کردن فیلتر</a>
+                        <small class="text-muted ms-auto">
+                            امروز جلالی:
+                            <code dir="ltr"><?= htmlspecialchars(PersianDate::format(date('Y-m-d')), ENT_QUOTES, 'UTF-8') ?></code>
+                        </small>
                     </div>
                 </form>
             </div>
@@ -147,19 +217,36 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                             <tr>
                                 <th>#</th><th>متقاضی</th><th>هدف</th><th>مبلغ</th>
                                 <th class="d-none d-md-table-cell">کانال</th>
-                                <th>وضعیت</th><th class="text-end">عملیات</th>
+                                <th>وضعیت</th>
+                                <!-- Phase 50 — new "تاریخ ثبت" column (Jalali formatted created_at) -->
+                                <th class="d-none d-lg-table-cell">تاریخ ثبت</th>
+                                <!-- Phase 50 — new "توضیحات" column (admin-entered note) -->
+                                <th class="d-none d-xl-table-cell">توضیحات</th>
+                                <th class="text-end">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
-                        <?php foreach ($payments as $p): ?>
-                            <?php
-                                $pb = match ((string)$p['status']) {
-                                    'تأیید شده' => 'text-bg-success',
-                                    'رد شده'  => 'text-bg-danger',
-                                    default   => 'text-bg-warning',
-                                };
-                            ?>
-                            <tr class="<?= $p['status'] === 'در انتظار رسید' ? 'table-warning' : '' ?>">
+                        <?php foreach ($payments as $p):
+                            // Phase 50 — badge palette now distinguishes:
+                            //   'در انتظار'         → text-bg-warning (admin-requested, awaiting user payment)
+                            //   'در انتظار رسید'   → text-bg-info    (user uploaded receipt, awaiting admin review)
+                            //   'تأیید شده'         → text-bg-success
+                            //   'رد شده'           → text-bg-danger
+                            $pb = match ((string)$p['status']) {
+                                'تأیید شده'    => 'text-bg-success',
+                                'رد شده'      => 'text-bg-danger',
+                                'در انتظار رسید' => 'text-bg-info',
+                                'در انتظار'    => 'text-bg-warning',
+                                default        => 'text-bg-secondary',
+                            };
+                            $rowClass = match ((string)$p['status']) {
+                                'در انتظار رسید' => 'table-info',
+                                'در انتظار'      => 'table-warning',
+                                default          => '',
+                            };
+                            $description = (string)($p['description'] ?? '');
+                        ?>
+                            <tr class="<?= $rowClass ?>">
                                 <td><?= (int)$p['id'] ?></td>
                                 <td class="text-nowrap">
                                     <a href="/admin/view/<?= (int)$p['applicant_id'] ?>" class="text-decoration-none">
@@ -177,6 +264,16 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                                     <?php endif; ?>
                                     <?php if (!empty($p['reject_reason'])): ?>
                                         <div class="small text-danger"><?= htmlspecialchars((string)$p['reject_reason'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <!-- Phase 50 — Jalali-formatted created_at -->
+                                <td class="d-none d-lg-table-cell small text-muted" dir="ltr"><?= htmlspecialchars(PersianDate::format((string)($p['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
+                                <!-- Phase 50 — admin-entered description -->
+                                <td class="d-none d-xl-table-cell small">
+                                    <?php if ($description !== ''): ?>
+                                        <?= htmlspecialchars($description, ENT_QUOTES, 'UTF-8') ?>
+                                    <?php else: ?>
+                                        <span class="text-muted">—</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-nowrap">
@@ -243,6 +340,14 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                                                 </form>
                                             </div>
                                         </div>
+                                    <?php elseif ($p['status'] === 'در انتظار'): ?>
+                                        <!-- Phase 50 — admin-requested payment awaiting user payment. The
+                                             admin has nothing to review yet (the user hasn't uploaded a
+                                             receipt). Show a small "در انتظار پرداخت کاربر" badge and a
+                                             link to the applicant's case file. -->
+                                        <span class="badge text-bg-warning small">
+                                            <i class="bi bi-hourglass-top"></i> در انتظار پرداخت کاربر
+                                        </span>
                                     <?php else: ?>
                                         <span class="text-muted small">بررسی‌شده توسط <?= htmlspecialchars((string)($p['reviewer_name'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></span>
                                     <?php endif; ?>
@@ -250,7 +355,7 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                             </tr>
                         <?php endforeach; ?>
                         <?php if (empty($payments)): ?>
-                            <tr><td colspan="7" class="text-center text-muted py-4">پرداختی ثبت نشده است.</td></tr>
+                            <tr><td colspan="9" class="text-center text-muted py-4">پرداختی ثبت نشده است.</td></tr>
                         <?php endif; ?>
                         </tbody>
                     </table>

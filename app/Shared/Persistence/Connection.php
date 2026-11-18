@@ -17,7 +17,10 @@ use RuntimeException;
  *
  * Configuration (from config/database.php):
  *  - charset: utf8mb4, collation: utf8mb4_unicode_ci (full Persian + ZWNJ).
- *  - session timezone: +00:00 (UTC for unified TIMESTAMP handling).
+ *  - session timezone: +03:30 (Tehran, UTC+3:30) — Phase 50 (v2.1.6)
+ *    switched this from +00:00 (UTC). A fixed numeric offset avoids the
+ *    MySQL tz_tables requirement (some shared-hosting installs don't load
+ *    them, which would silently turn `Asia/Tehran` into UTC).
  *  - ATTR_EMULATE_PREPARES = false — fixes the named-param duplication quirk
  *    and forces real prepared statements (CODING_CONVENTIONS §5).
  *  - ERRMODE_EXCEPTION — PDO throws on error (no manual error checking).
@@ -156,10 +159,16 @@ final class Connection
         // whitelist them defensively so a misconfigured .env can't inject SQL.
         $allowedCharsets = ['utf8mb4' => true, 'utf8' => true, 'latin1' => true];
         $charset = isset($allowedCharsets[$this->charset]) ? $this->charset : 'utf8mb4';
-        // timezone must be a fixed offset like '+00:00' or a IANA name.
-        $tz = preg_match('/^[A-Za-z_\/]+(\+|-)\d{2}:\d{2}$/', $this->timezone)
+        // timezone may be either:
+        //  (a) a fixed offset like '+03:30' / '-05:00' (Phase 50 default),
+        //  (b) an IANA name like 'Asia/Tehran' / 'UTC'.
+        // The previous regex only accepted the form `Name+HH:MM` (e.g.
+        // `UTC+00:00`) and silently fell back to the default for both bare
+        // offsets and bare IANA names — so changing the config to '+03:30'
+        // had no effect. Fixed in Phase 50 to accept both forms.
+        $tz = preg_match('/^(?:[A-Za-z_\/]+|[+-]\d{2}:\d{2})$/', $this->timezone)
             ? $this->timezone
-            : '+00:00';
+            : '+03:30';
         $this->pdo->exec("SET NAMES {$charset} COLLATE utf8mb4_unicode_ci");
         $this->pdo->exec("SET time_zone = '{$tz}'");
         $this->pdo->exec("SET sql_mode = 'STRICT_ALL_TABLES,NO_ENGINE_SUBSTITUTION'");

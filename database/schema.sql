@@ -18,7 +18,7 @@
 -- ============================================================================
 
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
-SET time_zone = '+00:00';
+SET time_zone = '+03:30';
 SET sql_mode = 'STRICT_ALL_TABLES,NO_ENGINE_SUBSTITUTION';
 
 CREATE TABLE IF NOT EXISTS `applicant_field_values` (
@@ -505,6 +505,7 @@ CREATE TABLE IF NOT EXISTS `payments` (
   `fallback_used` tinyint(1) NOT NULL DEFAULT 0,
   `suspicion_flags` varchar(255) DEFAULT NULL,
   `reference_code` varchar(50) DEFAULT NULL,
+  `description` varchar(500) DEFAULT NULL,
   `paid_at` date DEFAULT NULL,
   `receipt_document_id` int(11) DEFAULT NULL,
   `linked_request_id` int(11) DEFAULT NULL,

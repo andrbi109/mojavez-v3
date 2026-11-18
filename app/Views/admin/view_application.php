@@ -22,6 +22,9 @@
  *   $persianDate      PersianDate — for Jalali date formatting
  *   $baseUrl          string
  *   $csrfField        string
+ *   $flashMessage     string    — Phase 50: one-shot flash banner text ('' = none)
+ *   $flashKind        string    — Phase 50: 'success' | 'danger' | 'warning' | 'info'
+ *   $suggestedAmount  int       — Phase 50: pre-fill for the payment modal (Toman)
  */
 /** @var \App\Modules\Core\Domain\Applicant $applicant */
 /** @var array $statusLog */
@@ -35,6 +38,9 @@
 /** @var \App\Shared\Support\PersianDate $persianDate */
 /** @var string $baseUrl */
 /** @var string $csrfField */
+/** @var string $flashMessage */
+/** @var string $flashKind */
+/** @var int $suggestedAmount */
 
 use App\Modules\Core\Domain\Document;
 use App\Modules\Core\Domain\Enums\LicenseState;
@@ -48,6 +54,9 @@ $serviceTypeTitle ??= '';
 $row          ??= [];
 $statusMeta   ??= [];
 $persianDate  ??= null;
+$flashMessage ??= '';
+$flashKind    ??= 'success';
+$suggestedAmount ??= 500000;
 
 $currentStatus = $applicant->currentStatus;
 $licenseState  = $applicant->licenseState;
@@ -86,7 +95,26 @@ $fmtDateOnly = static function (?string $greg) use ($persianDate): string {
     }
     return htmlspecialchars(PersianDate::format((string)$greg), ENT_QUOTES, 'UTF-8');
 };
+
+// Phase 50 (v2.1.6) — flash banner shown once after requestPayment()
+// redirects back here. Maps the controller-set kind to a Bootstrap
+// alert class (defaults to success on a malformed kind).
+$flashKindClass = match ($flashKind) {
+    'success' => 'alert-success',
+    'danger'  => 'alert-danger',
+    'warning' => 'alert-warning',
+    'info'    => 'alert-info',
+    default   => 'alert-success',
+};
 ?>
+<?php if ($flashMessage !== ''): ?>
+<div class="alert <?= $flashKindClass ?> alert-dismissible fade show mb-4" role="alert">
+    <i class="bi bi-<?= $flashKind === 'success' ? 'check-circle' : ($flashKind === 'danger' ? 'exclamation-triangle' : 'info-circle') ?>"></i>
+    <?= htmlspecialchars((string)$flashMessage, ENT_QUOTES, 'UTF-8') ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+</div>
+<?php endif; ?>
+
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
         <h1 class="h4 mb-1">پروندهٔ متقاضی</h1>
@@ -167,24 +195,82 @@ $fmtDateOnly = static function (?string $greg) use ($persianDate): string {
             </div>
         </form>
 
-        <!-- Phase 46 (v2.1.2) — request payment button. POSTs to
-             /admin/request-payment (AdminController::requestPayment)
-             which sets payment_required=1 + payment_requested_at=NOW()
-             and inserts a user_notification so the applicant sees the
-             request in their panel. Lives inside the same card body
-             so it's visually grouped with the status change section
-             but OUTSIDE the status-change-form (forms cannot be
-             nested in HTML — the previous inline placement inside
-             the parent form was invalid). -->
+        <!-- Phase 50 (v2.1.6) — payment request button + modal.
+             The button no longer POSTs directly (the previous flow
+             returned JSON, which the browser rendered as raw text).
+             Instead it opens a Bootstrap modal (data-bs-toggle/target)
+             with a small form: applicant name (read-only), suggested
+             amount (pre-filled from settings, editable), description
+             (free-form), and submit/cancel buttons. The form POSTs to
+             /admin/request-payment with applicant_id + amount +
+             description, and the controller redirects back to this
+             page (showing a flash banner) — so the admin never sees
+             raw JSON. Lives inside the same card body so it's visually
+             grouped with the status change section but OUTSIDE the
+             status-change-form (forms cannot be nested in HTML). -->
         <div class="mt-3 border-top pt-3">
-            <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/request-payment" class="d-inline">
-                <?= $csrfField ?>
-                <input type="hidden" name="applicant_id" value="<?= (int)$applicant->id ?>">
-                <button type="submit" class="btn btn-warning btn-sm"
-                        onclick="return confirm('درخواست پرداخت برای این متقاضی ثبت شود؟')">
-                    <i class="bi bi-cash"></i> درخواست پرداخت
-                </button>
-            </form>
+            <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#requestPaymentModal">
+                <i class="bi bi-cash"></i> درخواست پرداخت
+            </button>
+
+            <div class="modal fade" id="requestPaymentModal" tabindex="-1" aria-labelledby="requestPaymentModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/request-payment" class="modal-content" id="request-payment-form">
+                        <?= $csrfField ?>
+                        <input type="hidden" name="applicant_id" value="<?= (int)$applicant->id ?>">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="requestPaymentModalLabel">
+                                <i class="bi bi-cash-coin"></i>
+                                ثبت درخواست پرداخت
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                        </div>
+                        <div class="modal-body">
+                            <!-- Applicant name (read-only context) -->
+                            <div class="mb-3">
+                                <label class="form-label small text-muted mb-1">متقاضی</label>
+                                <div class="form-control-plaintext fw-bold">
+                                    <?= htmlspecialchars($applicant->fullName(), ENT_QUOTES, 'UTF-8') ?>
+                                    <span class="text-muted small ms-1">(کد پیگیری: <?= htmlspecialchars($applicant->trackingCode, ENT_QUOTES, 'UTF-8') ?>)</span>
+                                </div>
+                            </div>
+                            <!-- Suggested amount (editable, pre-filled from settings) -->
+                            <div class="mb-3">
+                                <label for="payment-amount" class="form-label">مبلغ (تومان)</label>
+                                <div class="input-group">
+                                    <input type="text" id="payment-amount" name="amount"
+                                           class="form-control text-end"
+                                           dir="ltr"
+                                           inputmode="numeric"
+                                           pattern="[0-9]+"
+                                           required
+                                           value="<?= (int)$suggestedAmount ?>"
+                                           min="1"
+                                           maxlength="12">
+                                    <span class="input-group-text small">تومان</span>
+                                </div>
+                                <div class="form-text small">
+                                    مبلغ پیشنهادی از تنظیمات سامانه خوانده شده است؛ در صورت نیاز آن را ویرایش کنید.
+                                </div>
+                            </div>
+                            <!-- Free-form description -->
+                            <div class="mb-2">
+                                <label for="payment-description" class="form-label">توضیحات (اختیاری)</label>
+                                <textarea id="payment-description" name="description"
+                                          class="form-control" rows="3" maxlength="500"
+                                          placeholder="مثلاً: هزینهٔ ثبت‌نام دورهٔ فنی‌وحرفه‌ای رشتهٔ نجاری..."></textarea>
+                                <div class="form-text small">حداکثر ۵۰۰ نویسه. این توضیح برای کاربر در صفحهٔ پرداخت‌هایش نمایش داده می‌شود.</div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="bi bi-check2-circle"></i> ثبت درخواست پرداخت
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -640,6 +726,58 @@ $fmtDateOnly = static function (?string $greg) use ($persianDate): string {
         var color = opt.getAttribute('data-color') || 'primary';
         var terminal = opt.getAttribute('data-terminal') === '1';
         btn.className = 'btn btn-' + (terminal ? 'danger' : color);
+    });
+})();
+
+// Phase 50 (v2.1.6) — payment modal amount field UX:
+//  - Strip non-digits as the admin types (so a paste of "500,000" or
+//    Persian digits cleans up to "500000").
+//  - Show a thousands-separated preview below the input so the admin
+//    sees the human-readable amount before submitting.
+//  - On submit, confirm before POSTing (the controller is idempotent —
+//    it just creates a new payments row — but a confirm gives the
+//    admin a chance to back out, matching the old UX).
+(function() {
+    var form = document.getElementById('request-payment-form');
+    if (!form) return;
+    var amountInput = document.getElementById('payment-amount');
+    var hint = amountInput ? amountInput.closest('.mb-3').querySelector('.form-text') : null;
+
+    function toPersianDigits(s) {
+        var map = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+        return String(s).replace(/[0-9]/g, function (d) { return map[+d]; });
+    }
+
+    function refreshHint() {
+        if (!hint) return;
+        var raw = (amountInput.value || '').replace(/[^0-9]/g, '');
+        if (raw === '') { hint.textContent = 'مبلغ پیشنهادی از تنظیمات سامانه خوانده شده است؛ در صورت نیاز آن را ویرایش کنید.'; return; }
+        var n = parseInt(raw, 10);
+        if (isNaN(n) || n <= 0) { hint.textContent = 'مبلغ نامعتبر است.'; return; }
+        hint.textContent = 'مبلغ واردشده: ' + toPersianDigits(n.toLocaleString('en-US')) + ' تومان.';
+    }
+
+    if (amountInput) {
+        amountInput.addEventListener('input', function () {
+            var cleaned = (amountInput.value || '').replace(/[^0-9]/g, '');
+            if (cleaned !== amountInput.value) amountInput.value = cleaned;
+            refreshHint();
+        });
+        refreshHint();
+    }
+
+    form.addEventListener('submit', function (e) {
+        var raw = (amountInput && amountInput.value || '').replace(/[^0-9]/g, '');
+        var n = parseInt(raw, 10);
+        if (isNaN(n) || n <= 0) {
+            e.preventDefault();
+            alert('لطفاً یک مبلغ معتبر (عدد مثبت) وارد کنید.');
+            if (amountInput) amountInput.focus();
+            return;
+        }
+        if (!window.confirm('درخواست پرداخت ' + toPersianDigits(n.toLocaleString('en-US')) + ' تومان برای این متقاضی ثبت شود؟')) {
+            e.preventDefault();
+        }
     });
 })();
 </script>
