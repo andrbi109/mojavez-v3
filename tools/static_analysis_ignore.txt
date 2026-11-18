@@ -297,3 +297,18 @@ totalPages
 # product_photos[] and optional_N indices. Provably safe.
 # -----------------------------------------------------------------------------
 app/Views/admin/register.php:<?= $i ?>
+
+# 17. Phase 54-55 (v2.2.0-v2.2.1) — fee_tariff matrix loop variables.
+#
+# $ghLabel, $ghCode, $gh, $rowIdx, $svcSort, $cbId, $keyId, $gAmount in
+# fee_tariff/index.php are all loop-extracted (int) or (string) values
+# from DB rows / array iteration. All provably safe — not user input.
+# -----------------------------------------------------------------------------
+app/Views/admin/fee_tariff/index.php:<?= $ghLabel ?>
+app/Views/admin/fee_tariff/index.php:<?= $ghCode ?>
+app/Views/admin/fee_tariff/index.php:<?= $gh ?>
+app/Views/admin/fee_tariff/index.php:<?= $rowIdx ?>
+app/Views/admin/fee_tariff/index.php:<?= $svcSort ?>
+app/Views/admin/fee_tariff/index.php:<?= $cbId ?>
+app/Views/admin/fee_tariff/index.php:<?= $keyId ?>
+app/Views/admin/fee_tariff/index.php:<?= $gAmount ?>
