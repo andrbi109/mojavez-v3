@@ -116,6 +116,9 @@ final class NationalSyncOrchestrator
         $direction = $this->readSetting('sync_direction', 'inbound');
         if ($direction === 'disabled') {
             $this->logger->warning('Sync cycle skipped — sync_direction=disabled', []);
+            // Phase 54 (v2.2.0) — return the FULL key set (with zeros / nulls)
+            // so the view never hits an "Undefined array key" notice when the
+            // admin disables sync mid-flight. Same keys as the success path.
             return [
                 'started_at' => date('Y-m-d H:i:s'),
                 'ended_at' => date('Y-m-d H:i:s'),
@@ -124,6 +127,16 @@ final class NationalSyncOrchestrator
                 'auto_confirmed' => 0,
                 'operator_flagged' => 0,
                 'auto_rejected' => 0,
+                'outbound_pushed' => 0,
+                'outbound_conflicts' => 0,
+                'outbound_skipped' => 0,
+                'outbound_dedup_skipped' => 0,
+                'two_way_enabled' => false,
+                'upstream_reached'  => false,
+                'upstream_fetched'  => 0,
+                'upstream_total'    => null,
+                'upstream_degraded' => false,
+                'upstream_error'    => null,
                 'skipped' => true,
                 'skip_reason' => 'sync_direction=disabled',
             ];

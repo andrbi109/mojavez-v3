@@ -1,14 +1,39 @@
 <?php
-/** @var array $settings  key→value map */
-/** @var array $known     KNOWN_SETTINGS metadata (key→[label,hint,type,options?]) */
-/** @var bool $saved */
-/** @var array<string,string> $errors  custom-key validation errors (Phase 14) */
-/** @var string $message  flash message from delete() (Phase 49) */
-/** @var string $csrfField */
-/** @var string $baseUrl */
+/**
+ * admin/settings/index.php — System settings (key/value store).
+ *
+ * Phase 54 (v2.2.0) — converted from a long scrollable list of cards into
+ * Bootstrap 5 nav-tabs + tab-content. Seven tabs group the known settings
+ * by purpose so the admin doesn't have to scroll past every fee / sync
+ * field just to change the site name:
+ *
+ *   1. عمومی            — site_name, site_description, default_service_type_id.
+ *   2. درباره و مدیر    — about_title, about_content, owner_name,
+ *                         owner_username, owner_image.
+ *   3. شبکه‌های اجتماعی — social_eitaa, social_rubika, social_bale.
+ *   4. همگام‌سازی       — sync_direction, sync_two_way_enabled.
+ *   5. هزینه‌ها         — registration_fee_amount, license_reissue_fee_amount,
+ *                         fee_default_amount, fee_tariff_active,
+ *                         fee_rural_auto_eligible, fee_modal_enabled.
+ *   6. قالب پیام        — success_message_template.
+ *   7. سایر             — all custom (non-known) settings + add-new row.
+ *
+ * The submit button is shared (one form wraps all tabs), exactly as the
+ * previous single-form design. The image-upload card stays outside the
+ * tabs because it's a separate multipart/form-data POST.
+ *
+ * @var array $settings  key→value map
+ * @var array $known     KNOWN_SETTINGS metadata (key→[label,hint,type,options?])
+ * @var bool $saved
+ * @var array<string,string> $errors  custom-key validation errors (Phase 14)
+ * @var string $message  flash message from delete() (Phase 49)
+ * @var string $csrfField
+ * @var string $baseUrl
+ */
 $baseUrl ??= '/';
 $errors ??= [];
 $message ??= '';
+$saved ??= false;
 $siteLogoPath = $settings['site_logo'] ?? '';
 
 /**
@@ -78,6 +103,16 @@ $renderField = static function (string $key) use ($known, $settings, $baseUrl): 
         <?php endif; ?>
     </div>
     <?php
+};
+
+/**
+ * Phase 54 (v2.2.0) — helper to render a list of known-setting keys inside
+ * a tab pane. Keeps the per-tab markup short + consistent.
+ */
+$renderTabPaneFields = static function (array $keys) use ($renderField): void {
+    foreach ($keys as $key) {
+        $renderField($key);
+    }
 };
 ?>
 <h2 class="h5 mb-3"><i class="bi bi-gear"></i> تنظیمات سامانه</h2>
@@ -185,113 +220,184 @@ $renderField = static function (string $key) use ($known, $settings, $baseUrl): 
     </div>
 </div>
 
+<?php
+/**
+ * Phase 54 (v2.2.0) — Bootstrap 5 nav-tabs + tab-content.
+ *
+ * The shared submit button sits OUTSIDE the tab-content (still inside the
+ * one form element wrapping everything) so a single click submits all
+ * known settings + custom settings, regardless of which tab is currently
+ * active. We keep a per-tab hash deep-link target (e.g. /admin/settings#fees)
+ * so the admin can jump to a specific tab via URL fragment.
+ */
+$tabs = [
+    'general'  => ['label' => 'عمومی',            'icon' => 'bi-ui-radios'],
+    'about'    => ['label' => 'درباره و مدیر',     'icon' => 'bi-info-circle'],
+    'social'   => ['label' => 'شبکه‌های اجتماعی',  'icon' => 'bi-chat-dots'],
+    'sync'     => ['label' => 'همگام‌سازی',         'icon' => 'bi-cloud-arrow-down'],
+    'fees'     => ['label' => 'هزینه‌ها',           'icon' => 'bi-cash-stack'],
+    'template' => ['label' => 'قالب پیام',         'icon' => 'bi-chat-left-text'],
+    'custom'   => ['label' => 'سایر',              'icon' => 'bi-sliders'],
+];
+
+// Resolve the active tab from the URL fragment so deep-links work. The
+// Bootstrap tab JS toggles the .active class itself when the admin clicks
+// a tab; the inline initial state here just defaults to the first tab.
+$activeTab = 'general';
+if (isset($_SERVER['REQUEST_URI'])) {
+    $fragment = parse_url($_SERVER['REQUEST_URI'], PHP_URL_FRAGMENT);
+    if (is_string($fragment) && isset($tabs[$fragment])) {
+        $activeTab = $fragment;
+    }
+}
+?>
 <form method="post" action="/admin/settings">
     <?= $csrfField ?>
 
-    <div class="card mb-3">
-        <div class="card-header"><i class="bi bi-cloud-arrow-down"></i> همگام‌سازی درگاه ملی</div>
-        <div class="card-body">
-            <?php foreach (['sync_direction', 'sync_two_way_enabled'] as $key): ?>
-                <?php $renderField($key); ?>
-            <?php endforeach; ?>
-            <div class="alert alert-info small mb-0">
-                <i class="bi bi-info-circle"></i>
-                مرحلهٔ ۱ (یک‌طرفه ورودی): scraper از درگاه ملی می‌خواند، فقط AutoConfirmed وضعیت را تغییر می‌دهد،
-                هیچ نوشتهای به upstream ارسال نمی‌شود.
-                مرحلهٔ ۲ (دوطرفه) پس از ۳ ماه تثبیت در تولید فعال شود (docs/00-MASTER.md §29).
+    <ul class="nav nav-tabs mb-3" id="settingsTabs" role="tablist">
+        <?php foreach ($tabs as $id => $t): ?>
+            <li class="nav-item" role="presentation">
+                <button type="button"
+                        class="nav-link<?= $id === $activeTab ? ' active' : '' ?>"
+                        id="tab-<?= $id ?>"
+                        data-bs-toggle="tab"
+                        data-bs-target="#pane-<?= $id ?>"
+                        role="tab"
+                        aria-controls="pane-<?= $id ?>"
+                        aria-selected="<?= $id === $activeTab ? 'true' : 'false' ?>">
+                    <i class="bi <?= htmlspecialchars($t['icon'], ENT_QUOTES) ?>"></i>
+                    <?= htmlspecialchars($t['label'], ENT_QUOTES, 'UTF-8') ?>
+                </button>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+
+    <div class="tab-content" id="settingsTabsContent">
+
+        <!-- ===== Tab 1 — عمومی ===== -->
+        <div class="tab-pane fade<?= $activeTab === 'general' ? ' show active' : '' ?>"
+             id="pane-general" role="tabpanel" aria-labelledby="tab-general">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-ui-radios"></i> عمومی</div>
+                <div class="card-body">
+                    <?php $renderTabPaneFields(['site_name', 'site_description', 'default_service_type_id']); ?>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="card mb-3">
-        <div class="card-header"><i class="bi bi-ui-radios"></i> عمومی</div>
-        <div class="card-body">
-            <?php foreach (['site_name', 'site_description', 'default_service_type_id'] as $key): ?>
-                <?php $renderField($key); ?>
-            <?php endforeach; ?>
+        <!-- ===== Tab 2 — درباره و مدیر ===== -->
+        <div class="tab-pane fade<?= $activeTab === 'about' ? ' show active' : '' ?>"
+             id="pane-about" role="tabpanel" aria-labelledby="tab-about">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-info-circle"></i> صفحهٔ دربارهٔ ما و مدیر سامانه</div>
+                <div class="card-body">
+                    <?php $renderTabPaneFields([
+                        'about_title', 'about_content',
+                        'owner_name', 'owner_username', 'owner_image',
+                    ]); ?>
+                </div>
+            </div>
         </div>
-    </div>
 
-    <!-- ===== Phase 43 (v2.0.9) — دربارهٔ ما و مدیر سامانه ===== -->
-    <div class="card mb-3">
-        <div class="card-header"><i class="bi bi-info-circle"></i> صفحهٔ دربارهٔ ما و مدیر سامانه</div>
-        <div class="card-body">
-            <?php foreach (['about_title', 'about_content', 'owner_name', 'owner_username', 'owner_image'] as $key): ?>
-                <?php $renderField($key); ?>
-            <?php endforeach; ?>
+        <!-- ===== Tab 3 — شبکه‌های اجتماعی ===== -->
+        <div class="tab-pane fade<?= $activeTab === 'social' ? ' show active' : '' ?>"
+             id="pane-social" role="tabpanel" aria-labelledby="tab-social">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-chat-dots"></i> شبکه‌های اجتماعی</div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        آیدی هر پیام‌رسان را وارد کنید (بدون @). اگر آیدی یک پیام‌رسان خالی باشد،
+                        مقدار «نام کاربری شبکه‌های اجتماعی» به‌عنوان آیدی پیش‌فرض استفاده می‌شود.
+                    </p>
+                    <?php $renderTabPaneFields(['social_eitaa', 'social_rubika', 'social_bale']); ?>
+                </div>
+            </div>
         </div>
-    </div>
 
-    <!-- ===== Phase 43 (v2.0.9) — شبکه‌های اجتماعی ===== -->
-    <div class="card mb-3">
-        <div class="card-header"><i class="bi bi-chat-dots"></i> شبکه‌های اجتماعی</div>
-        <div class="card-body">
-            <p class="text-muted small mb-3">
-                آیدی هر پیام‌رسان را وارد کنید (بدون @). اگر آیدی یک پیام‌رسان خالی باشد،
-                مقدار «نام کاربری شبکه‌های اجتماعی» به‌عنوان آیدی پیش‌فرض استفاده می‌شود.
-            </p>
-            <?php foreach (['social_eitaa', 'social_rubika', 'social_bale'] as $key): ?>
-                <?php $renderField($key); ?>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <!-- ===== Phase 43 (v2.0.9) — قالب پیام موفقیت ===== -->
-    <div class="card mb-3">
-        <div class="card-header"><i class="bi bi-chat-left-text"></i> قالب پیام موفقیت</div>
-        <div class="card-body">
-            <?php $renderField('success_message_template'); ?>
-        </div>
-    </div>
-
-    <!-- ===== Phase 43 (v2.0.9) — هزینه‌ها ===== -->
-    <div class="card mb-3">
-        <div class="card-header"><i class="bi bi-cash-stack"></i> هزینه‌ها</div>
-        <div class="card-body">
-            <?php foreach ([
-                'registration_fee_amount', 'license_reissue_fee_amount',
-                'fee_tariff_active', 'fee_default_amount',
-                'fee_rural_auto_eligible', 'fee_modal_enabled',
-            ] as $key): ?>
-                <?php $renderField($key); ?>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <!-- Custom (unknown) settings — for power users / debugging. -->
-    <div class="card mb-3">
-        <div class="card-header"><i class="bi bi-sliders"></i> تنظیمات سفارشی</div>
-        <div class="card-body">
-            <p class="text-muted small mb-3">
-                برای افزودن کلید دلخواه، ردیف جدید را پر کنید. مقادیر موجود نیز ویرایش می‌شوند.
-                برای حذف دائمی یک کلید سفارشی، روی دکمهٔ سطل زباله در همان ردیف کلیک کنید
-                (تنظیمات سیستمی بالا قابل حذف نیستند).
-            </p>
-            <?php
-            $customKeys = array_diff(array_keys($settings), array_keys($known));
-            $i = 0;
-            foreach ($customKeys as $ck):
-                $cv = $settings[$ck];
-            ?>
-                <div class="row g-2 mb-2 align-items-center">
-                    <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" value="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
-                    <div class="col-10 col-sm-6"><input type="text" class="form-control" name="custom_values[]" value="<?= htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
-                    <div class="col-2 col-sm-2 d-grid">
-                        <button type="button" class="btn btn-sm btn-outline-danger py-1"
-                                data-delete-key="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>"
-                                title="حذف دائمی این تنظیم سفارشی">
-                            <i class="bi bi-trash"></i>
-                        </button>
+        <!-- ===== Tab 4 — همگام‌سازی ===== -->
+        <div class="tab-pane fade<?= $activeTab === 'sync' ? ' show active' : '' ?>"
+             id="pane-sync" role="tabpanel" aria-labelledby="tab-sync">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-cloud-arrow-down"></i> همگام‌سازی درگاه ملی</div>
+                <div class="card-body">
+                    <?php $renderTabPaneFields(['sync_direction', 'sync_two_way_enabled']); ?>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle"></i>
+                        مرحلهٔ ۱ (یک‌طرفه ورودی): scraper از درگاه ملی می‌خواند، فقط AutoConfirmed وضعیت را تغییر می‌دهد،
+                        هیچ نوشتهای به upstream ارسال نمی‌شود.
+                        مرحلهٔ ۲ (دوطرفه) پس از ۳ ماه تثبیت در تولید فعال شود (docs/00-MASTER.md §29).
                     </div>
                 </div>
-            <?php $i++; endforeach; ?>
-            <!-- One empty row for adding a new custom setting. -->
-            <div class="row g-2 mb-2 align-items-center">
-                <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" placeholder="کلید جدید" dir="ltr"></div>
-                <div class="col-12 col-sm-8"><input type="text" class="form-control" name="custom_values[]" placeholder="مقدار" dir="ltr"></div>
             </div>
         </div>
-    </div>
+
+        <!-- ===== Tab 5 — هزینه‌ها ===== -->
+        <div class="tab-pane fade<?= $activeTab === 'fees' ? ' show active' : '' ?>"
+             id="pane-fees" role="tabpanel" aria-labelledby="tab-fees">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-cash-stack"></i> هزینه‌ها</div>
+                <div class="card-body">
+                    <?php $renderTabPaneFields([
+                        'registration_fee_amount', 'license_reissue_fee_amount',
+                        'fee_default_amount',
+                        'fee_tariff_active',
+                        'fee_rural_auto_eligible',
+                        'fee_modal_enabled',
+                    ]); ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Tab 6 — قالب پیام ===== -->
+        <div class="tab-pane fade<?= $activeTab === 'template' ? ' show active' : '' ?>"
+             id="pane-template" role="tabpanel" aria-labelledby="tab-template">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-chat-left-text"></i> قالب پیام موفقیت</div>
+                <div class="card-body">
+                    <?php $renderField('success_message_template'); ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Tab 7 — سایر (custom settings) ===== -->
+        <div class="tab-pane fade<?= $activeTab === 'custom' ? ' show active' : '' ?>"
+             id="pane-custom" role="tabpanel" aria-labelledby="tab-custom">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-sliders"></i> تنظیمات سفارشی</div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        برای افزودن کلید دلخواه، ردیف جدید را پر کنید. مقادیر موجود نیز ویرایش می‌شوند.
+                        برای حذف دائمی یک کلید سفارشی، روی دکمهٔ سطل زباله در همان ردیف کلیک کنید
+                        (تنظیمات سیستمی بالا قابل حذف نیستند).
+                    </p>
+                    <?php
+                    $customKeys = array_diff(array_keys($settings), array_keys($known));
+                    $i = 0;
+                    foreach ($customKeys as $ck):
+                        $cv = $settings[$ck];
+                    ?>
+                        <div class="row g-2 mb-2 align-items-center">
+                            <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" value="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
+                            <div class="col-10 col-sm-6"><input type="text" class="form-control" name="custom_values[]" value="<?= htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
+                            <div class="col-2 col-sm-2 d-grid">
+                                <button type="button" class="btn btn-sm btn-outline-danger py-1"
+                                        data-delete-key="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>"
+                                        title="حذف دائمی این تنظیم سفارشی">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    <?php $i++; endforeach; ?>
+                    <!-- One empty row for adding a new custom setting. -->
+                    <div class="row g-2 mb-2 align-items-center">
+                        <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" placeholder="کلید جدید" dir="ltr"></div>
+                        <div class="col-12 col-sm-8"><input type="text" class="form-control" name="custom_values[]" placeholder="مقدار" dir="ltr"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /.tab-content -->
 
     <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> ذخیره تنظیمات</button>
 </form>
