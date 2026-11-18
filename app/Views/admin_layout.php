@@ -141,6 +141,18 @@ $adminRole = $_SESSION['admin_role'] ?? 'operator';
             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/readiness" class="nav-link">
                 <i class="bi bi-clipboard2-check"></i> آمادگی مرحلهٔ ۲
             </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/licenses" class="nav-link" target="_blank">
+                <i class="bi bi-database"></i> کش مجوزهای ملی
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/lookups" class="nav-link" target="_blank">
+                <i class="bi bi-list-ul"></i> لیست‌های مرجع
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/admin/jobs" class="nav-link" target="_blank">
+                <i class="bi bi-list-task"></i> صف کارها
+            </a>
+            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/admin/logs" class="nav-link" target="_blank">
+                <i class="bi bi-journal-text"></i> لاگ‌های سیستم
+            </a>
             <?php endif; ?>
 
             <h6>حساب</h6>
