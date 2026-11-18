@@ -23,7 +23,13 @@ INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
 ('fee_default_amount', '500000'),
 ('fee_rural_auto_eligible', '1'),
 ('fee_modal_enabled', '1'),
-('fee_modal_dismissable', '1')
+('fee_modal_dismissable', '1'),
+('sync_direction', 'inbound'),
+('sync_two_way_enabled', '0'),
+('upstream_base', 'https://qr.mojavez.ir'),
+('sync_cycle_interval_min', '60'),
+('sync_auto_confirm_threshold', '90'),
+('sync_operator_flag_threshold', '50')
 ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
 
 -- === Service Types (5) — replace the Phase-14 seed with the full v2 data ===
