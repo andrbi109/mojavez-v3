@@ -98,7 +98,15 @@ final class Connection
             // migration files split on ; into many exec() calls) don't trip
             // the "unbuffered queries active" error when the next query starts
             // before the previous result set is fully consumed.
-            PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
+            //
+            // PHP 8.5 deprecated PDO::MYSQL_ATTR_USE_BUFFERED_QUERY in favor of
+            // Pdo\Mysql::ATTR_USE_BUFFERED_QUERY. Pdo\Mysql exists since PHP 8.4.
+            // Use the new constant when available (PHP 8.4+), fall back to the
+            // old one for PHP 8.2/8.3. The @ suppresses the deprecation notice
+            // on PHP 8.5+ when reading the old constant in the fallback branch.
+            (class_exists('Pdo\Mysql') && defined('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY')
+                ? Pdo\Mysql::ATTR_USE_BUFFERED_QUERY
+                : @PDO::MYSQL_ATTR_USE_BUFFERED_QUERY) => true,
         ];
 
         $maxAttempts = 3;
