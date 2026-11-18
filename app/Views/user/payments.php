@@ -4,6 +4,8 @@
  */
 /** @var array $payments */
 /** @var string $baseUrl */
+
+use App\Shared\Support\PersianDate;
 ?>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -45,7 +47,7 @@
                                 <td><?= htmlspecialchars((string)($p['purpose'] ?? ($p['description'] ?? '—')), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= number_format($amount) ?> <small class="text-muted">ریال</small></td>
                                 <td><span class="badge bg-<?= $badge ?>"><?= htmlspecialchars($status ?: '—', ENT_QUOTES, 'UTF-8') ?></span></td>
-                                <td class="small text-muted"><?= htmlspecialchars((string)($p['created_at'] ?? ''), ENT_QUOTES) ?></td>
+                                <td class="small text-muted"><?= htmlspecialchars(PersianDate::format((string)($p['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>

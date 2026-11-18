@@ -6,6 +6,7 @@ namespace App\Modules\Core\Services;
 use App\Modules\Core\Domain\Enums\ApplicantStatus;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
+use App\Shared\Persistence\Connection;
 use App\Shared\Support\Config;
 use App\Shared\Support\StructuredLogger;
 
@@ -28,17 +29,30 @@ use App\Shared\Support\StructuredLogger;
  *   updatePriorities() — set priority=1 for applications whose
  *     registration_completed_at is older than PRIORITY_DAYS (12) and that
  *     are still in pre-issue (so they get processed first by experts).
+ *
+ * Phase 45 (v2.1.1) — when the system changes an applicant's status
+ * (either via cancelExpired() or autoProgress()), a user_notification
+ * row is inserted for the applicant's user_account_id so the user sees
+ * the change in their /panel/notifications surface. The notification
+ * insert is best-effort: a DB error doesn't abort the status change.
  */
 final class AutoCancelService
 {
     public function __construct(
         private readonly ApplicantRepositoryInterface $applicants,
         private readonly StatusLogRepositoryInterface $statusLog,
-        private readonly StructuredLogger $logger
+        private readonly StructuredLogger $logger,
+        private readonly ?Connection $conn = null,
     ) {}
 
     /**
      * Auto-cancel expired applications. Returns the count of cancelled.
+     *
+     * Phase 45 (v2.1.1) — for each cancelled applicant, inserts a
+     * user_notifications row (type='status_change') so the user is
+     * informed that their application was auto-cancelled. The notification
+     * is best-effort: a failure to insert is logged but does not abort
+     * the cancellation loop.
      */
     public function cancelExpired(): int
     {
@@ -59,6 +73,15 @@ final class AutoCancelService
                 'tracking_code'  => $applicant->trackingCode,
                 'expired_days'   => $days,
             ]);
+
+            // Phase 45 (v2.1.1) — notify the user that their application
+            // was auto-cancelled by the system.
+            $this->notifyStatusChange(
+                $applicant->id,
+                ApplicantStatus::Cancelled,
+                "لغو خودکار به دلیل عدم تکمیل پس از {$days} روز از ثبت درخواست صدور"
+            );
+
             $count++;
         }
         return $count;
@@ -222,9 +245,72 @@ final class AutoCancelService
                     'to'             => $target->value,
                     'stuck_days'     => $days,
                 ]);
+
+                // Phase 45 (v2.1.1) — notify the user that the system
+                // auto-progressed their application to the next status.
+                $this->notifyStatusChange(
+                    $applicantId,
+                    $target,
+                    "پیشرفت خودکار به دلیل توقف بیش از {$days} روز در وضعیت «{$slug}»"
+                );
+
                 $count++;
             }
         }
         return $count;
+    }
+
+    /**
+     * Best-effort: insert a user_notifications row (type='status_change')
+     * for the given applicant's user_account_id.
+     *
+     * Phase 45 (v2.1.1) — used by cancelExpired() and autoProgress()
+     * so users are notified when the SYSTEM changes their application
+     * status (admin-triggered changes go through
+     * AdminController::changeStatus() which has its own notify logic).
+     *
+     * Skips silently when:
+     *   - the AutoCancelService has no Connection injected (e.g. unit
+     *     tests that don't pass a real DB),
+     *   - the applicant has no user_account_id (admin-only cases),
+     *   - the INSERT fails (DB error) — the status change itself has
+     *     already succeeded and we don't want to roll it back.
+     *
+     * @param int              $applicantId  Applicants row id.
+     * @param ApplicantStatus  $newStatus    The new status (for the title).
+     * @param string           $description  The status_log description
+     *                                       (used as the notification body).
+     */
+    private function notifyStatusChange(int $applicantId, ApplicantStatus $newStatus, string $description): void
+    {
+        if ($this->conn === null) {
+            return;
+        }
+        try {
+            $userAccountId = $this->conn->scalar(
+                'SELECT user_account_id FROM applicants WHERE id = ?',
+                [$applicantId]
+            );
+            if ($userAccountId === null || (int)$userAccountId <= 0) {
+                return;
+            }
+            $this->conn->execute(
+                'INSERT INTO user_notifications (user_account_id, applicant_id, type, title, body, is_read, created_at) '
+                . 'VALUES (?, ?, ?, ?, ?, 0, NOW())',
+                [
+                    (int)$userAccountId,
+                    $applicantId,
+                    'status_change',
+                    'تغییر وضعیت پرونده',
+                    sprintf('وضعیت پروندهٔ شما به «%s» تغییر یافت. %s', $newStatus->titleFa(), $description),
+                ]
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('AutoCancel: failed to insert status-change notification', [
+                '_module'        => 'core',
+                'applicant_id'   => $applicantId,
+                'error'          => $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -16,6 +16,8 @@
 /** @var int $unreadCount */
 /** @var string $baseUrl */
 
+use App\Shared\Support\PersianDate;
+
 $serviceTitle = function (int $id) use ($serviceTypes): string {
     return $serviceTypes[$id] ?? '—';
 };
@@ -83,7 +85,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                                 ?>
                                 <li class="mb-2">
                                     <div class="fw-semibold"><?= htmlspecialchars($tStatus, ENT_QUOTES, 'UTF-8') ?></div>
-                                    <div class="small text-muted"><?= htmlspecialchars($tCreated, ENT_QUOTES) ?></div>
+                                    <div class="small text-muted"><?= htmlspecialchars(PersianDate::format($tCreated), ENT_QUOTES, 'UTF-8') ?></div>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -105,7 +107,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                            class="list-group-item list-group-item-action <?= empty($n['is_read']) ? 'fw-semibold' : '' ?>">
                             <div class="d-flex w-100 justify-content-between">
                                 <span class="small"><?= htmlspecialchars((string)($n['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
-                                <small class="text-muted"><?= htmlspecialchars((string)($n['created_at'] ?? ''), ENT_QUOTES) ?></small>
+                                <small class="text-muted"><?= htmlspecialchars(PersianDate::format((string)($n['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></small>
                             </div>
                             <div class="small text-muted text-truncate"><?= htmlspecialchars((string)($n['body'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
                         </a>
@@ -124,7 +126,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                         <div class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="small fw-semibold"><?= htmlspecialchars((string)($p['purpose'] ?? ($p['description'] ?? 'پرداخت')), ENT_QUOTES, 'UTF-8') ?></div>
-                                <small class="text-muted"><?= htmlspecialchars((string)($p['created_at'] ?? ''), ENT_QUOTES) ?></small>
+                                <small class="text-muted"><?= htmlspecialchars(PersianDate::format((string)($p['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></small>
                             </div>
                             <span class="badge bg-<?= ($p['status'] ?? '') === 'approved' ? 'success' : 'secondary' ?>">
                                 <?= htmlspecialchars((string)($p['status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>

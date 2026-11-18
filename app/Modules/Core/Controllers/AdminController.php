@@ -246,6 +246,13 @@ final class AdminController extends Controller
 
     /**
      * POST /admin/change-status — change an applicant's status.
+     *
+     * Phase 45 (v2.1.1) — after the status change, inserts a
+     * user_notifications row so the applicant sees the change in their
+     * user panel (notifications surface). The notification is created
+     * even when description is empty (we use the new status's Persian
+     * title). Skips silently if the applicant has no user_account_id
+     * (e.g. admin-created cases without a linked user).
      */
     public function changeStatus(Request $request, array $params = []): Response
     {
@@ -274,6 +281,40 @@ final class AdminController extends Controller
             'to'             => $newStatus->value,
             'by'             => $this->session->get('admin_id'),
         ]);
+
+        // Phase 45 (v2.1.1) — notify the user (applicant) that their
+        // application status has changed. Inserted into user_notifications
+        // so it surfaces in the user panel (/panel/notifications). Skips
+        // silently if the applicant has no user_account_id (e.g.
+        // admin-created cases without a linked user_account).
+        try {
+            $userAccountId = $applicant->userAccountId;
+            if ($userAccountId !== null && $userAccountId > 0) {
+                $notifBody = $description !== ''
+                    ? sprintf('وضعیت پروندهٔ شما به «%s» تغییر یافت. %s', $newStatus->titleFa(), $description)
+                    : sprintf('وضعیت پروندهٔ شما به «%s» تغییر یافت.', $newStatus->titleFa());
+                $this->conn->execute(
+                    'INSERT INTO user_notifications (user_account_id, applicant_id, type, title, body, is_read, created_at) '
+                    . 'VALUES (?, ?, ?, ?, ?, 0, NOW())',
+                    [
+                        $userAccountId,
+                        $id,
+                        'status_change',
+                        'تغییر وضعیت پرونده',
+                        $notifBody,
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            // Best-effort — don't fail the status change if the
+            // notification can't be persisted (e.g. DB error).
+            $this->logger->warning('Failed to insert status-change notification', [
+                '_module'        => 'core',
+                'applicant_id'   => $id,
+                'error'          => $e->getMessage(),
+            ]);
+        }
+
         return $this->jsonSuccess(['changed' => true, 'new_status' => $newStatus->value]);
     }
 

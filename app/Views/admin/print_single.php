@@ -93,6 +93,9 @@ $faNum = static fn ($s): string => str_replace(
 );
 
 // Gregorian → Jalali formatter (date only). Returns '—' for null/empty/zero.
+//
+// Phase 45 (v2.1.1) — falls back to the static PersianDate::format()
+// helper when no $persianDate instance is injected.
 $fmtDate = static function (?string $greg) use ($persianDate, $e): string {
     if ($greg === null || $greg === '' || $greg === '0000-00-00' || $greg === '0000-00-00 00:00:00') {
         return '—';
@@ -100,7 +103,7 @@ $fmtDate = static function (?string $greg) use ($persianDate, $e): string {
     if ($persianDate instanceof PersianDate) {
         return $e($persianDate->formatGregorianDateTime($greg));
     }
-    return $e($greg);
+    return $e(PersianDate::format((string)$greg));
 };
 
 // Gregorian → Jalali formatter (date + time). Used in the timeline.
@@ -111,7 +114,7 @@ $fmtDateTime = static function (?string $greg) use ($persianDate, $e): string {
     if ($persianDate instanceof PersianDate) {
         return $e($persianDate->formatGregorianDateTimeFull($greg));
     }
-    return $e($greg);
+    return $e(PersianDate::format((string)$greg));
 };
 
 // Document type label map (mirror of v2 print.php's $docLabels + the
@@ -151,7 +154,17 @@ $licenseColorCss = match ($licenseState) {
 };
 
 // Today's Jalali date for the print-date stamp in the header.
-$todayJalali = $persianDate instanceof PersianDate ? $persianDate->todayJalali() : date('Y-m-d');
+//
+// Phase 45 (v2.1.1) — when no $persianDate instance is injected, fall
+// back to PersianDate::format() (which works statically) instead of
+// returning a Gregorian date string.
+if ($persianDate instanceof PersianDate) {
+    $todayJalali = $persianDate->todayJalali();
+} else {
+    // PersianDate::format() returns "1405/08/26 HH:MM" — strip the time.
+    $formatted = PersianDate::format(date('Y-m-d H:i'));
+    $todayJalali = trim(strtok($formatted, ' ')) ?: date('Y-m-d');
+}
 $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
 ?>
 <!doctype html>

@@ -3,6 +3,9 @@
 /** @var array $statusLog */
 /** @var string $siteName */
 /** @var string $ownerName */
+
+use App\Shared\Support\PersianDate;
+
 $siteName ??= 'سامانهٔ مجوز';
 $ownerName ??= '';
 ?>
@@ -229,7 +232,7 @@ $ownerName ??= '';
                     <tr>
                         <td><?= $i + 1 ?></td>
                         <td><?= htmlspecialchars($entry->statusName, ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr"><?= htmlspecialchars($entry->createdAt, ENT_QUOTES, 'UTF-8') ?></td>
+                        <td dir="ltr"><?= htmlspecialchars(PersianDate::format($entry->createdAt), ENT_QUOTES, 'UTF-8') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -241,7 +244,7 @@ $ownerName ??= '';
             <?php if ($ownerName !== ''): ?>
                 · مدیریت: <?= htmlspecialchars($ownerName, ENT_QUOTES, 'UTF-8') ?>
             <?php endif; ?>
-            · تاریخ چاپ: <?= htmlspecialchars(date('Y-m-d H:i'), ENT_QUOTES, 'UTF-8') ?>
+            · تاریخ چاپ: <?= htmlspecialchars(PersianDate::format(date('Y-m-d H:i')), ENT_QUOTES, 'UTF-8') ?>
         </div>
     </div>
 
