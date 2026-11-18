@@ -181,3 +181,25 @@ app/Views/admin/report_stats.php:<?= $count ?>
 # hidden form inputs, modal ids). Suppressed per-file:variable-name.
 # -----------------------------------------------------------------------------
 app/Views/admin/license_requests.php:<?= $requestId ?>
+
+# -----------------------------------------------------------------------------
+# 8. Phase 36 (v2.0.2) — view_application + edit_application integer casts.
+#
+# $conf in admin/view_application.php is `(int)($applicant->matchConfidence ?? 0)`
+# — a DB-backed int field on the Applicant VO, cast to int. Used to color
+# the golden-link confidence badge (>= 80 = success, >= 50 = warning,
+# else secondary) and to display the percentage. Not user input.
+#
+# $y / $m / $d in admin/edit_application.php are the 3 Jalali birth-date
+# select <option> values — $y iterates 1300..currentPersianYear (int),
+# $m = $i + 1 where $i is the array index of $months (int), $d iterates
+# 1..31 (int). All loop-counter ints — no user input flows into them.
+#
+# $name in admin/edit_application.php is the Persian month name from the
+# local $months array (a fixed list of 12 Persian strings). Not user input.
+# -----------------------------------------------------------------------------
+app/Views/admin/view_application.php:<?= $conf ?>
+app/Views/admin/edit_application.php:<?= $y ?>
+app/Views/admin/edit_application.php:<?= $m ?>
+app/Views/admin/edit_application.php:<?= $d ?>
+app/Views/admin/edit_application.php:<?= $name ?>

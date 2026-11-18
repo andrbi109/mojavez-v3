@@ -1,11 +1,14 @@
 <?php
 /**
- * admin/edit_application.php — edit an existing applicant case file.
+ * admin/edit_application.php — edit an existing applicant's case file.
  *
  * Phase 17 (v1.8.0): rendered by AdminController::editApplication().
- * Shows the applicant's full editable data (identity, service_type,
- * job_detail, property_detail) + a list of uploaded documents with
- * delete buttons + an "add document" form. POSTs to /admin/update.
+ * Phase 36 (v2.0.2): port v2's full edit form — all identity fields
+ *   (birth_date as 3 Jalali selects, marital_status, children_count,
+ *   physical_condition, disability_details, income_decile,
+ *   has_court_case, has_active_loan, has_overdue_installments), all
+ *   property fields (district, rural_district, village), and the
+ *   18-status change dropdown (reuses the existing POST /admin/change-status).
  *
  * @var \App\Modules\Core\Domain\Applicant $applicant
  * @var array<string,mixed>                  $row  raw applicants row (all columns)
@@ -13,6 +16,8 @@
  * @var \App\Modules\Core\Domain\PropertyDetail|null $propertyDetail
  * @var array<int, \App\Modules\Core\Domain\Document> $documents
  * @var array<int, array<string,mixed>>       $serviceTypes
+ * @var array<int, array<string,mixed>>       $allStatuses
+ * @var \App\Shared\Support\PersianDate       $persianDate
  * @var array<int,string>                     $errors
  * @var string $csrfField
  * @var string $baseUrl
@@ -21,6 +26,8 @@
 /** @var array<string,mixed> $row */
 /** @var array<int, \App\Modules\Core\Domain\Document> $documents */
 /** @var array<int, array<string,mixed>> $serviceTypes */
+/** @var array<int, array<string,mixed>> $allStatuses */
+/** @var \App\Shared\Support\PersianDate $persianDate */
 /** @var array<int,string> $errors */
 /** @var string $csrfField */
 /** @var string $baseUrl */
@@ -28,12 +35,15 @@
 use App\Modules\Core\Domain\Document;
 use App\Modules\Core\Domain\JobDetail;
 use App\Modules\Core\Domain\PropertyDetail;
+use App\Shared\Support\PersianDate;
 
 $row           ??= [];
 $jobDetail     ??= null;
 $propertyDetail ??= null;
 $documents     ??= [];
 $serviceTypes  ??= [];
+$allStatuses   ??= [];
+$persianDate   ??= null;
 $errors        ??= [];
 $csrfField     ??= '';
 $baseUrl       ??= '/';
@@ -61,6 +71,7 @@ $val = static function (string $key, ?string $default = '') use ($row, $jobDetai
             'county'             => $propertyDetail->county,
             'city'               => $propertyDetail->city,
             'district'           => (string)($propertyDetail->district ?? ''),
+            'rural_district'     => (string)($propertyDetail->ruralDistrict ?? ''),
             'village'            => (string)($propertyDetail->village ?? ''),
             'electricity_bill_id' => $propertyDetail->electricityBillId,
             'address_street'     => (string)($propertyDetail->addressStreet ?? ''),
@@ -75,6 +86,40 @@ $val = static function (string $key, ?string $default = '') use ($row, $jobDetai
 };
 
 $applicantId = $applicant->id;
+$currentStatus = $applicant->currentStatus;
+
+// Parse the stored Gregorian birth_date into 3 Jalali Y/M/D values for
+// the 3-select dropdown.
+$birthParts = ['year' => '', 'month' => '', 'day' => ''];
+$birthGreg = (string)($row['birth_date'] ?? '');
+if ($birthGreg !== '' && $birthGreg !== '0000-00-00' && $persianDate instanceof PersianDate) {
+    try {
+        $parts = explode('-', $birthGreg);
+        if (count($parts) === 3) {
+            [$jy, $jm, $jd] = $persianDate->gregorianToJalali((int)$parts[0], (int)$parts[1], (int)$parts[2]);
+            $birthParts['year']  = (string)$jy;
+            $birthParts['month'] = (string)$jm;
+            $birthParts['day']   = (string)$jd;
+        }
+    } catch (\Throwable) {
+        // ignore — leave empty
+    }
+}
+
+$months = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+$currentPersianYear = $persianDate instanceof PersianDate
+    ? (int)explode('/', $persianDate->todayJalali())[0]
+    : 1400;
+
+$docLabels = [
+    'national_card'    => 'کارت ملی',
+    'birth_cert'       => 'شناسنامه',
+    'ownership_doc'    => 'مدرک مالکیت',
+    'vocational_cert'  => 'گواهی فنی‌وحرفه‌ای',
+    'education_degree' => 'مدرک تحصیلی',
+    'product_photos'   => 'تصویر محصول',
+    'optional'         => 'سایر',
+];
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -96,6 +141,58 @@ $applicantId = $applicant->id;
 </div>
 <?php endif; ?>
 
+<!-- ====== Phase 36: Status change dropdown — reuses /admin/change-status ====== -->
+<div class="card border-primary mb-3">
+    <div class="card-header bg-primary-subtle d-flex align-items-center gap-2">
+        <i class="bi bi-arrow-repeat text-primary"></i>
+        <strong>تغییر وضعیت پرونده (چرخهٔ ۱۸ وضعیت)</strong>
+    </div>
+    <div class="card-body">
+        <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/change-status">
+            <?= $csrfField ?>
+            <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label">وضعیت فعلی</label>
+                    <div class="form-control-plaintext">
+                        <span class="badge text-bg-<?= htmlspecialchars($currentStatus->badgeColor(), ENT_QUOTES, 'UTF-8') ?> fs-6">
+                            <?= htmlspecialchars($currentStatus->titleFa(), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                        <small class="text-muted ms-2">(ترتیب: <?= $currentStatus->order() ?>)</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label for="new_status" class="form-label">انتخاب وضعیت جدید</label>
+                    <select class="form-select" id="new_status" name="new_status" required>
+                        <option value="">— انتخاب کنید —</option>
+                        <?php foreach ($allStatuses as $s): ?>
+                            <?php $isCurrent = $s['value'] === $currentStatus->value; ?>
+                            <option value="<?= htmlspecialchars($s['value'], ENT_QUOTES, 'UTF-8') ?>"
+                                <?= $isCurrent ? 'disabled' : '' ?>
+                                data-color="<?= htmlspecialchars($s['badgeColor'], ENT_QUOTES) ?>"
+                                data-terminal="<?= $s['isTerminal'] ? '1' : '0' ?>">
+                                <?= htmlspecialchars($s['label'], ENT_QUOTES, 'UTF-8') ?>
+                                <?= $s['isTerminal'] ? ' (پایانی)' : '' ?>
+                                <?= $isCurrent ? ' (فعلی)' : '' ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="status_description" class="form-label">توضیح (اختیاری)</label>
+                    <input type="text" class="form-control" id="status_description" name="description"
+                           placeholder="دلیل تغییر وضعیت..." maxlength="500">
+                </div>
+            </div>
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary" id="btn-change-status">
+                    <i class="bi bi-check2-circle"></i> اعمال تغییر وضعیت
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/update">
     <?= $csrfField ?>
     <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">
@@ -105,12 +202,12 @@ $applicantId = $applicant->id;
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label">نام</label>
+                    <label class="form-label">نام <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="first_name"
                            value="<?= $val('first_name') ?>" maxlength="50" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">نام خانوادگی</label>
+                    <label class="form-label">نام خانوادگی <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="last_name"
                            value="<?= $val('last_name') ?>" maxlength="50" required>
                 </div>
@@ -119,9 +216,14 @@ $applicantId = $applicant->id;
                     <input type="text" class="form-control" value="<?= $val('national_code') ?>" disabled dir="ltr">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">موبایل</label>
+                    <label class="form-label">موبایل <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="mobile"
                            value="<?= $val('mobile') ?>" maxlength="11" pattern="09\d{9}" required dir="ltr">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">کد پستی <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="postal_code"
+                           value="<?= $val('postal_code') ?>" maxlength="10" pattern="\d{10}" required dir="ltr">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">نام پدر</label>
@@ -129,9 +231,64 @@ $applicantId = $applicant->id;
                            value="<?= $val('father_name') ?>" maxlength="50">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">کد پستی</label>
-                    <input type="text" class="form-control" name="postal_code"
-                           value="<?= $val('postal_code') ?>" maxlength="10" pattern="\d{10}" required dir="ltr">
+                    <label class="form-label">تاریخ تولد (شمسی)</label>
+                    <div class="row g-1">
+                        <div class="col">
+                            <select class="form-select" name="birth_year" id="birth_year_edit">
+                                <option value="">سال</option>
+                                <?php for ($y = 1300; $y <= $currentPersianYear; $y++): ?>
+                                    <option value="<?= $y ?>" <?= $birthParts['year'] === (string)$y ? 'selected' : '' ?>><?= $y ?></option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <select class="form-select" name="birth_month" id="birth_month_edit">
+                                <option value="">ماه</option>
+                                <?php foreach ($months as $i => $name):
+                                    $m = $i + 1; ?>
+                                    <option value="<?= $m ?>" <?= $birthParts['month'] === (string)$m ? 'selected' : '' ?>><?= $name ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <select class="form-select" name="birth_day" id="birth_day_edit">
+                                <option value="">روز</option>
+                                <?php for ($d = 1; $d <= 31; $d++): ?>
+                                    <option value="<?= $d ?>" <?= $birthParts['day'] === (string)$d ? 'selected' : '' ?>><?= $d ?></option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">وضعیت تأهل</label>
+                    <select class="form-select" name="marital_status" id="marital_status_edit">
+                        <option value="">—</option>
+                        <option value="مجرد" <?= $val('marital_status') === 'مجرد' ? 'selected' : '' ?>>مجرد</option>
+                        <option value="متأهل" <?= $val('marital_status') === 'متأهل' ? 'selected' : '' ?>>متأهل</option>
+                    </select>
+                </div>
+                <div class="col-md-6" id="children_wrapper_edit" style="display: <?= $val('marital_status') === 'متأهل' ? 'block' : 'none' ?>;">
+                    <label class="form-label">تعداد فرزندان</label>
+                    <input type="number" class="form-control" name="children_count"
+                           value="<?= $val('children_count', '0') ?>" min="0">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">وضعیت جسمانی</label>
+                    <select class="form-select" name="physical_condition" id="physical_condition_edit">
+                        <option value="سالم" <?= $val('physical_condition') === 'سالم' ? 'selected' : '' ?>>سالم</option>
+                        <option value="معلولیت" <?= $val('physical_condition') === 'معلولیت' ? 'selected' : '' ?>>معلولیت</option>
+                    </select>
+                </div>
+                <div class="col-md-6" id="disability_wrapper_edit" style="display: <?= $val('physical_condition') === 'معلولیت' ? 'block' : 'none' ?>;">
+                    <label class="form-label">توضیحات معلولیت</label>
+                    <input type="text" class="form-control" name="disability_details"
+                           value="<?= $val('disability_details') ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">دهک درآمدی (اختیاری)</label>
+                    <input type="number" class="form-control" name="income_decile"
+                           value="<?= $val('income_decile') ?>" min="1" max="10">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">نوع خدمت</label>
@@ -144,6 +301,31 @@ $applicantId = $applicant->id;
                                 <?= htmlspecialchars((string)$st['title'], ENT_QUOTES, 'UTF-8') ?>
                             </option>
                         <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+            <hr class="mt-3">
+            <h6>سؤالات تکمیلی</h6>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">پروندهٔ قضایی؟</label>
+                    <select class="form-select" name="has_court_case">
+                        <option value="خیر" <?= $val('has_court_case') === 'خیر' ? 'selected' : '' ?>>خیر</option>
+                        <option value="بله" <?= $val('has_court_case') === 'بله' ? 'selected' : '' ?>>بله</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">وام فعال؟</label>
+                    <select class="form-select" name="has_active_loan">
+                        <option value="خیر" <?= $val('has_active_loan') === 'خیر' ? 'selected' : '' ?>>خیر</option>
+                        <option value="بله" <?= $val('has_active_loan') === 'بله' ? 'selected' : '' ?>>بله</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">اقساط معوقه؟</label>
+                    <select class="form-select" name="has_overdue_installments">
+                        <option value="خیر" <?= $val('has_overdue_installments') === 'خیر' ? 'selected' : '' ?>>خیر</option>
+                        <option value="بله" <?= $val('has_overdue_installments') === 'بله' ? 'selected' : '' ?>>بله</option>
                     </select>
                 </div>
             </div>
@@ -210,9 +392,24 @@ $applicantId = $applicant->id;
                            value="<?= $val('city') ?>" maxlength="50">
                 </div>
                 <div class="col-md-4">
+                    <label class="form-label">بخش</label>
+                    <input type="text" class="form-control" name="district"
+                           value="<?= $val('district') ?>" maxlength="50" placeholder="بخش">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">دهستان</label>
+                    <input type="text" class="form-control" name="rural_district"
+                           value="<?= $val('rural_district') ?>" maxlength="50" placeholder="دهستان">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">روستا</label>
+                    <input type="text" class="form-control" name="village"
+                           value="<?= $val('village') ?>" maxlength="50" placeholder="روستا">
+                </div>
+                <div class="col-md-4">
                     <label class="form-label">شناسه قبض برق</label>
                     <input type="text" class="form-control" name="electricity_bill_id"
-                           value="<?= $val('electricity_bill_id') ?>" maxlength="20">
+                           value="<?= $val('electricity_bill_id') ?>" maxlength="20" dir="ltr">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">خیابان</label>
@@ -243,7 +440,9 @@ $applicantId = $applicant->id;
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-file-earmark"></i> مدارک</span>
+        <span><i class="bi bi-file-earmark"></i> مدارک
+            <span class="badge text-bg-secondary ms-1"><?= count($documents) ?></span>
+        </span>
         <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse"
                 data-bs-target="#addDocForm" aria-expanded="false" aria-controls="addDocForm">
             <i class="bi bi-plus-lg"></i> افزودن مدرک
@@ -258,8 +457,15 @@ $applicantId = $applicant->id;
                 <div class="row g-2 align-items-end">
                     <div class="col-md-4">
                         <label class="form-label">نوع مدرک</label>
-                        <input type="text" class="form-control" name="doc_type"
-                               placeholder="مثلاً national_id, personal_photo" required>
+                        <select class="form-select" name="doc_type">
+                            <option value="optional">سایر</option>
+                            <option value="national_card">کارت ملی</option>
+                            <option value="birth_cert">شناسنامه</option>
+                            <option value="ownership_doc">مدرک مالکیت</option>
+                            <option value="vocational_cert">گواهی فنی‌وحرفه‌ای</option>
+                            <option value="education_degree">مدرک تحصیلی</option>
+                            <option value="product_photos">تصویر محصولات</option>
+                        </select>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">فایل</label>
@@ -281,46 +487,103 @@ $applicantId = $applicant->id;
         <?php if ($documents === []): ?>
             <div class="text-muted text-center py-4">هیچ مدرکی ثبت نشده است.</div>
         <?php else: ?>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>نوع</th>
-                            <th>نام فایل</th>
-                            <th>تاریخ بارگذاری</th>
-                            <th class="text-end">عملیات</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($documents as $doc): ?>
-                            <?php \assert($doc instanceof Document); ?>
-                            <tr>
-                                <td>
-                                    <span class="badge text-bg-secondary">
-                                        <?= htmlspecialchars($doc->docType, ENT_QUOTES, 'UTF-8') ?>
+            <!-- Phase 36: document thumbnails with type label — mirrors v2 edit form -->
+            <div class="row g-2">
+                <?php foreach ($documents as $doc): ?>
+                    <?php \assert($doc instanceof Document); ?>
+                    <?php $docLabel = $docLabels[$doc->docType] ?? $doc->docType; ?>
+                    <div class="col-6 col-md-3 col-xl-2">
+                        <div class="card h-100 p-2 text-center" style="border-style:dashed;">
+                            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>document/inline/<?= (int)$doc->id ?>" target="_blank" rel="noopener">
+                                <?php if ($doc->isImage()): ?>
+                                    <img src="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>document/thumb/<?= (int)$doc->id ?>"
+                                         class="rounded mb-1" style="height:70px;width:100%;object-fit:cover;"
+                                         alt="<?= htmlspecialchars($docLabel, ENT_QUOTES, 'UTF-8') ?>">
+                                <?php elseif ($doc->isPdf()): ?>
+                                    <span class="d-block py-3" style="color:var(--bs-danger, #dc3545)">
+                                        <i class="bi bi-file-earmark-pdf" style="font-size:1.8rem"></i>
                                     </span>
-                                </td>
-                                <td><?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="text-muted small" dir="ltr">
-                                    <?= htmlspecialchars($doc->uploadedAt, ENT_QUOTES, 'UTF-8') ?>
-                                </td>
-                                <td class="text-end">
-                                    <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/delete-document"
-                                          class="d-inline"
-                                          onsubmit="return confirm('حذف این مدرک؟ این عمل قابل بازگشت نیست.')">
-                                        <?= $csrfField ?>
-                                        <input type="hidden" name="document_id" value="<?= $doc->id ?>">
-                                        <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash"></i> حذف
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                                <?php else: ?>
+                                    <span class="d-block py-3" style="color:var(--bs-secondary, #6c757d)">
+                                        <i class="bi bi-file-earmark-text" style="font-size:1.8rem"></i>
+                                    </span>
+                                <?php endif; ?>
+                            </a>
+                            <span class="badge text-bg-info mb-1" style="font-size:.65rem"><?= htmlspecialchars($docLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                            <small class="text-muted text-truncate d-block" dir="ltr"
+                                   title="<?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?>"
+                                   style="font-size:.7rem"><?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?></small>
+                            <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/delete-document"
+                                  class="mt-1"
+                                  onsubmit="return confirm('حذف این مدرک؟ این عمل قابل بازگشت نیست.')">
+                                <?= $csrfField ?>
+                                <input type="hidden" name="document_id" value="<?= $doc->id ?>">
+                                <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-danger w-100" style="font-size:.7rem">
+                                    <i class="bi bi-trash"></i> حذف
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
             </div>
         <?php endif; ?>
     </div>
 </div>
+
+<script>
+// Marital status → children count toggle
+(function() {
+    var ms = document.getElementById('marital_status_edit');
+    var cw = document.getElementById('children_wrapper_edit');
+    if (ms && cw) {
+        ms.addEventListener('change', function() {
+            cw.style.display = this.value === 'متأهل' ? 'block' : 'none';
+        });
+    }
+    // Physical condition → disability details toggle
+    var pc = document.getElementById('physical_condition_edit');
+    var dw = document.getElementById('disability_wrapper_edit');
+    if (pc && dw) {
+        pc.addEventListener('change', function() {
+            dw.style.display = this.value === 'معلولیت' ? 'block' : 'none';
+        });
+    }
+})();
+
+// Phase 36: status change dropdown — color the submit button by the
+// selected target status (mirrors the view_application.php behaviour).
+(function() {
+    var sel = document.getElementById('new_status');
+    if (!sel) return;
+    sel.addEventListener('change', function() {
+        var opt = sel.options[sel.selectedIndex];
+        var btn = document.getElementById('btn-change-status');
+        if (!opt || !opt.value) { btn.className = 'btn btn-primary'; return; }
+        var color = opt.getAttribute('data-color') || 'primary';
+        var terminal = opt.getAttribute('data-terminal') === '1';
+        btn.className = 'btn btn-' + (terminal ? 'danger' : color);
+    });
+})();
+
+// Phase 36: hide days beyond the Jalali month length (1-31 → 29/30/31)
+(function() {
+    var ySel = document.getElementById('birth_year_edit');
+    var mSel = document.getElementById('birth_month_edit');
+    var dSel = document.getElementById('birth_day_edit');
+    if (!ySel || !mSel || !dSel) return;
+    function updateDays() {
+        var year = parseInt(ySel.value, 10) || 1399;
+        var month = parseInt(mSel.value, 10) || 1;
+        var maxDays = (month <= 6) ? 31 : (month <= 11) ? 30 : (((year + 12) % 33 % 4) === 1) ? 30 : 29;
+        for (var i = 1; i <= 31; i++) {
+            var opt = dSel.querySelector('option[value="' + i + '"]');
+            if (opt) opt.style.display = (i <= maxDays) ? '' : 'none';
+        }
+        if (parseInt(dSel.value, 10) > maxDays) dSel.value = '';
+    }
+    ySel.addEventListener('change', updateDays);
+    mSel.addEventListener('change', updateDays);
+    updateDays();
+})();
+</script>
