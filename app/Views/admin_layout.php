@@ -128,7 +128,6 @@ $renderLinks = function (array $items) use ($baseUrl): void {
             <h6>مالی</h6>
             <?php $renderLinks([
                 ['href' => 'admin/payments',          'icon' => 'bi-credit-card', 'label' => 'پرداخت‌ها'],
-                ['href' => 'admin/payment-channels',   'icon' => 'bi-bank',        'label' => 'کانال‌های پرداخت'],
             ]); ?>
 
             <h6>حساب</h6>

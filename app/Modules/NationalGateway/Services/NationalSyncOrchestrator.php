@@ -366,6 +366,75 @@ final class NationalSyncOrchestrator
     }
 
     /**
+     * Return summary info about the sync system for the status page.
+     * Includes: direction, two_way_enabled, last cycle info, counts.
+     *
+     * @return array<string,mixed>
+     */
+    public function syncInfo(): array
+    {
+        $direction = $this->readSetting('sync_direction', 'inbound');
+        $twoWay = $this->readSetting('sync_two_way_enabled', '0') === '1'
+               && $direction === 'two_way';
+        $lastCycle = $this->auditRepo->latestCycleSummary();
+
+        // Count pending operator-flagged matches.
+        $pendingCount = 0;
+        try {
+            $conn = $this->conn;
+            $row = $conn->one(
+                "SELECT COUNT(*) AS cnt FROM sync_audit_log
+                 WHERE action = 'operator_flagged'
+                   AND (review_decision IS NULL OR review_decision = '')"
+            );
+            if ($row !== null) {
+                $pendingCount = (int)$row['cnt'];
+            }
+        } catch (\Throwable) {
+            // best-effort
+        }
+
+        return [
+            'direction'        => $direction,
+            'two_way_enabled'  => $twoWay,
+            'last_cycle'       => $lastCycle,
+            'pending_count'    => $pendingCount,
+        ];
+    }
+
+    /**
+     * Return pending operator-flagged matches for review.
+     *
+     * @param int $limit
+     * @return array<int,array<string,mixed>>
+     */
+    public function pending(int $limit = 50): array
+    {
+        try {
+            return $this->conn->all(
+                "SELECT sal.id, sal.applicant_id, sal.license_id,
+                        sal.action, sal.confidence, sal.context,
+                        sal.created_at, sal.reviewed_by, sal.reviewed_at,
+                        sal.review_decision,
+                        a.tracking_code, a.first_name, a.last_name,
+                        a.national_code, a.current_status,
+                        nl.request_number AS license_number,
+                        nl.status AS license_status
+                 FROM sync_audit_log sal
+                 LEFT JOIN applicants a ON sal.applicant_id = a.id
+                 LEFT JOIN national_licenses nl ON sal.license_id = nl.id
+                 WHERE sal.action IN ('operator_flagged', 'auto_confirmed')
+                   AND (sal.review_decision IS NULL OR sal.review_decision = '')
+                 ORDER BY sal.created_at DESC
+                 LIMIT ?",
+                [$limit]
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
      * Push Stage 2 status changes for an iterable of recently-matched
      * applicant rows. Extracted from runCycle() so the per-row dedup set
      * (D-8-3) is testable in isolation — the SQL window in runCycle()
