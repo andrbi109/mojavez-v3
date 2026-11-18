@@ -464,31 +464,50 @@ final class LicenseController extends Controller
      * a 72h access_token for each — but only the most recent one is
      * practically useful; the older ones are still marked approved so
      * the user can use any of them within the 72h window).
+     *
+     * Phase 55 (v2.2.1) — switched the response from JSON to a
+     * PRG redirect back to /admin/view/{applicant_id}, mirroring the
+     * Phase 50 (v2.1.6) requestPayment() pattern. The previous JSON
+     * response surfaced as raw JSON text in the browser when invoked
+     * from view_application.php's normal file-upload form (the form
+     * has no JS to handle the JSON). The view's existing flash banner
+     * (driven by the session keys 'view_app_message' +
+     * 'view_app_message_kind') now picks up the upload result.
      */
     public function upload(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
         $applicantId = (int)$request->input('applicant_id', 0);
         $applicant = $this->applicants->findById($applicantId);
+
+        // Helper: set the one-shot flash banner on the session and
+        // bounce back to the view. The view reads + clears these keys
+        // in its header (see AdminController::viewApplication).
+        $flash = function (string $msg, string $kind = 'success') use ($applicantId): never {
+            $this->session->set('view_app_message', $msg);
+            $this->session->set('view_app_message_kind', $kind);
+            $this->redirect('/admin/view/' . $applicantId);
+        };
+
         if ($applicant === null) {
-            return $this->jsonError(404, 'not_found', 'پرونده یافت نشد.');
+            $flash('پرونده یافت نشد.', 'danger');
         }
         $file = $request->file('license_image');
         if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            return $this->jsonError(422, 'no_file', 'هیچ فایلی بارگذاری نشده است.');
+            $flash('هیچ فایلی بارگذاری نشده است.', 'danger');
         }
         if (($file['size'] ?? 0) > self::MAX_LICENSE_SIZE) {
-            return $this->jsonError(422, 'too_large', 'حجم فایل بیش از ۱۰ مگابایت است.');
+            $flash('حجم فایل بیش از ۱۰ مگابایت است.', 'danger');
         }
         $realMime = $this->detectMime((string)$file['tmp_name']);
         if (!in_array($realMime, self::LICENSE_ALLOWED_MIME, true)) {
-            return $this->jsonError(422, 'invalid_type', 'فقط فرمت JPEG/PNG/PDF پذیرفته می‌شود.');
+            $flash('فقط فرمت JPEG/PNG/PDF پذیرفته می‌شود.', 'danger');
         }
 
         $ext = $this->mimeToExtension($realMime);
         $relPath = $this->storeLicenseFile($file, $applicantId, $ext);
         if ($relPath === null) {
-            return $this->jsonError(422, 'upload_failed', 'خطا در ذخیرهٔ فایل.');
+            $flash('خطا در ذخیرهٔ فایل.', 'danger');
         }
 
         $documentId = $this->documents->create([
@@ -530,10 +549,10 @@ final class LicenseController extends Controller
             'auto_approved_count' => count($pending),
         ]);
 
-        return $this->jsonSuccess([
-            'document_id'        => $documentId,
-            'auto_approved_count' => count($pending),
-        ]);
+        $autoApprovedNote = count($pending) > 0
+            ? sprintf(' و %d درخواست دسترسی در انتظار نیز به‌طور خودکار تأیید شد.', count($pending))
+            : '';
+        $flash('تصویر مجوز با موفقیت بارگذاری شد.' . $autoApprovedNote, 'success');
     }
 
     /**
