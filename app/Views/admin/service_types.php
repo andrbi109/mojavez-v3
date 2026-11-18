@@ -47,6 +47,27 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
 </div>
 <?php endif; ?>
 
+<!-- Phase 48 (v2.1.4): explain how services / sub-services are managed.
+     Each service type can have many concrete services (e.g. «ثبت درخواست در
+     درگاه ملی مجوزها», «بارگذاری مدارک در سامانه تخصصی وزارت میراث فرهنگی»,
+     «تغییر کد پستی در سامانه املاک و اسکان»); these are not modeled as a
+     separate sub-service table. Instead, each is represented as a
+     fee_group_item under a fee_group whose decile range matches the
+     applicant's income decile, and is priced in the نرخ‌نامه admin page. -->
+<div class="alert alert-info small py-2 mb-3 d-flex align-items-start gap-2">
+    <i class="bi bi-info-circle-fill mt-1"></i>
+    <div>
+        هر نوع خدمت می‌تواند چند «خدمت/زیرخدمت» (مانند «ثبت درخواست در درگاه ملی»،
+        «بارگذاری مدارک در سامانه تخصصی وزارت میراث فرهنگی»، «تغییر کد پستی در
+        سامانه املاک و اسکان») داشته باشد. در نسخهٔ فعلی، این زیرخدمات به‌صورت
+        جدولی جداگانه مدل‌سازی نشده‌اند؛ بلکه هر کدام به‌عنوان یک
+        <strong>آیتم نرخ‌نامه</strong> در گروه دهک درآمد متقاضی قیمت‌گذاری می‌شوند.
+        برای تعریف یا تغییر قیمت زیرخدمات به
+        <a class="alert-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/fee-tariff">بخش «نرخ‌نامه»</a>
+        مراجعه کنید.
+    </div>
+</div>
+
 <div class="card mb-3">
     <div class="card-header">
         <i class="bi <?= $editing === null ? 'bi-plus-lg' : 'bi-pencil' ?>"></i>
@@ -110,7 +131,10 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                         <th>مرجع</th>
                         <th>ترتیب</th>
                         <th>وضعیت</th>
-                        <th>تعداد پرونده‌ها</th>
+                        <th>پرونده‌ها</th>
+                        <th>عناوین مجوز</th>
+                        <th>فیلدهای فرم</th>
+                        <th>مراحل ویزارد</th>
                         <th class="text-end">عملیات</th>
                     </tr>
                 </thead>
@@ -120,6 +144,9 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                             $sid = (int)$r['id'];
                             $isActive = (int)$r['is_active'] === 1;
                             $applicantCount = (int)($r['applicant_count'] ?? 0);
+                            $licenseTitleCount = (int)($r['license_title_count'] ?? 0);
+                            $formFieldCount = (int)($r['form_field_count'] ?? 0);
+                            $wizardStepCount = (int)($r['wizard_step_count'] ?? 0);
                         ?>
                         <tr>
                             <td><?= $sid ?></td>
@@ -134,6 +161,27 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                                 <?php endif; ?>
                             </td>
                             <td><?= $applicantCount ?></td>
+                            <td>
+                                <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/license-titles"
+                                   class="badge <?= $licenseTitleCount > 0 ? 'text-bg-primary text-decoration-none' : 'text-bg-light text-muted text-decoration-none border' ?>"
+                                   title="عناوین مجوز این نوع خدمت">
+                                    <?= $licenseTitleCount ?>
+                                </a>
+                            </td>
+                            <td>
+                                <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/form-fields"
+                                   class="badge <?= $formFieldCount > 0 ? 'text-bg-primary text-decoration-none' : 'text-bg-light text-muted text-decoration-none border' ?>"
+                                   title="فیلدهای فرم این نوع خدمت">
+                                    <?= $formFieldCount ?>
+                                </a>
+                            </td>
+                            <td>
+                                <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/wizard-steps"
+                                   class="badge <?= $wizardStepCount > 0 ? 'text-bg-primary text-decoration-none' : 'text-bg-light text-muted text-decoration-none border' ?>"
+                                   title="مراحل ویزارد این نوع خدمت">
+                                    <?= $wizardStepCount ?>
+                                </a>
+                            </td>
                             <td class="text-end">
                                 <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/service-types?edit=<?= $sid ?>"
                                    class="btn btn-sm btn-outline-primary">
@@ -153,7 +201,7 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                         </tr>
                     <?php endforeach; ?>
                     <?php if ($rows === []): ?>
-                        <tr><td colspan="7" class="text-center text-muted py-4">هیچ نوع خدمتی ثبت نشده.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">هیچ نوع خدمتی ثبت نشده.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

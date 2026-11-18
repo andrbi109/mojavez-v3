@@ -244,13 +244,21 @@
     document.querySelectorAll('.btn-run-filter').forEach(function (b) {
         b.addEventListener('click', function () {
             var id = b.getAttribute('data-id');
+            if (!confirm('این فیلتر به‌صورت زنده در درگاه بالادستی اجرا شود؟ پس از اتمام کار، نتایج در صفحهٔ «جستجوی پیشرفته» نمایش داده می‌شوند.')) {
+                return;
+            }
             fetch('<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/admin/crawl', {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
                 body: JSON.stringify({ filter_id: id }),
                 credentials: 'same-origin'
             }).then(function (r) { return r.json(); })
-              .then(function (d) { alert('جستجو در صف افتاد (کار #' + (d.data ? d.data.job_id : '?') + ')'); })
+              .then(function (d) {
+                  var jobId = d && d.data ? d.data.job_id : '?';
+                  alert('فیلتر در صف قرار گرفت (کار #' + jobId + ').\n'
+                      + 'پس از اجرای کارگر، برای مشاهدهٔ نتایج به صفحهٔ «جستجوی پیشرفته» مراجعه کنید:\n'
+                      + '<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/search');
+              })
               .catch(function (e) { alert('خطا: ' + e.message); });
         });
     });
