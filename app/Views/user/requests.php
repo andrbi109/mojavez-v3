@@ -97,13 +97,26 @@ $deletableStatuses = ['پیش‌نویس', 'تکمیل اطلاعات'];
                                 $canDelete = in_array($st, $deletableStatuses, true);
                                 $appId = (int)($a['id'] ?? 0);
                                 $trackingCode = (string)($a['tracking_code'] ?? '');
+                                // Phase 53 (v2.1.9) — rejection description
+                                // attached by UserPanelController::requests()
+                                // (empty for non-rejected rows).
+                                $rejectionDesc = (string)($a['rejection_description'] ?? '');
+                                $isRejected = $st === 'رد درخواست';
                                 // Per-row collapse id so multiple rows don't collide.
                                 $collapseId = 'postal-collapse-' . $appId;
                             ?>
                             <tr>
                                 <td><code class="user-select-all"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code></td>
                                 <td><?= htmlspecialchars($serviceTitle((int)($a['service_type_id'] ?? 0)), ENT_QUOTES, 'UTF-8') ?></td>
-                                <td><span class="badge bg-<?= $badge ?>"><?= htmlspecialchars($st, ENT_QUOTES, 'UTF-8') ?></span></td>
+                                <td>
+                                    <span class="badge bg-<?= $badge ?>"><?= htmlspecialchars($st, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <?php if ($isRejected && $rejectionDesc !== ''): ?>
+                                        <div class="small text-danger mt-1" role="note">
+                                            <i class="bi bi-exclamation-octagon"></i>
+                                            علت رد درخواست: <?= htmlspecialchars($rejectionDesc, ENT_QUOTES, 'UTF-8') ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="small text-muted"><?= htmlspecialchars(PersianDate::format((string)($a['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td>
                                     <?php if ($trackingCode !== ''): ?>

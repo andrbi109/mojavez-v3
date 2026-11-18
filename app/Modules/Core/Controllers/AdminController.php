@@ -293,6 +293,35 @@ final class AdminController extends Controller
      * even when description is empty (we use the new status's Persian
      * title). Skips silently if the applicant has no user_account_id
      * (e.g. admin-created cases without a linked user).
+     *
+     * Phase 53 (v2.1.9) — three behavioural changes:
+     *
+     *   1. Closed cases block further changes. When the applicant's
+     *      current_status is terminal (رد درخواست / لغو / تحویل مجوز /
+     *      تأیید نهایی دریافت کد رهگیری — ApplicantStatus::isTerminal()),
+     *      the method refuses the change with "این پرونده بسته شده است."
+     *      — even for admin. The terminal check is BEFORE the
+     *      workflow-rule check and applies to all roles. Re-opening a
+     *      closed case requires a fresh registration, not a status
+     *      transition.
+     *
+     *   2. closed_at is stamped when the new status is terminal. A
+     *      separate UPDATE sets closed_at = NOW() on the applicants
+     *      row (column added by migration 20261119_001). Best-effort:
+     *      the status change is committed BEFORE the closed_at stamp,
+     *      so a closed_at write failure logs a warning but does NOT
+     *      roll back the status change (the case is still closed by
+     *      its current_status — closed_at is just the timestamp).
+     *
+     *   3. changeStatus redirects instead of returning JSON. The
+     *      previous flow returned {"success":true,...} which the admin
+     *      browser rendered as raw text. The new flow:
+     *        - AJAX (X-Requested-With: XMLHttpRequest) — still JSON
+     *          (preserves the contract for any JS clients).
+     *        - Form POST — flash message + 302 redirect to
+     *          /admin/view/{id}. Success: "وضعیت پرونده با موفقیت
+     *          تغییر یافت" (kind=success). Error: same flash-message
+     *          channel with kind=danger.
      */
     public function changeStatus(Request $request, array $params = []): Response
     {
@@ -301,16 +330,60 @@ final class AdminController extends Controller
         $newStatusSlug = (string)$request->input('new_status', '');
         $description = (string)$request->input('description', '');
 
+        // Phase 53 (v2.1.9) — JSON only when the request explicitly
+        // identifies itself as AJAX via the X-Requested-With header
+        // (the same header jQuery's $.ajax and the Fetch API set
+        // when calling fetch(..., { headers: { 'X-Requested-With':
+        // 'XMLHttpRequest' } })). Form POSTs without the header get
+        // the new redirect flow.
+        $isAjax = strtolower((string)$request->header('X-Requested-With', '')) === 'xmlhttprequest';
+
+        // Phase 53 (v2.1.9) — helper that surfaces an error either as
+        // JSON (AJAX) or as a flash + redirect (form POST). Redirect
+        // target is /admin/view/{id} when we have a non-zero id,
+        // /admin/applications otherwise (matches the requestPayment()
+        // error handling pattern for a missing applicant).
+        $respondError = function (int $status, string $code, string $message) use ($isAjax, $id): never {
+            if ($isAjax) {
+                $this->jsonError($status, $code, $message);
+            }
+            $this->session->set('view_app_message', $message);
+            $this->session->set('view_app_message_kind', 'danger');
+            if ($id > 0) {
+                $this->redirect('/admin/view/' . $id);
+            }
+            $this->redirect('/admin/applications');
+        };
+
         $applicant = $this->applicants->findById($id);
         if ($applicant === null) {
-            return $this->jsonError(404, 'not_found');
+            $respondError(404, 'not_found', 'پرونده یافت نشد.');
         }
         $newStatus = ApplicantStatus::fromSlug($newStatusSlug);
         if ($newStatus === null) {
-            return $this->jsonError(422, 'invalid_status', 'وضعیت نامعتبر.');
+            $respondError(422, 'invalid_status', 'وضعیت نامعتبر.');
         }
+
+        // Phase 53 (v2.1.9) — block any status change once the case
+        // is in a terminal state. The check is BEFORE the workflow
+        // rules (validateStatusTransition) and applies to ALL roles
+        // (including admin). Uses ApplicantStatus::isTerminal() so
+        // the rule tracks the 18-status cycle's single source of
+        // truth. Re-opening a closed case requires a fresh
+        // registration, not a status transition.
+        if ($applicant->currentStatus->isTerminal()) {
+            $respondError(422, 'case_closed', 'این پرونده بسته شده است.');
+        }
+
         $role = (string)$this->session->get('admin_role', 'admin');
-        $this->validateStatusTransition($applicant->currentStatus, $newStatus, $role);
+        // Phase 53 (v2.1.9) — use the new non-exiting statusTransitionError()
+        // helper so we can branch on AJAX-ness before responding.
+        // (validateStatusTransition() in the base Controller still
+        // exits with a JSON 422 — wrong for a form POST.)
+        $transitionErr = $this->statusTransitionError($applicant->currentStatus, $newStatus, $role);
+        if ($transitionErr !== null) {
+            $respondError(422, 'invalid_status_transition', $transitionErr);
+        }
 
         $triggeredBy = $role === 'admin' ? 'admin' : $role;
         $this->applicants->changeStatus($id, $newStatus, $triggeredBy, $description);
@@ -321,6 +394,29 @@ final class AdminController extends Controller
             'to'             => $newStatus->value,
             'by'             => $this->session->get('admin_id'),
         ]);
+
+        // Phase 53 (v2.1.9) — when the new status is terminal (رد
+        // درخواست / لغو / تحویل مجوز / تأیید نهایی دریافت کد رهگیری),
+        // stamp closed_at = NOW() on the applicant row. The column
+        // was added by migration 20261119_001. Best-effort — the
+        // status change is already committed; if the closed_at
+        // stamp can't be written (e.g. the migration hasn't been
+        // applied yet), we log a warning but keep going. The case is
+        // still effectively closed by its current_status.
+        if ($newStatus->isTerminal()) {
+            try {
+                $this->conn->execute(
+                    'UPDATE applicants SET closed_at = NOW(), updated_at = NOW() WHERE id = ?',
+                    [$id]
+                );
+            } catch (\Throwable $e) {
+                $this->logger->warning('Failed to stamp closed_at on terminal status', [
+                    '_module'        => 'core',
+                    'applicant_id'   => $id,
+                    'error'          => $e->getMessage(),
+                ]);
+            }
+        }
 
         // Phase 45 (v2.1.1) — notify the user (applicant) that their
         // application status has changed. Inserted into user_notifications
@@ -355,7 +451,15 @@ final class AdminController extends Controller
             ]);
         }
 
-        return $this->jsonSuccess(['changed' => true, 'new_status' => $newStatus->value]);
+        // Phase 53 (v2.1.9) — AJAX requests keep the JSON contract.
+        // Form POSTs get a flash + redirect to /admin/view/{id}.
+        if ($isAjax) {
+            return $this->jsonSuccess(['changed' => true, 'new_status' => $newStatus->value]);
+        }
+
+        $this->session->set('view_app_message', 'وضعیت پرونده با موفقیت تغییر یافت.');
+        $this->session->set('view_app_message_kind', 'success');
+        return $this->redirect('/admin/view/' . $id);
     }
 
     /**
