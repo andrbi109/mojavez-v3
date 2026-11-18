@@ -244,12 +244,55 @@ final class UserPanelController extends Controller
 
     /**
      * GET /panel/requests — list of the user's applications.
+     *
+     * Phase 53 (v2.1.9) — for each application whose current_status is
+     * 'رد درخواست' (rejected), we attach the rejection description
+     * (status_log.description of the latest rejected entry) so the
+     * user/requests view can show the reason inline. Single query per
+     * rejected row (cheap — typical users have <10 applications and
+     * most are not rejected).
      */
     public function requests(Request $request, array $params = []): Response
     {
         $this->requireUserLogin();
         $account = $this->currentAccount();
         $applications = $this->userAccounts->getApplications((int)$account['id']);
+
+        // Phase 53 (v2.1.9) — attach rejection_description for rejected
+        // applications so the view can surface the reason. We use a
+        // direct query against status_log (rather than the
+        // StatusLogRepository which fetches ALL entries) so we only
+        // touch the rows we actually need.
+        foreach ($applications as &$a) {
+            if ((string)($a['current_status'] ?? '') === 'رد درخواست') {
+                $appId = (int)($a['id'] ?? 0);
+                $desc = '';
+                if ($appId > 0) {
+                    try {
+                        $row = $this->conn->one(
+                            'SELECT description FROM status_log
+                             WHERE applicant_id = ? AND status_name = ?
+                             ORDER BY created_at DESC LIMIT 1',
+                            [$appId, 'رد درخواست']
+                        );
+                        if ($row !== null) {
+                            $desc = (string)($row['description'] ?? '');
+                        }
+                    } catch (\Throwable $e) {
+                        $this->logger->warning('Failed to load rejection description', [
+                            '_module'      => 'core',
+                            'applicant_id' => $appId,
+                            'error'        => $e->getMessage(),
+                        ]);
+                    }
+                }
+                $a['rejection_description'] = $desc;
+            } else {
+                $a['rejection_description'] = '';
+            }
+        }
+        unset($a);
+
         return $this->render('user/requests', [
             'title'        => 'درخواست‌های من',
             'activeMenu'   => 'requests',

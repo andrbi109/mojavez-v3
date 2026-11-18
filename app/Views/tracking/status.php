@@ -20,6 +20,34 @@ $licenseIssued = $applicant->licenseState === LicenseState::Issued;
     </a>
 </div>
 
+<?php
+// Phase 53 (v2.1.9) — if any status_log entry marks this case as
+// rejected, surface the admin's rejection description in a red alert
+// above the timeline so the user sees the reason. The statusLog is
+// ordered ASC by created_at (PdoStatusLogRepository::findByApplicantId),
+// so we keep overwriting to capture the LATEST rejection entry's
+// description (a case may be rejected, then re-opened, then rejected
+// again — the latest rejection is what the user cares about).
+$rejectionReason = '';
+foreach ($statusLog as $entry) {
+    if ($entry->statusName === 'رد درخواست') {
+        $reason = (string)($entry->description ?? '');
+        if ($reason !== '') {
+            $rejectionReason = $reason;
+        }
+    }
+}
+?>
+<?php if ($rejectionReason !== ''): ?>
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-4" role="alert">
+    <i class="bi bi-exclamation-octagon-fill fs-4 flex-shrink-0"></i>
+    <div>
+        <div class="fw-bold">علت رد درخواست:</div>
+        <div class="mt-1"><?= htmlspecialchars($rejectionReason, ENT_QUOTES, 'UTF-8') ?></div>
+    </div>
+</div>
+<?php endif; ?>
+
 <div class="row g-4">
     <div class="col-md-5">
         <div class="card h-100">

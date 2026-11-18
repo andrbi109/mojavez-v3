@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS `applicants` (
   `consent_external_share` tinyint(1) NOT NULL DEFAULT 0,
   `registration_started_at` datetime DEFAULT NULL,
   `registration_completed_at` datetime DEFAULT NULL,
+  `closed_at` datetime DEFAULT NULL,
   `created_at` datetime DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),

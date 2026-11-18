@@ -100,12 +100,48 @@ abstract class Controller
     /**
      * Validate that the current role may transition from $current to $new.
      * Throws a 422 if the transition is not allowed.
+     *
+     * Phase 53 (v2.1.9) — now delegates to {@see statusTransitionError()}
+     * so AdminController::changeStatus() can branch on AJAX-ness BEFORE
+     * calling the validation (and decide between a JSON error and a
+     * flash + redirect for form POSTs). Existing callers (which use
+     * validateStatusTransition directly) keep the same behavior —
+     * the method still exits with a JSON 422 on failure.
      */
     protected function validateStatusTransition(ApplicantStatus $current, ApplicantStatus $new, string $role): void
     {
+        $err = $this->statusTransitionError($current, $new, $role);
+        if ($err !== null) {
+            $this->failTransition($err);
+        }
+    }
+
+    /**
+     * Same rules as {@see validateStatusTransition()} but DOES NOT
+     * exit — returns the Persian error message on a disallowed
+     * transition, or null if the transition is allowed.
+     *
+     * Phase 53 (v2.1.9) — extracted so AdminController::changeStatus()
+     * can branch on the request's AJAX-ness before deciding to send a
+     * JSON error or a flash + redirect. (The legacy
+     * validateStatusTransition() always exits with a JSON 422, which
+     * is wrong for a form POST.)
+     *
+     * NOTE — the terminal-state check on $current is included here
+     * (mirroring validateStatusTransition's behavior) BUT only for
+     * non-admin roles. Admins are still allowed to bypass via the
+     * early return. AdminController::changeStatus() adds a SEPARATE,
+     * role-independent terminal check on $current BEFORE calling this
+     * helper — that's how "even admin cannot re-open a closed case"
+     * is enforced.
+     *
+     * @return string|null Error message in Persian, or null if allowed.
+     */
+    protected function statusTransitionError(ApplicantStatus $current, ApplicantStatus $new, string $role): ?string
+    {
         // admin may always transition.
         if ($role === 'admin') {
-            return;
+            return null;
         }
         $workflow = \App\Shared\Support\Config::get('workflow.transitions', []);
         $roleRules = $workflow[$role] ?? ['from' => [], 'to' => []];
@@ -113,20 +149,21 @@ abstract class Controller
         $to = $roleRules['to'] ?? [];
         // Empty `from` or `to` = unrestricted.
         if ($from !== [] && !in_array($current->value, $from, true)) {
-            $this->failTransition("نقش «{$role}» نمی‌تواند از وضعیت «{$current->value}» انتقال دهد.");
+            return "نقش «{$role}» نمی‌تواند از وضعیت «{$current->value}» انتقال دهد.";
         }
         if ($to !== [] && !in_array($new->value, $to, true)) {
-            $this->failTransition("نقش «{$role}» نمی‌تواند به وضعیت «{$new->value}» انتقال دهد.");
+            return "نقش «{$role}» نمی‌تواند به وضعیت «{$new->value}» انتقال دهد.";
         }
         // Forbid backward transitions (except to Cancelled/Rejected).
         if (!in_array($new, [ApplicantStatus::Cancelled, ApplicantStatus::Rejected], true)
             && $new->order() <= $current->order()) {
-            $this->failTransition('انتقال به وضعیت قبلی مجاز نیست.');
+            return 'انتقال به وضعیت قبلی مجاز نیست.';
         }
         // Forbid transition from terminal (except to Cancelled/Rejected).
         if ($current->isTerminal() && !in_array($new, [ApplicantStatus::Cancelled, ApplicantStatus::Rejected], true)) {
-            $this->failTransition('پرونده در وضعیت پایانی است.');
+            return 'پرونده در وضعیت پایانی است.';
         }
+        return null;
     }
 
     /**

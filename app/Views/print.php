@@ -38,6 +38,15 @@ $ownerName ??= '';
             padding: 0;
             font-size: 14px;
             line-height: 1.7;
+            /* Phase 53 (v2.1.9) — sticky footer: make body a 100vh
+               column so the print-container grows to fill the
+               viewport and the footer (margin-top:auto) sticks to
+               the bottom. Without this, a short case (e.g. an
+               applicant with no status history) leaves the footer
+               floating somewhere in the middle of the page. */
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
         /* A4 sheet */
         .print-container {
@@ -49,6 +58,14 @@ $ownerName ??= '';
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 4px 24px rgba(22,40,60,.08);
+            /* Phase 53 (v2.1.9) — flex column so the footer's
+               margin-top:auto pushes it to the bottom of the A4
+               sheet (filling the 297mm min-height). flex:1 0 auto
+               lets the container grow taller than 297mm if the
+               content overflows (long status histories). */
+            flex: 1 0 auto;
+            display: flex;
+            flex-direction: column;
         }
         /* Header — gradient bar with tracking-code box, like v2 */
         .print-header {
@@ -140,7 +157,13 @@ $ownerName ??= '';
         .status-table tbody tr:nth-child(even) { background: #fbfaf7; }
         /* Footer */
         .print-footer {
-            margin-top: 1.5rem;
+            /* Phase 53 (v2.1.9) — margin-top:auto inside the
+               print-container's flex column pushes the footer to
+               the bottom of the A4 sheet (which has min-height
+               297mm). On short content (e.g. a draft with no
+               status history), this prevents the footer from
+               floating awkwardly in the middle of the page. */
+            margin-top: auto;
             padding: 10px 28px;
             background: #fbfaf7;
             border-top: 1px solid var(--card-border);
@@ -182,6 +205,19 @@ $ownerName ??= '';
             .print-header { border-radius: 0; }
             .print-body { padding: 14px 0; }
             .info-table td, .status-table tbody td { padding: 4px 7px; }
+            /* Phase 53 (v2.1.9) — fix the footer to the bottom of the
+               printed page (each printed page gets a footer line).
+               position:fixed in @media print is the standard CSS
+               pattern for repeating headers/footers on every printed
+               page. left/right:0 spans the page width; bottom:0
+               anchors it to the bottom margin. */
+            .print-footer {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                margin-top: 0;
+            }
             @page { size: A4 portrait; margin: 14mm 12mm; }
         }
         @media (max-width: 575.98px) {

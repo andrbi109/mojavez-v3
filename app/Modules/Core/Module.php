@@ -567,6 +567,19 @@ final class Module implements ModuleInterface
             // service types), sms_templates (6), fee_groups (4), payment_channels (3).
             // Idempotent (INSERT ... ON DUPLICATE KEY UPDATE).
             '20261117_015_comprehensive_seed_data.sql',
+            // Phase 50 (v2.1.6) — adds a `description` VARCHAR(500) NULL
+            // column to the `payments` table so an admin raising a payment
+            // request can attach a free-form note that the user then sees
+            // in their payments list. Idempotent ALTER
+            // (information_schema guard) so re-running is safe.
+            '20261118_001_payments_description_column.sql',
+            // Phase 53 (v2.1.9) — adds a `closed_at` DATETIME NULL column
+            // to `applicants` so AdminController::changeStatus() can
+            // stamp the moment a case is closed (terminal status). Used
+            // together with ApplicantStatus::isTerminal() to block
+            // further status changes after the case is closed.
+            // Idempotent ALTER (information_schema guard).
+            '20261119_001_applicants_closed_at_column.sql',
         ];
     }
 
