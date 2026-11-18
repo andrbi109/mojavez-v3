@@ -379,6 +379,8 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'update'],
             // Phase 20 (v1.9.2): image upload for site_logo + header banners.
             ['method' => 'POST', 'path' => '/admin/settings/upload-image', 'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'uploadImage'],
+            // Phase 49 (v2.1.5): delete a custom (non-known) setting.
+            ['method' => 'POST', 'path' => '/admin/settings/delete',       'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'delete'],
 
             // ----- Phase 2 public tracking routes -----
             ['method' => 'GET', 'path' => '/tracking', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'search'],

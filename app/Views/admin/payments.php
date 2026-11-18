@@ -11,22 +11,48 @@
 /** @var string $csrfField */
 /** @var string $baseUrl */
 $message  ??= '';
-$filters  ??= ['status' => '', 'purpose' => '', 'q' => ''];
-$stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 'pendingSum' => 0, 'rejectedCount' => 0];
+$filters  ??= ['status' => '', 'purpose' => '', 'q' => '', 'from' => '', 'to' => ''];
+$stats    ??= [
+    'approvedMonth' => 0, 'approvedTotal' => 0, 'approvedCount' => 0,
+    'pendingCount'  => 0, 'pendingSum'  => 0,
+    'rejectedCount' => 0, 'rejectedSum' => 0,
+    'totalCount'    => 0, 'totalAmount' => 0,
+];
+/**
+ * Phase 49 (v2.1.5) — small helper to build a query-string for the
+ * CSV export link / pagination links / form reset, preserving the
+ * current filter state.
+ *
+ * @param array<string,string> $overrides
+ */
+$qs = static function (array $overrides = []) use ($filters): string {
+    $parts = [];
+    foreach (array_merge($filters, $overrides) as $k => $v) {
+        if ($v === '' || $v === null) {
+            continue;
+        }
+        $parts[] = rawurlencode($k) . '=' . rawurlencode((string)$v);
+    }
+    return $parts === [] ? '' : '&' . implode('&', $parts);
+};
+$csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q/from/to).
 ?>
 <?php if ($message !== ''): ?>
     <div class="alert alert-info py-2"><?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
 
-<!-- Stat cards -->
+<!-- ===== Phase 49 (v2.1.5) — summary stat cards (restructured) =====
+     Total amount | Approved (count + sum) | Pending (count + sum) | Rejected (count + sum)
+     Each card uses a single primary metric + small secondary detail, so the
+     admin gets the gross flow + per-status breakdown at a glance. -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-xl-3">
         <div class="card h-100">
             <div class="card-body d-flex align-items-center gap-2">
-                <i class="bi bi-cash-coin fs-3 text-success"></i>
+                <i class="bi bi-wallet2 fs-3 text-secondary"></i>
                 <div>
-                    <div class="fw-bold"><?= number_format((int)$stats['approvedMonth']) ?></div>
-                    <small class="text-muted">درآمد تأییدشده (۳۰ روز اخیر · تومان)</small>
+                    <div class="fw-bold"><?= number_format((int)$stats['totalAmount']) ?></div>
+                    <small class="text-muted">مبلغ کل (<?= (int)$stats['totalCount'] ?> رسید · تومان)</small>
                 </div>
             </div>
         </div>
@@ -34,10 +60,10 @@ $stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 
     <div class="col-6 col-xl-3">
         <div class="card h-100">
             <div class="card-body d-flex align-items-center gap-2">
-                <i class="bi bi-graph-up fs-3 text-primary"></i>
+                <i class="bi bi-check-circle fs-3 text-success"></i>
                 <div>
-                    <div class="fw-bold"><?= number_format((int)$stats['approvedTotal']) ?></div>
-                    <small class="text-muted">کل درآمد تأییدشده (تومان)</small>
+                    <div class="fw-bold"><?= (int)$stats['approvedCount'] ?></div>
+                    <small class="text-muted">تأیید شده (<?= number_format((int)$stats['approvedTotal']) ?> تومان)</small>
                 </div>
             </div>
         </div>
@@ -59,7 +85,7 @@ $stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 
                 <i class="bi bi-x-circle fs-3 text-danger"></i>
                 <div>
                     <div class="fw-bold"><?= (int)$stats['rejectedCount'] ?></div>
-                    <small class="text-muted">رسیدهای ردشده</small>
+                    <small class="text-muted">رد شده (<?= number_format((int)$stats['rejectedSum']) ?> تومان)</small>
                 </div>
             </div>
         </div>
@@ -71,7 +97,7 @@ $stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span><i class="bi bi-list-ul"></i> رسیدهای پرداخت (<?= (int)$total ?>)</span>
-                <a class="btn btn-sm btn-success" href="/admin/payments/csv?status=<?= urlencode((string)$filters['status']) ?>&amp;purpose=<?= urlencode((string)$filters['purpose']) ?>&amp;q=<?= urlencode((string)$filters['q']) ?>">
+                <a class="btn btn-sm btn-success" href="/admin/payments/csv?<?= ltrim($csvQs, '&') ?>">
                     <i class="bi bi-download"></i> خروجی CSV
                 </a>
             </div>
@@ -97,8 +123,20 @@ $stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 
                             <option value="هزینهٔ دریافت مجدد تصویر مجوز" <?= $filters['purpose'] === 'هزینهٔ دریافت مجدد تصویر مجوز' ? 'selected' : '' ?>>دریافت مجدد تصویر مجوز</option>
                         </select>
                     </div>
+                    <!-- ===== Phase 49 (v2.1.5) — date range filter ===== -->
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-1">از تاریخ (میلادی)</label>
+                        <input type="date" class="form-control form-control-sm" name="from"
+                               value="<?= htmlspecialchars((string)$filters['from'], ENT_QUOTES, 'UTF-8') ?>">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-1">تا تاریخ (میلادی)</label>
+                        <input type="date" class="form-control form-control-sm" name="to"
+                               value="<?= htmlspecialchars((string)$filters['to'], ENT_QUOTES, 'UTF-8') ?>">
+                    </div>
                     <div class="col-12">
                         <button class="btn btn-primary btn-sm"><i class="bi bi-search"></i> فیلتر</button>
+                        <a class="btn btn-outline-secondary btn-sm" href="/admin/payments">پاک کردن فیلتر</a>
                     </div>
                 </form>
             </div>
@@ -143,31 +181,64 @@ $stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 
                                 </td>
                                 <td class="text-nowrap">
                                     <?php if ($p['status'] === 'در انتظار رسید'): ?>
-                                        <form method="post" action="/admin/payments/review" class="d-inline"
-                                              onsubmit="return confirm('رسید پرداخت #<?= (int)$p['id'] ?> تأیید شود؟');">
-                                            <?= $csrfField ?>
-                                            <input type="hidden" name="payment_id" value="<?= (int)$p['id'] ?>">
-                                            <input type="hidden" name="decision" value="approved">
-                                            <button class="btn btn-sm btn-success py-0"><i class="bi bi-check"></i> تأیید</button>
-                                        </form>
-                                        <button class="btn btn-sm btn-outline-danger py-0" data-bs-toggle="modal" data-bs-target="#rejectPay<?= (int)$p['id'] ?>"><i class="bi bi-x"></i> رد</button>
-                                        <div class="modal fade" id="rejectPay<?= (int)$p['id'] ?>" tabindex="-1">
+                                        <!-- ===== Phase 49 (v2.1.5) — single "review" button opens a modal =====
+                                             that lets the admin approve OR reject with an optional note.
+                                             Previously the row had an inline approve button (no note) +
+                                             a reject-only modal; consolidating into one review modal makes
+                                             the UX consistent and lets the admin attach a note to either
+                                             decision. The modal contains ONE <form> with two submit buttons
+                                             (name="decision", value="approved"|"rejected") — only the
+                                             clicked button's value is submitted, per the HTML spec. -->
+                                        <button class="btn btn-sm btn-primary py-0" data-bs-toggle="modal" data-bs-target="#reviewPay<?= (int)$p['id'] ?>">
+                                            <i class="bi bi-eye"></i> بررسی
+                                        </button>
+                                        <div class="modal fade" id="reviewPay<?= (int)$p['id'] ?>" tabindex="-1">
                                             <div class="modal-dialog modal-dialog-centered">
-                                                <form method="post" action="/admin/payments/review" class="modal-content">
+                                                <form method="post" action="/admin/payments/review"
+                                                      class="modal-content"
+                                                      data-review-form
+                                                      data-payment-id="<?= (int)$p['id'] ?>">
                                                     <?= $csrfField ?>
                                                     <input type="hidden" name="payment_id" value="<?= (int)$p['id'] ?>">
-                                                    <input type="hidden" name="decision" value="rejected">
                                                     <div class="modal-header">
-                                                        <h5 class="modal-title">رد رسید پرداخت #<?= (int)$p['id'] ?></h5>
+                                                        <h5 class="modal-title">
+                                                            <i class="bi bi-eye"></i>
+                                                            بررسی رسید پرداخت #<?= (int)$p['id'] ?>
+                                                        </h5>
                                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                     </div>
                                                     <div class="modal-body">
-                                                        <label class="form-label">دلیل رد</label>
-                                                        <textarea name="note" class="form-control" rows="2" maxlength="250"></textarea>
+                                                        <div class="small text-muted mb-2">
+                                                            متقاضی:
+                                                            <strong><?= htmlspecialchars((string)$p['first_name'] . ' ' . (string)$p['last_name'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                                            · کد رهگیری:
+                                                            <code dir="ltr"><?= htmlspecialchars((string)$p['tracking_code'], ENT_QUOTES, 'UTF-8') ?></code>
+                                                        </div>
+                                                        <div class="small text-muted mb-3">
+                                                            مبلغ: <strong><?= number_format((int)$p['amount']) ?></strong> تومان
+                                                            · هدف: <?= htmlspecialchars((string)$p['purpose'], ENT_QUOTES, 'UTF-8') ?>
+                                                            <?php if (!empty($p['reference_code'])): ?>
+                                                                · کد پیگیری: <code dir="ltr"><?= htmlspecialchars((string)$p['reference_code'], ENT_QUOTES, 'UTF-8') ?></code>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                        <label class="form-label">یادداشت بررسی (اختیاری برای تأیید، الزامی برای رد)</label>
+                                                        <textarea name="note" class="form-control" rows="3"
+                                                                  maxlength="500"
+                                                                  data-review-note></textarea>
+                                                        <div class="form-text">برای رد، دلیل را وارد کنید (حداکثر ۵۰۰ نویسه).</div>
                                                     </div>
                                                     <div class="modal-footer">
-                                                        <button type="submit" class="btn btn-danger">ثبت و رد</button>
-                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                                        <button type="submit" name="decision" value="approved"
+                                                                class="btn btn-success"
+                                                                data-review-approve>
+                                                            <i class="bi bi-check-lg"></i> تأیید رسید
+                                                        </button>
+                                                        <button type="submit" name="decision" value="rejected"
+                                                                class="btn btn-danger"
+                                                                data-review-reject>
+                                                            <i class="bi bi-x-lg"></i> رد رسید
+                                                        </button>
+                                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button>
                                                     </div>
                                                 </form>
                                             </div>
@@ -190,11 +261,11 @@ $stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 
                 <nav>
                     <ul class="pagination pagination-sm justify-content-center mb-0">
                         <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
-                            <a class="page-link" href="?page=<?= max(1, $page - 1) ?>">قبلی</a>
+                            <a class="page-link" href="?page=<?= max(1, $page - 1) ?><?= $qs() ?>">قبلی</a>
                         </li>
                         <li class="page-item active"><span class="page-link"><?= (int)$page ?> / <?= (int)$totalPages ?></span></li>
                         <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
-                            <a class="page-link" href="?page=<?= min($totalPages, $page + 1) ?>">بعدی</a>
+                            <a class="page-link" href="?page=<?= min($totalPages, $page + 1) ?><?= $qs() ?>">بعدی</a>
                         </li>
                     </ul>
                 </nav>
@@ -266,3 +337,33 @@ $stats    ??= ['approvedMonth' => 0, 'approvedTotal' => 0, 'pendingCount' => 0, 
         </div>
     </div>
 </div>
+
+<!-- ===== Phase 49 (v2.1.5) — review-modal form validation =====
+     When the admin clicks "رد رسید" inside a review modal, require a
+     non-empty note (the controller stores it as `reject_reason`).
+     Approve does not require a note. -->
+<script>
+(function () {
+    document.querySelectorAll('form[data-review-form]').forEach(function (form) {
+        var note = form.querySelector('[data-review-note]');
+        var rejectBtn = form.querySelector('[data-review-reject]');
+        if (!note || !rejectBtn) return;
+        rejectBtn.addEventListener('click', function (e) {
+            if (note.value.trim() === '') {
+                e.preventDefault();
+                note.classList.add('is-invalid');
+                note.focus();
+                alert('برای رد رسید، وارد کردن دلیل (یادداشت) الزامی است.');
+                return;
+            }
+            if (!window.confirm('این رسید رد شود؟')) {
+                e.preventDefault();
+            }
+        });
+        // Reset is-invalid once the admin starts typing.
+        note.addEventListener('input', function () {
+            note.classList.remove('is-invalid');
+        });
+    });
+})();
+</script>

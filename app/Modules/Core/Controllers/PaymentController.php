@@ -23,6 +23,18 @@ use App\Shared\Support\StructuredLogger;
  * receipts (writes a `payment_audit_log` row), CSV export (with BOM +
  * formula-injection protection), and management of `payment_channels`.
  *
+ * Phase 49 (v2.1.5) — smarter payments page:
+ *   - The summary stat cards at the top now show: total amount (sum of all
+ *     payments), approved count + approved total, pending count, rejected
+ *     count. Before, the cards only had approved-month-sum + approved-total-
+ *     sum + pending-count + rejected-count (missing the count for approved
+ *     and the grand-total amount).
+ *   - Date-range filter (from / to) added next to the existing status +
+ *     purpose + free-text filters. The from/to are validated as strict
+ *     Y-m-d and applied as `p.created_at >= ?` / `p.created_at < ? + 1 day`
+ *     so the `to` date is inclusive. The CSV export URL also includes the
+ *     from/to so the export respects the same window.
+ *
  * Per docs/00-MASTER.md §11 — only role='admin' (super-admin) can access
  * any of these actions. Operators get 403.
  *
@@ -59,6 +71,12 @@ final class PaymentController extends Controller
     /**
      * GET /admin/payments — list payments joined with applicants
      * (paginated 20/page) + payment_channels sidebar + revenue stats.
+     *
+     * Phase 49 (v2.1.5) — added `from` / `to` query params for a date-range
+     * filter on `payments.created_at`. Both are validated as strict Y-m-d
+     * (a regex check before any DB call) and applied via bound parameters.
+     * The filters are also forwarded to the CSV export link so the admin
+     * can download exactly the window they're viewing.
      */
     public function index(Request $request, array $params = []): Response
     {
@@ -77,12 +95,17 @@ final class PaymentController extends Controller
             $purpose = '';
         }
         $q = trim((string)$request->queryParam('q', ''));
+        // Phase 49 (v2.1.5) — date range filters (strict Y-m-d, optional).
+        [$from, $to] = $this->parseDateRange(
+            (string)$request->queryParam('from', ''),
+            (string)$request->queryParam('to', '')
+        );
 
         // Build the WHERE clause + params array. The LIMIT/OFFSET are
         // appended as the last two params so the WHERE args stay in
         // order (MySQL with ATTR_EMULATE_PREPARES=false accepts LIMIT ?
         // OFFSET ? as integer placeholders — no string-concat needed).
-        [$where, $args] = $this->buildWhereClause($status, $purpose, $q);
+        [$where, $args] = $this->buildWhereClause($status, $purpose, $q, $from, $to);
 
         $total = (int)$this->conn->scalar(
             "SELECT COUNT(*) FROM payments p INNER JOIN applicants a ON a.id = p.applicant_id {$where}",
@@ -125,7 +148,13 @@ final class PaymentController extends Controller
         return $this->render('admin/payments', [
             'title'       => 'درآمد و پرداخت‌ها',
             'payments'     => $payments,
-            'filters'      => ['status' => $status, 'purpose' => $purpose, 'q' => $q],
+            'filters'      => [
+                'status'  => $status,
+                'purpose' => $purpose,
+                'q'       => $q,
+                'from'    => $from,
+                'to'      => $to,
+            ],
             'page'         => $page,
             'totalPages'   => $totalPages,
             'total'        => $total,
@@ -199,6 +228,9 @@ final class PaymentController extends Controller
     /**
      * GET /admin/payments/csv — download all payments (with current
      * filters) as a CSV file. UTF-8 BOM + formula-injection protection.
+     *
+     * Phase 49 (v2.1.5) — also forwards the `from` / `to` date range so
+     * the export matches the page filter window exactly.
      */
     public function csv(Request $request, array $params = []): Response
     {
@@ -213,7 +245,11 @@ final class PaymentController extends Controller
             $purpose = '';
         }
         $q = trim((string)$request->queryParam('q', ''));
-        [$where, $args] = $this->buildWhereClause($status, $purpose, $q);
+        [$from, $to] = $this->parseDateRange(
+            (string)$request->queryParam('from', ''),
+            (string)$request->queryParam('to', '')
+        );
+        [$where, $args] = $this->buildWhereClause($status, $purpose, $q, $from, $to);
 
         $rows = $this->conn->all(
             "SELECT p.id, a.tracking_code, a.first_name, a.last_name, a.national_code,
@@ -339,9 +375,14 @@ final class PaymentController extends Controller
      * Build the WHERE clause + parameter array for the payments JOIN
      * query, based on the (already-whitelisted) filters.
      *
+     * Phase 49 (v2.1.5) — $from / $to are added as `p.created_at >= ?`
+     * and `p.created_at < ? + 1 day` respectively, so the `to` date is
+     * inclusive of the entire day (a user picking 2026-12-31 expects
+     * rows created at 23:59:59 to be included).
+     *
      * @return array{0:string,1:array<int,mixed>}
      */
-    private function buildWhereClause(string $status, string $purpose, string $q): array
+    private function buildWhereClause(string $status, string $purpose, string $q, string $from = '', string $to = ''): array
     {
         $clauses = [];
         $args = [];
@@ -353,6 +394,15 @@ final class PaymentController extends Controller
             $clauses[] = 'p.purpose = ?';
             $args[] = $purpose;
         }
+        if ($from !== '') {
+            $clauses[] = 'p.created_at >= ?';
+            $args[] = $from . ' 00:00:00';
+        }
+        if ($to !== '') {
+            $clauses[] = 'p.created_at < ?';
+            // +1 day so the end date is inclusive of the full day.
+            $args[] = date('Y-m-d', strtotime($to . ' +1 day')) . ' 00:00:00';
+        }
         if ($q !== '') {
             $clauses[] = '(a.tracking_code LIKE ? OR a.national_code LIKE ? OR a.first_name LIKE ? OR a.last_name LIKE ? OR p.reference_code LIKE ?)';
             $like = '%' . $this->conn->escapeLike($q) . '%';
@@ -363,9 +413,55 @@ final class PaymentController extends Controller
     }
 
     /**
-     * Compute the four revenue-stat cards shown at the top of the page.
+     * Validate + normalize the `from` / `to` date-range query params.
      *
-     * @return array{approvedMonth:int, approvedTotal:int, pendingCount:int, pendingSum:int, rejectedCount:int}
+     * Phase 49 (v2.1.5). Both are optional; if either is missing or fails
+     * the strict Y-m-d check (regex + strtotime round-trip), it is
+     * treated as empty (no filter applied). Swapping is done if `to`
+     * comes before `from` so the admin doesn't get an empty result by
+     * accident.
+     *
+     * @return array{0:string,1:string}  normalized [from, to] (Y-m-d, or '' if unset)
+     */
+    private function parseDateRange(string $fromRaw, string $toRaw): array
+    {
+        $from = '';
+        $to = '';
+        // Strict Y-m-d regex + strtotime round-trip (rejects 2026-13-40 etc.).
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $fromRaw) === 1) {
+            $ts = strtotime($fromRaw);
+            if ($ts !== false && date('Y-m-d', $ts) === $fromRaw) {
+                $from = $fromRaw;
+            }
+        }
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $toRaw) === 1) {
+            $ts = strtotime($toRaw);
+            if ($ts !== false && date('Y-m-d', $ts) === $toRaw) {
+                $to = $toRaw;
+            }
+        }
+        // Swap if `to` < `from`.
+        if ($from !== '' && $to !== '' && $to < $from) {
+            [$from, $to] = [$to, $from];
+        }
+        return [$from, $to];
+    }
+
+    /**
+     * Compute the summary stats shown at the top of the payments page.
+     *
+     * Phase 49 (v2.1.5) — added `totalCount` (all payments), `approvedCount`
+     * (count of approved — the cards used to show only the *sum* of approved),
+     * and `totalAmount` (sum of all amounts, regardless of status, so the
+     * admin sees the gross flow through the system, not just the approved
+     * slice). The 30-day approved sum is kept for backward compatibility.
+     *
+     * @return array{
+     *   approvedMonth:int, approvedTotal:int, approvedCount:int,
+     *   pendingCount:int, pendingSum:int,
+     *   rejectedCount:int, rejectedSum:int,
+     *   totalCount:int, totalAmount:int
+     * }
      */
     private function computeStats(): array
     {
@@ -377,6 +473,9 @@ final class PaymentController extends Controller
             'approvedTotal'  => (int)$this->conn->scalar(
                 "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'تأیید شده'"
             ),
+            'approvedCount'  => (int)$this->conn->scalar(
+                "SELECT COUNT(*) FROM payments WHERE status = 'تأیید شده'"
+            ),
             'pendingCount'   => (int)$this->conn->scalar(
                 "SELECT COUNT(*) FROM payments WHERE status = 'در انتظار رسید'"
             ),
@@ -385,6 +484,15 @@ final class PaymentController extends Controller
             ),
             'rejectedCount'  => (int)$this->conn->scalar(
                 "SELECT COUNT(*) FROM payments WHERE status = 'رد شده'"
+            ),
+            'rejectedSum'    => (int)$this->conn->scalar(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'رد شده'"
+            ),
+            'totalCount'     => (int)$this->conn->scalar(
+                'SELECT COUNT(*) FROM payments'
+            ),
+            'totalAmount'    => (int)$this->conn->scalar(
+                'SELECT COALESCE(SUM(amount), 0) FROM payments'
             ),
         ];
     }
