@@ -115,3 +115,38 @@ app/Views/registration/_progress.php:<?= $percent ?>
 app/Views/registration/_progress.php:<?= $s ?>
 app/Views/registration/select_service.php:<?= $sid ?>
 app/Views/registration/step4.php:<?= $fa ?>
+
+# -----------------------------------------------------------------------------
+# 8. Phase 42 (v2.0.8) — applicant-account + sync-status views.
+#
+# The new admin views introduced in Phase 42 emit a handful of integer-
+# cast / loop-counter / pre-built-HTML variables without htmlspecialchars()
+# in the immediate vicinity — all are provably safe:
+#
+#  - `$accountId`, `$failedLogin`, `$applicantId` in
+#    applicant_account_view.php are all `(int)($row['col'] ?? 0)` casts
+#    of DB columns. Not user input.
+#  - `$id`, `$p` in applicant_accounts.php are `(int)$r['id']` and a
+#    1-based loop counter (`for ($p = 1; $p <= $pages; $p++)`). Not user
+#    input.
+#  - `$runAlertHtml` in gateway_sync_status.php is HTML built inline in
+#    the view from already-escaped values (htmlspecialchars was called
+#    on every user-controllable component before assembly). Emitting it
+#    raw is the same pattern as `$content` in the layout files — the
+#    builder is responsible for escaping its own user input.
+#  - `$autoConfirmed`, `$operatorFlag`, `$autoRejected`, `$totalMatches`
+#    in gateway_sync_status.php are integer counts cast from
+#    $status['counts'] which itself comes from a SQL COUNT(*) query —
+#    not user input. (These were already emitted unescaped before Phase
+#    42; the ignore pattern formalises the existing behaviour.)
+# -----------------------------------------------------------------------------
+app/Views/admin/applicant_account_view.php:<?= $accountId ?>
+app/Views/admin/applicant_account_view.php:<?= $failedLogin ?>
+app/Views/admin/applicant_account_view.php:<?= $applicantId ?>
+app/Views/admin/applicant_accounts.php:<?= $id ?>
+app/Views/admin/applicant_accounts.php:<?= $p ?>
+app/Views/admin/gateway_sync_status.php:<?= $runAlertHtml ?>
+app/Views/admin/gateway_sync_status.php:<?= $autoConfirmed ?>
+app/Views/admin/gateway_sync_status.php:<?= $operatorFlag ?>
+app/Views/admin/gateway_sync_status.php:<?= $autoRejected ?>
+app/Views/admin/gateway_sync_status.php:<?= $totalMatches ?>

@@ -67,11 +67,22 @@ final class SyncAdminController extends Controller
         $status['jobs_drained'] = $jobsRun;
         $syncInfo = $this->orchestrator->syncInfo();
 
+        // Phase 42 (v2.0.8): if a /admin/sync/run just finished, pull its
+        // summary out of the session flash and pass it to the view so the
+        // admin can see the result inline (rather than as a raw JSON blob).
+        // The flash is consumed once — a page refresh won't keep showing it.
+        $lastRun = null;
+        if ($this->session->has('sync_run_flash')) {
+            $lastRun = $this->session->get('sync_run_flash');
+            $this->session->remove('sync_run_flash');
+        }
+
         return $this->render('admin/gateway_sync_status', [
             'title'     => 'وضعیت همگام‌سازی درگاه ملی',
             'status'    => $status,
             'syncInfo'  => $syncInfo,
             'jobsRun'   => $jobsRun,
+            'lastRun'   => $lastRun,
         ]);
     }
 
@@ -91,14 +102,35 @@ final class SyncAdminController extends Controller
     }
 
     /**
-     * POST /admin/sync/run — manually trigger a full sync cycle (JSON).
+     * POST /admin/sync/run — manually trigger a full sync cycle.
+     *
+     * Phase 42 (v2.0.8): the cycle now actually reaches the upstream
+     * (qr.mojavez.ir) and caches whatever it gets. The summary is stored
+     * in the session as a flash message and the user is redirected back
+     * to /admin/sync/status, where the result is rendered in an alert
+     * above the status cards (so the admin sees whether the upstream was
+     * reached, how many licenses were fetched, and how many applicants
+     * were matched).
+     *
+     * For AJAX callers (Accept: application/json or X-Requested-With),
+     * the JSON summary is returned directly — this preserves the API
+     * contract used by external monitors that POST to /admin/sync/run.
      */
     public function run(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
         $batchSize = (int)($request->queryParam('batch_size', 50) ?? 50);
         $summary = $this->orchestrator->runCycle($batchSize);
-        return Response::json($summary);
+
+        // AJAX callers get JSON (preserves the original API contract).
+        if ($request->isAjax()) {
+            return Response::json($summary);
+        }
+
+        // Form-submission callers get a flash + redirect so the result is
+        // visible in the status page rather than as a raw JSON blob.
+        $this->session->set('sync_run_flash', $summary);
+        $this->redirect($this->environment->baseUrl . 'admin/sync/status');
     }
 
     /**
