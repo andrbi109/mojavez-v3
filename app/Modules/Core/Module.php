@@ -234,6 +234,16 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/panel/notifications/read',   'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'markAllRead'],
             ['method' => 'GET',  'path' => '/panel/tracking',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'tracking'],
 
+            // ----- Phase 46 (v2.1.2) user panel: delete application + postal-code change -----
+            // The {id} placeholder matches [^/]+ — there are no sibling
+            // /panel/requests/* routes, so order doesn't matter relative
+            // to /panel/requests (registered above as a GET). The POST
+            // method distinguishes them anyway.
+            ['method' => 'POST', 'path' => '/panel/requests/{id}/delete', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'deleteApplication'],
+            // /panel/change-postal-code is a single-segment POST path —
+            // no conflict with any existing /panel/* route.
+            ['method' => 'POST', 'path' => '/panel/change-postal-code',  'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'changePostalCode'],
+
             // ----- Phase 2 admin auth routes -----
             ['method' => 'GET', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLoginForm'],
             ['method' => 'POST', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLogin'],

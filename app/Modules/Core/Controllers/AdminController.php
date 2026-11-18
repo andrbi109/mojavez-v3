@@ -1002,6 +1002,40 @@ final class AdminController extends Controller
             'triggered_by'  => 'admin',
         ]);
 
+        // Phase 46 (v2.1.2) — also notify the user (applicant) so they see
+        // the payment request in their panel (/panel/notifications).
+        // Mirrors the pattern in changeStatus(): best-effort, never rolls
+        // back the payment_required update if the notification insert
+        // fails (logged but not re-thrown). Skips silently if the
+        // applicant has no user_account_id (e.g. admin-created cases).
+        try {
+            $userAccountId = $applicant->userAccountId;
+            if ($userAccountId !== null && $userAccountId > 0) {
+                $adminName = (string)$this->session->get('admin_display_name', 'مدیر');
+                $this->conn->execute(
+                    'INSERT INTO user_notifications (user_account_id, applicant_id, type, title, body, is_read, created_at) '
+                    . 'VALUES (?, ?, ?, ?, ?, 0, NOW())',
+                    [
+                        $userAccountId,
+                        $applicantId,
+                        'payment_request',
+                        'درخواست پرداخت هزینه',
+                        sprintf(
+                            'برای پروندهٔ شما (کد پیگیری: %s) درخواست پرداخت هزینه ثبت شد — توسط %s.',
+                            $applicant->trackingCode,
+                            $adminName
+                        ),
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            $this->logger->warning('Failed to insert payment-request notification', [
+                '_module'        => 'core',
+                'applicant_id'   => $applicantId,
+                'error'          => $e->getMessage(),
+            ]);
+        }
+
         $this->logger->info('Admin requested payment', [
             '_module'      => 'core',
             'applicant_id' => $applicantId,
