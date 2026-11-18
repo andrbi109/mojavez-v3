@@ -70,6 +70,25 @@ $renderLinks = function (array $items) use ($baseUrl): void {
     <link rel="stylesheet" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>assets/css/app.css">
 </head>
 <body>
+<div class="moj-topbar">
+    <div class="moj-topbar-title">
+        <i class="bi bi-patch-check-fill"></i>
+        <span>پنل مدیریت</span>
+    </div>
+    <div class="moj-topbar-actions">
+        <button type="button" class="moj-theme-toggle" aria-label="تغییر تم روز/شب" title="تغییر تم روز/شب">
+            <i class="bi bi-moon-stars"></i>
+            <i class="bi bi-sun"></i>
+        </button>
+        <span class="moj-topbar-user" title="<?= htmlspecialchars($roleLabel, ENT_QUOTES, 'UTF-8') ?>">
+            <i class="bi bi-person-circle"></i>
+            <?= htmlspecialchars((string)$adminDisplayName, ENT_QUOTES, 'UTF-8') ?>
+        </span>
+        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/logout" class="moj-topbar-logout">
+            <i class="bi bi-box-arrow-left"></i> خروج
+        </a>
+    </div>
+</div>
 <div class="moj-admin-body">
     <aside class="moj-admin-sidebar">
         <div class="d-flex align-items-center justify-content-between mb-3 px-2 gap-2">
@@ -85,16 +104,6 @@ $renderLinks = function (array $items) use ($baseUrl): void {
                 <span>پنل مدیریت</span>
             </a>
         </div>
-        <div class="px-2 mb-3">
-            <div class="d-flex align-items-center gap-2">
-                <i class="bi bi-person-circle fs-4 text-muted"></i>
-                <div>
-                    <div class="fw-medium text-body"><?= htmlspecialchars((string)$adminDisplayName, ENT_QUOTES, 'UTF-8') ?></div>
-                    <small class="text-muted"><?= htmlspecialchars($roleLabel, ENT_QUOTES, 'UTF-8') ?></small>
-                </div>
-            </div>
-        </div>
-
         <nav>
             <h6>اصلی</h6>
             <?php $renderLinks([
@@ -155,19 +164,7 @@ $renderLinks = function (array $items) use ($baseUrl): void {
             <?php $renderLinks([
                 ['href' => 'admin/payments',          'icon' => 'bi-credit-card', 'label' => 'پرداخت‌ها'],
             ]); ?>
-
-            <h6>حساب</h6>
-            <?php $renderLinks([
-                ['href' => 'admin/logout', 'icon' => 'bi-box-arrow-left', 'label' => 'خروج'],
-            ]); ?>
         </nav>
-
-        <div class="mt-3 px-2">
-            <button type="button" class="moj-theme-toggle" aria-label="تغییر تم روز/شب" title="تغییر تم روز/شب">
-                <i class="bi bi-moon-stars"></i>
-                <i class="bi bi-sun"></i>
-            </button>
-        </div>
     </aside>
 
     <main class="moj-admin-main">
