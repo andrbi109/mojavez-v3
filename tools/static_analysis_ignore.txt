@@ -280,3 +280,18 @@ app/Views/admin/register.php:<?= $y ?>
 app/Views/admin/register.php:<?= $m ?>
 app/Views/admin/register.php:<?= $d ?>
 app/Views/admin/register.php:<?= $name ?>
+
+# 13. Phase 41-42 (v2.0.7-v2.0.8) — integer variables in new views.
+#
+# $id, $applicant, $autoConfirmed, $operatorFlag, $autoRejected,
+# $totalMatches in gateway_sync_*.php are (int) DB row ids / counts.
+# $i in step4.php is a loop counter (int).
+# All provably safe — not user input.
+# -----------------------------------------------------------------------------
+app/Views/admin/gateway_sync_pending.php:<?= $id ?>
+app/Views/admin/gateway_sync_pending.php:<?= $applicant ?>
+app/Views/admin/gateway_sync_status.php:<?= $autoConfirmed ?>
+app/Views/admin/gateway_sync_status.php:<?= $operatorFlag ?>
+app/Views/admin/gateway_sync_status.php:<?= $autoRejected ?>
+app/Views/admin/gateway_sync_status.php:<?= $totalMatches ?>
+app/Views/registration/step4.php:<?= $i ?>

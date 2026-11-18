@@ -259,9 +259,15 @@ final class Module implements ModuleInterface
 
             // Golden-link sync admin panel — poor man's cron pattern.
             // Each /admin/sync/status poll drains one queued job.
+            // Phase 41: /admin/sync/status and /admin/sync/pending are now
+            // HTML views (gateway_sync_status.php + gateway_sync_pending.php).
+            // /admin/sync/readiness was removed (route + method + view + sidebar
+            // link). /admin/sync/resolve was added (POST) so the pending page's
+            // approve/reject buttons work.
             ['method' => 'GET',  'path' => '/admin/sync/status',     'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'status'],
             ['method' => 'GET',  'path' => '/admin/sync/pending',    'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'pending'],
             ['method' => 'POST', 'path' => '/admin/sync/run',        'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'run'],
+<<<<<<< HEAD
             // Phase 11: admin UI for the Stage2ReadinessChecker report (D-8-4).
             ['method' => 'GET',  'path' => '/admin/sync/readiness',  'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'readiness'],
 
@@ -327,6 +333,9 @@ final class Module implements ModuleInterface
 
             // Proxy-image API (admin).
             ['method' => 'GET',  'path' => '/api/v1/proxy-image',             'handler' => \App\Modules\NationalGateway\Controllers\Api\V1ApiController::class, 'action' => 'proxyImage'],
+=======
+            ['method' => 'POST', 'path' => '/admin/sync/resolve',   'handler' => \App\Modules\NationalGateway\Controllers\SyncAdminController::class, 'action' => 'resolve'],
+>>>>>>> phase/41-docs-gateway-menu-fixes
         ];
     }
 

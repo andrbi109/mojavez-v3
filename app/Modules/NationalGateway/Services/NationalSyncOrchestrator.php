@@ -288,6 +288,7 @@ final class NationalSyncOrchestrator
     }
 
     /**
+<<<<<<< HEAD
      * Push Stage 2 status changes for an iterable of recently-matched
      * applicant rows. Extracted from runCycle() so the per-row dedup set
      * (D-8-3) is testable in isolation — the SQL window in runCycle()
@@ -360,6 +361,42 @@ final class NationalSyncOrchestrator
             'skipped' => $skipped,
             'dedup_skipped' => $dedupSkipped,
         ];
+=======
+     * Operator-flagged matches pending review (for /admin/sync/pending).
+     *
+     * Delegates to the audit-log repository's pendingOperatorReview().
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function pending(int $limit = 50): array
+    {
+        return $this->auditRepo->pendingOperatorReview($limit);
+    }
+
+    /**
+     * Resolve an operator-flagged item — admin confirms or rejects.
+     */
+    public function resolve(int $logId, int $reviewerId, string $decision, ?string $note = null): void
+    {
+        $this->auditRepo->resolve($logId, $reviewerId, $decision, $note);
+    }
+
+    /**
+     * Current sync-direction settings (for the /admin/sync/status panel).
+     *
+     * Returns the runtime values of:
+     *   - sync_direction     ('disabled' | 'inbound' | 'two_way')
+     *   - two_way_enabled    (bool)
+     *
+     * @return array{direction:string,two_way_enabled:bool}
+     */
+    public function syncInfo(): array
+    {
+        $direction = $this->readSetting('sync_direction', 'inbound');
+        $twoWay = $this->readSetting('sync_two_way_enabled', '0') === '1'
+            && $direction === 'two_way';
+        return ['direction' => $direction, 'two_way_enabled' => $twoWay];
+>>>>>>> phase/41-docs-gateway-menu-fixes
     }
 
     /**
