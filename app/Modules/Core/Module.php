@@ -122,7 +122,8 @@ final class Module implements ModuleInterface
             fn () => new \App\Modules\Core\Services\AutoCancelService(
                 $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\StatusLogRepositoryInterface::class),
-                $container->logger
+                $container->logger,
+                $container->make(\App\Shared\Persistence\Connection::class)
             )
         );
         $container->bind(

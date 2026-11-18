@@ -68,9 +68,13 @@ $csrfField      ??= '';
 
 // Default toggles: required docs are always on; optional docs default ON
 // unless the admin explicitly disabled them in form_fields config.
-$on = static function (string $key): bool {
-    return $sysActive[$key] ?? true;
-};
+//
+// Phase 45 (v2.1.1) — this MUST be an arrow function (auto-captures
+// $sysActive by value). The previous `static function () { ... }`
+// closure did NOT capture $sysActive, so every $on('foo') call
+// returned `true` regardless of the configured toggles — every
+// optional upload box was always shown.
+$on = fn (string $key): bool => $sysActive[$key] ?? true;
 
 $ownershipLabels = [
     'شخص'   => 'سند مالکیت یا قولنامه',

@@ -60,6 +60,12 @@ $badgeColorFor = static function (string $statusName) use ($statusMeta): string 
 };
 
 // Helper: format a Gregorian datetime as a Jalali Y/M/D string.
+//
+// Phase 45 (v2.1.1) — now delegates to the static PersianDate::format()
+// helper so views without an injected $persianDate instance use the
+// same code path. The fallback on a missing $persianDate is retained
+// only for legacy callers (the instance is now always injected by
+// AdminController::viewApplication and AdminController::editApplication).
 $fmtDate = static function (?string $greg) use ($persianDate): string {
     if ($greg === null || $greg === '' || $greg === '0000-00-00' || $greg === '0000-00-00 00:00:00') {
         return '—';
@@ -67,7 +73,7 @@ $fmtDate = static function (?string $greg) use ($persianDate): string {
     if ($persianDate instanceof PersianDate) {
         return $persianDate->formatGregorianDateTime($greg);
     }
-    return htmlspecialchars((string)$greg, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars(PersianDate::format((string)$greg), ENT_QUOTES, 'UTF-8');
 };
 
 // Helper: format a Gregorian date as Jalali Y/M/D (date-only).
@@ -78,7 +84,7 @@ $fmtDateOnly = static function (?string $greg) use ($persianDate): string {
     if ($persianDate instanceof PersianDate) {
         return $persianDate->formatGregorianDateTime($greg);
     }
-    return htmlspecialchars((string)$greg, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars(PersianDate::format((string)$greg), ENT_QUOTES, 'UTF-8');
 };
 ?>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">

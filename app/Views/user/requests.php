@@ -6,6 +6,8 @@
 /** @var array $serviceTypes */
 /** @var string $baseUrl */
 
+use App\Shared\Support\PersianDate;
+
 $serviceTitle = function (int $id) use ($serviceTypes): string {
     return $serviceTypes[$id] ?? '—';
 };
@@ -49,7 +51,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                                 <td><code class="user-select-all"><?= htmlspecialchars((string)($a['tracking_code'] ?? '—'), ENT_QUOTES) ?></code></td>
                                 <td><?= htmlspecialchars($serviceTitle((int)($a['service_type_id'] ?? 0)), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><span class="badge bg-<?= $badge ?>"><?= htmlspecialchars($st, ENT_QUOTES, 'UTF-8') ?></span></td>
-                                <td class="small text-muted"><?= htmlspecialchars((string)($a['created_at'] ?? ''), ENT_QUOTES) ?></td>
+                                <td class="small text-muted"><?= htmlspecialchars(PersianDate::format((string)($a['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td class="text-end">
                                     <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>tracking/status/<?= urlencode((string)($a['tracking_code'] ?? '')) ?>"
                                        class="btn btn-sm btn-outline-primary">

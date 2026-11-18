@@ -2,6 +2,8 @@
 /** @var \App\Modules\Core\Domain\Applicant $applicant */
 /** @var array $statusLog */
 /** @var ?\App\Modules\Core\Domain\JobDetail $jobDetail */
+
+use App\Shared\Support\PersianDate;
 ?>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
@@ -73,7 +75,7 @@
                                         <?= htmlspecialchars($entry->statusName, ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                 </td>
-                                <td class="text-muted" dir="ltr"><?= htmlspecialchars($entry->createdAt, ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="text-muted" dir="ltr"><?= htmlspecialchars(PersianDate::format($entry->createdAt), ENT_QUOTES, 'UTF-8') ?></td>
                             </tr>
                         <?php endforeach; ?>
                         <?php if (empty($statusLog)): ?>

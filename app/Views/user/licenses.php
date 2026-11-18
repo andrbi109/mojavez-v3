@@ -9,6 +9,8 @@
 /** @var array $serviceTypes */
 /** @var string $baseUrl */
 
+use App\Shared\Support\PersianDate;
+
 $serviceTitle = function (int $id) use ($serviceTypes): string {
     return $serviceTypes[$id] ?? '—';
 };
@@ -38,7 +40,7 @@ $issued = array_filter($applications, fn($a) => in_array((string)($a['current_st
                                 </div>
                                 <?php if (!empty($a['license_valid_until'])): ?>
                                     <div class="small mb-2">
-                                        اعتبار تا: <span class="fw-semibold"><?= htmlspecialchars((string)$a['license_valid_until'], ENT_QUOTES) ?></span>
+                                        اعتبار تا: <span class="fw-semibold"><?= htmlspecialchars(PersianDate::format((string)$a['license_valid_until']), ENT_QUOTES, 'UTF-8') ?></span>
                                     </div>
                                 <?php endif; ?>
                                 <?php if ($license && !empty($license['document_id'])): ?>
