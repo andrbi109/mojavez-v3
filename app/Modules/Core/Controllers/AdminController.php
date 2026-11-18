@@ -160,9 +160,64 @@ final class AdminController extends Controller
             return Response::html('<!doctype html><meta charset="utf-8"><h1>۴۰۴</h1><p>پرونده یافت نشد.</p>', 404);
         }
         $statusLog = $this->statusLog->findByApplicantId($id);
+
+        // Build the list of all 18 statuses for the change-status dropdown.
+        $allStatuses = [];
+        foreach (ApplicantStatus::cases() as $s) {
+            $allStatuses[] = [
+                'value'      => $s->value,
+                'label'      => $s->titleFa(),
+                'badgeColor' => $s->badgeColor(),
+                'order'      => $s->order(),
+                'isTerminal' => $s->isTerminal(),
+            ];
+        }
+        // Sort by order (ascending).
+        usort($allStatuses, static fn($a, $b): int => $a['order'] <=> $b['order']);
+
+        // Load related data for the editable form.
+        $jobDetail = null;
+        $propertyDetail = null;
+        $documents = [];
+        try {
+            $conn = $this->connection();
+            $jobRow = $conn->one('SELECT * FROM job_details WHERE applicant_id = ?', [$id]);
+            if ($jobRow !== null) {
+                $jobDetail = $jobRow;
+            }
+            $propRow = $conn->one('SELECT * FROM property_details WHERE applicant_id = ?', [$id]);
+            if ($propRow !== null) {
+                $propertyDetail = $propRow;
+            }
+            $documents = $conn->all('SELECT * FROM documents WHERE applicant_id = ? ORDER BY uploaded_at DESC', [$id]);
+        } catch (\Throwable) {
+            // best-effort — the view handles nulls.
+        }
+
+        // Load service type title.
+        $serviceTypeTitle = '';
+        if ($applicant->serviceTypeId !== null) {
+            try {
+                $row = $this->connection()->one(
+                    'SELECT title FROM service_types WHERE id = ?',
+                    [$applicant->serviceTypeId]
+                );
+                if ($row !== null) {
+                    $serviceTypeTitle = (string)$row['title'];
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
         return $this->render('admin/view_application', [
-            'applicant' => $applicant,
-            'statusLog' => $statusLog,
+            'applicant'        => $applicant,
+            'statusLog'        => $statusLog,
+            'allStatuses'      => $allStatuses,
+            'jobDetail'        => $jobDetail,
+            'propertyDetail'   => $propertyDetail,
+            'documents'        => $documents,
+            'serviceTypeTitle' => $serviceTypeTitle,
         ]);
     }
 
