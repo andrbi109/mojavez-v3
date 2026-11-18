@@ -3,7 +3,11 @@
 /** @var array $statusLog */
 /** @var ?\App\Modules\Core\Domain\JobDetail $jobDetail */
 
+use App\Modules\Core\Domain\Enums\LicenseState;
 use App\Shared\Support\PersianDate;
+
+$trackingCode = $applicant->trackingCode;
+$licenseIssued = $applicant->licenseState === LicenseState::Issued;
 ?>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
@@ -88,3 +92,105 @@ use App\Shared\Support\PersianDate;
         </div>
     </div>
 </div>
+
+<?php if ($licenseIssued): ?>
+<section class="card mt-4 border-success border-opacity-50" id="license-request-section">
+    <div class="card-header bg-success-subtle d-flex align-items-center gap-2">
+        <i class="bi bi-patch-check text-success"></i>
+        <span class="fw-semibold">درخواست تصویر مجوز</span>
+    </div>
+    <div class="card-body">
+        <p class="mb-3 text-muted">
+            مجوز این پرونده صادر شده است. می‌توانید درخواست دریافت تصویر مجوز را ثبت کنید.
+            لینک دسترسی پس از درخواست، به مدت ۷۲ ساعت معتبر خواهد بود.
+        </p>
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <button type="button"
+                    class="btn btn-success"
+                    id="license-request-btn"
+                    data-tracking-code="<?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?>">
+                <i class="bi bi-image"></i> درخواست تصویر مجوز
+            </button>
+            <span class="spinner-border spinner-border-sm text-success d-none" id="license-request-spinner" role="status" aria-hidden="true"></span>
+            <div class="text-muted small" id="license-request-status" aria-live="polite"></div>
+        </div>
+        <div class="mt-3 d-none" id="license-request-result">
+            <!-- Populated by JS: either the token link or "pending admin review" message. -->
+        </div>
+    </div>
+</section>
+<?php endif; ?>
+<script>
+(function () {
+    'use strict';
+    var btn = document.getElementById('license-request-btn');
+    if (!btn) return;  // section is hidden when license_state != Issued
+    var spinner = document.getElementById('license-request-spinner');
+    var statusEl = document.getElementById('license-request-status');
+    var resultEl = document.getElementById('license-request-result');
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+    var trackingCode = btn.getAttribute('data-tracking-code') || '';
+
+    function setStatus(msg, cls) {
+        statusEl.className = 'small ' + (cls || 'text-muted');
+        statusEl.textContent = msg;
+    }
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        spinner.classList.remove('d-none');
+        setStatus('در حال ارسال درخواست…', 'text-muted');
+        resultEl.classList.add('d-none');
+        resultEl.innerHTML = '';
+
+        var formData = new FormData();
+        formData.append('tracking_code', trackingCode);
+        formData.append('_csrf', csrfToken);
+
+        fetch('/tracking/license/first-access', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json' },
+            body: formData
+        }).then(function (res) {
+            return res.json().then(function (j) {
+                return { status: res.status, json: j };
+            });
+        }).then(function (r) {
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+            if (r.status === 200 && r.json && r.json.success) {
+                var d = r.json.data || {};
+                if (d.auto_approved && d.token) {
+                    setStatus('درخواست تأیید شد.', 'text-success');
+                    var linkUrl = '/license/view/' + encodeURIComponent(d.token);
+                    var link = '<a href="' + linkUrl + '" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm">'
+                              + '<i class="bi bi-box-arrow-up-right"></i> مشاهدهٔ تصویر مجوز</a>';
+                    var expires = d.expires_at ? ' (تاریخ انقضا: ' + d.expires_at + ')' : '';
+                    resultEl.innerHTML =
+                        '<div class="alert alert-success mb-0" role="alert">'
+                        + '<i class="bi bi-check2-circle"></i> لینک دسترسی به تصویر مجوز صادر شد' + expires + '.<br>'
+                        + '<div class="mt-2">' + link + '</div>'
+                        + '</div>';
+                    resultEl.classList.remove('d-none');
+                } else {
+                    setStatus('درخواست ثبت شد.', 'text-success');
+                    resultEl.innerHTML =
+                        '<div class="alert alert-info mb-0" role="alert">'
+                        + '<i class="bi bi-clock-history"></i> درخواست شما ثبت شد و در انتظار بررسی مدیر سامانه است. '
+                        + 'پس از تأیید، لینک دسترسی از طریق اعلان‌ها در دسترس شما قرار خواهد گرفت.'
+                        + '</div>';
+                    resultEl.classList.remove('d-none');
+                }
+            } else {
+                var msg = (r.json && r.json.error && r.json.error.message) ? r.json.error.message : 'خطا در ثبت درخواست.';
+                setStatus(msg, 'text-danger');
+            }
+        }).catch(function () {
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+            setStatus('خطای شبکه در ارتباط با سرور.', 'text-danger');
+        });
+    });
+})();
+</script>
