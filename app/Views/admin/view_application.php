@@ -45,6 +45,7 @@
 use App\Modules\Core\Domain\Document;
 use App\Modules\Core\Domain\Enums\LicenseState;
 use App\Shared\Support\PersianDate;
+use App\Shared\Support\StatusBadge;
 
 $allStatuses  ??= [];
 $jobDetail    ??= null;
@@ -61,10 +62,20 @@ $suggestedAmount ??= 500000;
 $currentStatus = $applicant->currentStatus;
 $licenseState  = $applicant->licenseState;
 
-// Helper: pick a Bootstrap badge color for a given status name from
-// the config map (falls back to 'secondary' for unknown statuses —
-// e.g. legacy v2 imports or custom log rows like 'حذف مدرک').
+// Helper: pick a Bootstrap badge color for a given status name.
+//
+// Phase 52 (v2.1.8) — delegates to App\Shared\Support\StatusBadge::color()
+// which reads from config/statuses.php (the 18-status cycle's single
+// source of truth). $statusMeta is still injected by AdminController for
+// back-compat with older callers; we keep it as a fallback so a status
+// that exists in the local $statusMeta map but not yet in config still
+// resolves (e.g. a freshly-added enum case before the config file is
+// redeployed).
 $badgeColorFor = static function (string $statusName) use ($statusMeta): string {
+    $color = StatusBadge::color($statusName);
+    if ($color !== 'secondary') {
+        return $color;
+    }
     return $statusMeta[$statusName]['color'] ?? 'secondary';
 };
 

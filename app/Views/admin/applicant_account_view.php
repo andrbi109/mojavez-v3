@@ -29,6 +29,8 @@ $lockedUntil = (string)($account['locked_until'] ?? '');
 $lastLogin  = (string)($account['last_login_at'] ?? '');
 $createdAt  = (string)($account['created_at'] ?? '');
 
+use App\Shared\Support\StatusBadge;
+
 // Consume the password-reset flash if present.
 $flash = null;
 if ($this->session->has('applicant_account_flash')) {
@@ -231,7 +233,7 @@ if ($this->session->has('applicant_account_flash')) {
                         </td>
                         <td>
                             <?php if ($status !== ''): ?>
-                                <span class="badge text-bg-info"><?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?></span>
+                                <span class="badge text-bg-<?= htmlspecialchars(StatusBadge::color($status), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?></span>
                             <?php else: ?>
                                 <span class="text-muted">—</span>
                             <?php endif; ?>

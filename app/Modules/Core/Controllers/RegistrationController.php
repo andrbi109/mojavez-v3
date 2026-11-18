@@ -18,6 +18,7 @@ use App\Shared\Contracts\LicenseFileRepositoryInterface;
 use App\Shared\Contracts\LicenseTitleRepositoryInterface;
 use App\Shared\Contracts\ServiceTypeRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
+use App\Shared\Contracts\UserAccountRepositoryInterface;
 use App\Shared\Persistence\Connection;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
@@ -59,8 +60,11 @@ use App\Shared\Support\Validator;
  *   8. POST /register/step/3 → save job via upsertJobDetail(), redirect to step 4.
  *   9. GET /register/step/4 → step4 view (document upload + review).
  *  10. POST /register/step/4 → upload docs, set registration_completed_at=NOW(),
- *      consent_external_share=1, changeStatus to InitialApproval,
- *      remove wizard.applicant_id, redirect to /register/success/{trackingCode}.
+ *      consent_external_share=1, changeStatus to InfoComplete (Phase 52:
+ *      was InitialApproval — the wizard now leaves the applicant at
+ *      "تکمیل اطلاعات" so the admin can review and advance the status
+ *      manually), remove wizard.applicant_id, redirect to
+ *      /register/success/{trackingCode}.
  *  11. GET /register/success/{trackingCode} → success view with tracking code.
  */
 final class RegistrationController extends Controller
@@ -103,6 +107,7 @@ final class RegistrationController extends Controller
         private readonly StatusLogRepositoryInterface $statusLog,
         private readonly DocumentRepositoryInterface $documents,
         private readonly LicenseFileRepositoryInterface $licenseFiles,
+        private readonly UserAccountRepositoryInterface $userAccounts,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -138,11 +143,20 @@ final class RegistrationController extends Controller
      *   current_status = 'پیش‌نویس' (Draft)
      *   service_type_id = {id}
      *   user_account_id = session user_id
-     *   mobile = session user_mobile
+     *   mobile = (from user_account, falls back to session user_mobile)
+     *   first_name / last_name = (from the user's most recent previous
+     *                             application, if any — Phase 52 / v2.1.8)
      *   tracking_code = HG-XXXXXXXX (via Hash::generateTrackingCode, retried on collision)
      *
      * The applicant_id is stored in the session under 'wizard.applicant_id'
      * so the step handlers know which row to update.
+     *
+     * Phase 52 (v2.1.8) — pre-fills identity fields from the user's
+     * `user_account` row (mobile) and from their most recent previous
+     * application (first_name, last_name) so a returning user does not
+     * have to re-type them. The previous application's property +
+     * job data is also pre-filled in steps 2 and 3 (see step2() and
+     * step3()).
      */
     public function selectService(Request $request, array $params = []): Response
     {
@@ -155,7 +169,25 @@ final class RegistrationController extends Controller
         }
 
         $userId = (int)$this->session->get('user_id', 0);
-        $userMobile = (string)$this->session->get('user_mobile', '');
+        $sessionMobile = (string)$this->session->get('user_mobile', '');
+
+        // ---- Phase 52 (v2.1.8): auto-fill from user_account + previous app ----
+        // 1. Load the user_account row (mobile, display_name).
+        $userAccount = $userId > 0 ? $this->userAccounts->findById($userId) : null;
+        $userMobile = (string)($userAccount['mobile'] ?? '');
+        if ($userMobile === '') {
+            $userMobile = $sessionMobile;
+        }
+
+        // 2. Load the user's most recent previous application (excluding
+        //    the row we are about to insert — there isn't one yet at this
+        //    point, so the simple ORDER BY ... LIMIT 1 suffices). We
+        //    pre-fill first_name + last_name from it; the previous
+        //    application's property + job data is loaded lazily by
+        //    step2()/step3() when the current applicant has none yet.
+        $prevApplicant = $this->mostRecentPreviousApplicant($userId, 0);
+        $prevFirstName = $prevApplicant?->firstName ?? '';
+        $prevLastName  = $prevApplicant?->lastName ?? '';
 
         // Generate a unique tracking code (retry on the rare UNIQUE collision).
         $trackingCode = null;
@@ -178,8 +210,8 @@ final class RegistrationController extends Controller
         $applicantId = $this->applicants->create([
             'service_type_id'           => $serviceId,
             'user_account_id'            => $userId > 0 ? $userId : null,
-            'first_name'                 => '',
-            'last_name'                  => '',
+            'first_name'                 => $prevFirstName,
+            'last_name'                  => $prevLastName,
             'national_code'              => '',
             'postal_code'                => '',
             'mobile'                     => $userMobile,
@@ -196,6 +228,7 @@ final class RegistrationController extends Controller
             'applicant_id'    => $applicantId,
             'service_type_id' => $serviceId,
             'user_id'         => $userId,
+            'prefilled_name'  => $prevFirstName !== '' || $prevLastName !== '',
         ]);
 
         return $this->redirect('/register/step/1');
@@ -238,6 +271,13 @@ final class RegistrationController extends Controller
     /**
      * GET /register/step1 — render the identity form with the current
      * applicant's data pre-filled.
+     *
+     * Phase 52 (v2.1.8) — the user_account row is loaded and its
+     * `display_name` is passed to the view as a hint (rendered under
+     * the identity card as a small "نام نمایشی حساب" line). The
+     * `mobile` and `first_name`/`last_name` pre-fills already happen
+     * in `selectService()` (they are written to the applicants row at
+     * creation time so `applicantValues()` surfaces them here).
      */
     public function step1(Request $request, array $params = []): Response
     {
@@ -250,11 +290,18 @@ final class RegistrationController extends Controller
         $serviceType = $this->serviceTypes->findById((int)$applicant->serviceTypeId) ?? [];
         $values = $this->applicantValues($applicant);
 
+        // Phase 52 (v2.1.8) — load the user's display_name as a hint.
+        $userAccount = $applicant->userAccountId !== null
+            ? $this->userAccounts->findById((int)$applicant->userAccountId)
+            : null;
+        $userDisplayName = (string)($userAccount['display_name'] ?? '');
+
         return $this->render('registration/step1', [
-            'title'       => 'مرحلهٔ ۱ — اطلاعات هویتی',
-            'serviceType' => $serviceType,
-            'values'      => $values,
-            'errors'      => [],
+            'title'           => 'مرحلهٔ ۱ — اطلاعات هویتی',
+            'serviceType'     => $serviceType,
+            'values'          => $values,
+            'errors'          => [],
+            'userDisplayName' => $userDisplayName,
         ]);
     }
 
@@ -384,11 +431,24 @@ final class RegistrationController extends Controller
         );
 
         // Pre-fill values from existing property_details if present.
+        // Phase 52 (v2.1.8) — if the current applicant has no property
+        // details row yet, fall back to the user's most recent previous
+        // application's property_details so returning users don't have
+        // to re-enter their business address.
         $values = [];
         $prop = $this->jobAndProperty->findPropertyDetailByApplicantId($applicant->id);
+        $propPostalCode = $applicant->postalCode ?? '';
+        if ($prop === null) {
+            $prevId = $this->mostRecentPreviousApplicantId($applicant->userAccountId, $applicant->id);
+            if ($prevId !== null) {
+                $prop = $this->jobAndProperty->findPropertyDetailByApplicantId($prevId);
+                $prevApplicant = $this->applicants->findById($prevId);
+                $propPostalCode = $prevApplicant?->postalCode ?? $propPostalCode;
+            }
+        }
         if ($prop !== null) {
             // Look up the province + township ids by their titles.
-            $values['postal_code']    = $applicant->postalCode ?? '';
+            $values['postal_code']    = $propPostalCode;
             $values['address_street'] = $prop->addressStreet ?? '';
             $values['address_alley']   = $prop->addressAlley ?? '';
             $values['address_plaque']  = $prop->addressPlaque ?? '';
@@ -415,7 +475,7 @@ final class RegistrationController extends Controller
                 }
             }
         } else {
-            $values['postal_code'] = $applicant->postalCode ?? '';
+            $values['postal_code'] = $propPostalCode;
         }
 
         return $this->render('registration/step2', [
@@ -540,6 +600,14 @@ final class RegistrationController extends Controller
     /**
      * GET /register/step3 — render the job form with license titles for
      * the applicant's service type.
+     *
+     * Phase 52 (v2.1.8) — if the current applicant has no job_details
+     * row yet, fall back to the user's most recent previous application's
+     * job_details so returning users get a sensible default for the
+     * license_title field. (If the previous application's service type
+     * was different and the license_title isn't valid for the current
+     * service type, the rendered <select> options simply won't include
+     * it and the field stays empty — no harm done.)
      */
     public function step3(Request $request, array $params = []): Response
     {
@@ -554,6 +622,12 @@ final class RegistrationController extends Controller
         // Pre-fill from existing job_details if present.
         $values = [];
         $job = $this->jobAndProperty->findJobDetailByApplicantId($applicant->id);
+        if ($job === null) {
+            $prevId = $this->mostRecentPreviousApplicantId($applicant->userAccountId, $applicant->id);
+            if ($prevId !== null) {
+                $job = $this->jobAndProperty->findJobDetailByApplicantId($prevId);
+            }
+        }
         if ($job !== null) {
             // Look up the license_title id by title string.
             $row = $this->connection()->one(
@@ -690,8 +764,11 @@ final class RegistrationController extends Controller
 
     /**
      * POST /register/step4 — handle document uploads, mark the
-     * registration as completed, change status to InitialApproval,
-     * clear the wizard session, and redirect to the success page.
+     * registration as completed, change status to InfoComplete (Phase 52:
+     * was InitialApproval — the wizard now leaves the applicant at
+     * "تکمیل اطلاعات" so the admin reviews and advances the status
+     * manually), clear the wizard session, and redirect to the success
+     * page.
      */
     public function processStep4(Request $request, array $params = []): Response
     {
@@ -750,10 +827,14 @@ final class RegistrationController extends Controller
             'consent_external_share'   => 1,
         ]);
 
-        // Transition to InitialApproval (the admin-review starting state).
+        // Transition to InfoComplete (Phase 52, v2.1.8) — the wizard
+        // leaves the applicant at "تکمیل اطلاعات" so the admin reviews
+        // the application and advances the status manually. Was
+        // InitialApproval ("تأیید اولیه") before Phase 52, which
+        // skipped the admin-review step.
         $this->applicants->changeStatus(
             $applicant->id,
-            ApplicantStatus::InitialApproval,
+            ApplicantStatus::InfoComplete,
             'user',
             'تکمیل ثبت‌نام توسط کاربر'
         );
@@ -963,6 +1044,44 @@ final class RegistrationController extends Controller
             return null;
         }
         return $this->applicants->findById($id);
+    }
+
+    /**
+     * Phase 52 (v2.1.8) — find the user's most recent previous applicant
+     * row (excluding the given $excludeId, or 0 to exclude none). Used to
+     * pre-fill the wizard's identity, property, and job fields from the
+     * user's earlier submissions so returning users don't re-type them.
+     *
+     * Returns null if the user_account_id is missing or no previous
+     * application exists.
+     */
+    private function mostRecentPreviousApplicant(?int $userAccountId, int $excludeId = 0): ?Applicant
+    {
+        if ($userAccountId === null || $userAccountId <= 0) {
+            return null;
+        }
+        $sql = 'SELECT * FROM applicants
+                  WHERE user_account_id = ? AND deleted_at IS NULL';
+        $params = [$userAccountId];
+        if ($excludeId > 0) {
+            $sql .= ' AND id <> ?';
+            $params[] = $excludeId;
+        }
+        $sql .= ' ORDER BY created_at DESC LIMIT 1';
+        $row = $this->connection()->one($sql, $params);
+        return $row === null ? null : Applicant::fromArray($row);
+    }
+
+    /**
+     * Phase 52 (v2.1.8) — convenience wrapper around
+     * {@see mostRecentPreviousApplicant()} that returns just the row id
+     * (or null). Used by step2() and step3() to look up the previous
+     * application's property_details / job_details.
+     */
+    private function mostRecentPreviousApplicantId(?int $userAccountId, int $excludeId = 0): ?int
+    {
+        $prev = $this->mostRecentPreviousApplicant($userAccountId, $excludeId);
+        return $prev === null ? null : $prev->id;
     }
 
     /**

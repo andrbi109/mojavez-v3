@@ -97,14 +97,21 @@
 #  - `$stBadge` in admin/gateway_search.php + admin/gateway_saved.php is
 #  - `$stLabel` in admin/gateway_search.php + admin/gateway_saved.php is
 # $conf in admin/view_application.php is `(int)($applicant->matchConfidence ?? 0)`
+# $flashKindClass is assigned via a `match { ... }` against fixed Bootstrap
+# $gid, $gDecMin, $gDecMax, $gSort, $itId, $itSrt in fee_tariff/index.php
 # $i in step4.php is a loop counter (int).
 # $id, $applicant, $autoConfirmed, $operatorFlag, $autoRejected,
+# $id, $label, $hint in admin/settings/index.php are loop variables from
+# $licenseTitleCount, $formFieldCount, $wizardStepCount in service_types.php
 # $m = $i + 1 where $i is the array index of $months (int), $d iterates
 # $name in admin/edit_application.php is the Persian month name from the
 # $requestId in admin/license_requests.php is `(int)$r['id']` — a DB row
+# $rowClass in admin/payments.php is the same pattern as Phase 25's
+# $rowClass in bulk_preview/bulk_result (match against fixed Bootstrap
 # $totalMatches in gateway_sync_*.php are (int) DB row ids / counts.
 # $y / $m / $d in admin/edit_application.php are the 3 Jalali birth-date
 # $y, $m, $d in admin/register.php are (int) year/month/day values for
+# 'alert-info') based on the controller-set $flashKind ('success'|'danger'
 # ('success', 'danger', 'warning' — Bootstrap CSS classes). Not user
 # ('مدیر کل' / 'اپراتور همگام‌سازی' / 'کارشناس'), assigned based on the
 # (too specific to generalize in the tool's heuristic without risking
@@ -115,6 +122,10 @@
 # 10. Phase 39 (v2.0.5) — gateway admin views false positives.
 # 12. Phase 35-39 (v2.0.1-v2.0.5) — register form integer variables.
 # 13. Phase 41-42 (v2.0.7-v2.0.8) — integer variables in new views.
+# 14. Phase 43 (v2.0.9) — settings view loop variables.
+# 15. Phase 48-49 (v2.1.4-v2.1.5) — integer variables in fee_tariff + service_types.
+# 16. Phase 50 (v2.1.6) — Bootstrap CSS class literal in admin/view_application.php.
+# 16. Phase 52 (v2.1.8) — StatusBadge helper docblock examples.
 # 2. $roleLabel in app/Views/admin/users/index.php.
 # 3. Phase 14 (v1.5.0) — registration view false positives.
 # 4. Phase 15 (v1.6.0) — admin views + document/pdf_viewer false positives.
@@ -129,6 +140,8 @@
 # Each pattern includes the file path prefix so it suppresses ONLY the
 # Each pattern is scoped to a specific file:variable-name combo so it
 # Format:
+# KNOWN_SETTINGS), $label and $hint are Persian label strings from
+# KNOWN_SETTINGS. All controller-supplied, not user input.
 # Phase 25 (v1.9.7, D-6-2) — heuristic improvements moved to the tool.
 # The Phase 17 admin views (admin/register.php, admin/edit_application.php,
 # The Phase 18 admin views emit a handful of integer counters without
@@ -139,33 +152,43 @@
 # The new admin views (admin/revisions.php, admin/license_requests.php)
 # The new admin views introduced in Phase 42 emit a handful of integer-
 # The new registration wizard views (app/Views/registration/*.php) emit
+# The two `<?= $color ?>` markers flagged in
 # Used in --strict mode (or with the MOJAVEZ_STRICT=1 env var) to suppress
 # When adding a new pattern:
 # `$totalPages = max(1, (int)ceil($total / max(1, $pageSize)));` — already
 # `app/Views/document/pdf_viewer.php` emits `$src` in an `<iframe src>`
+# `bg-<?= $color ?>` Bootstrap badge markup). They are documentation
 # a handful of variables without htmlspecialchars() in the immediate
 # admin/gateway_saved.php, admin/gateway_filters.php, admin/gateway_batch.php)
 # admin/postal_requests.php, admin/service_types.php, admin/wizard_steps.php,
 # admin/sms.php) emit a handful of variables without htmlspecialchars() in
+# alert-class literals ('alert-success', 'alert-danger', 'alert-warning',
+# app/Shared/Support/StatusBadge.php are inside the class-level PHP
+# are COUNT(*) subquery results (int). All provably safe — not user input.
+# are loop-extracted (int) values from fee_groups/fee_group_items rows.
 # assigned via a `match { ... }` expression against fixed string literals
 # attribute. The controller (DocumentController::pdfViewer) builds `$src`
 # bare variable names like `$id` or `$s` would be too broad).
 # by `htmlspecialchars($baseUrl . 'document/inline/' . $id, ENT_QUOTES)`
 # cast / loop-counter / pre-built-HTML variables without htmlspecialchars()
 # cast to int via (int)ceil(...). Cannot contain user input.
+# docblock (lines 36-37 — examples of `text-bg-<?= $color ?>` and
 # docblock explicitly says "already escaped". The analyzer can't trace
 # else secondary) and to display the percentage. Not user input.
 # elsewhere — the bare variable names like `$badge` or `$sid` would be
 # emit a `$badge` variable in a Bootstrap class attribute. `$badge` is
 # emit a handful of variables without htmlspecialchars() in the immediate
+# examples only, not live PHP echo statements — no user input flows
 # false negatives if a user-input variable happened to share the name).
 # handled by smarter heuristics in tools/static_analysis.py:
 # hidden form inputs, modal ids). Suppressed per-file:variable-name.
 # htmlspecialchars() in the immediate vicinity — each is provably safe:
 # id cast to int. Not user input. Appears 6 times (in the table cell,
+# in the comment text and flags it as a false positive.
 # in the immediate vicinity — all are provably safe:
 # input. $name is a controller-supplied setting value, not user input.
 # input. The pattern would also catch a real XSS if a user-controlled
+# into them. The static analyzer's regex parser sees the `<?=` token
 # local $months array (a fixed list of 12 Persian strings). Not user input.
 # name only refers to this fixed CSS-class lookup.
 # registration false positives (not real XSS issues elsewhere — the
@@ -175,6 +198,8 @@
 # suppresses ONLY these Phase 37 false positives.
 # suppresses ONLY these Phase 39 false positives.
 # suppresses ONLY these admin-panel false positives (not real XSS issues
+# table-* class literals '' | 'table-warning' | 'table-info').
+# the $renderField closure — $id is a known setting key (string, from
 # the 3 Jalali date selects — provably safe integer inputs, not user
 # the golden-link confidence badge (>= 80 = success, >= 50 = warning,
 # the immediate vicinity — but each is provably safe:
@@ -186,8 +211,10 @@
 # vicinity — but each is provably safe:
 # vicinity — each is provably safe:
 # warnings that are known false positives. CI runs the analyzer with
+# |'warning'|'info'). Same pattern as Phase 15/17's $badge — not user input.
 # — a DB-backed int field on the Applicant VO, cast to int. Used to color
 # — the value is already escaped at the controller level. The view's
+app/Shared/Support/StatusBadge.php:<?= $color ?>
 app/Views/admin/applicant_account_view.php:<?= $accountId ?>
 app/Views/admin/applicant_account_view.php:<?= $applicantId ?>
 app/Views/admin/applicant_account_view.php:<?= $failedLogin ?>
@@ -205,6 +232,12 @@ app/Views/admin/edit_application.php:<?= $m ?>
 app/Views/admin/edit_application.php:<?= $name ?>
 app/Views/admin/edit_application.php:<?= $sid ?>
 app/Views/admin/edit_application.php:<?= $y ?>
+app/Views/admin/fee_tariff/index.php:<?= $gDecMax ?>
+app/Views/admin/fee_tariff/index.php:<?= $gDecMin ?>
+app/Views/admin/fee_tariff/index.php:<?= $gSort ?>
+app/Views/admin/fee_tariff/index.php:<?= $gid ?>
+app/Views/admin/fee_tariff/index.php:<?= $itId ?>
+app/Views/admin/fee_tariff/index.php:<?= $itSrt ?>
 app/Views/admin/gateway_filters.php:<?= $criteriaStr ?>
 app/Views/admin/gateway_filters.php:<?= $id ?>
 app/Views/admin/gateway_saved.php:<?= $stBadge ?>
@@ -222,6 +255,7 @@ app/Views/admin/license_requests.php:<?= $badge ?>
 app/Views/admin/license_requests.php:<?= $requestId ?>
 app/Views/admin/output_general.php:<?= $cnt ?>
 app/Views/admin/output_grouped_form.php:<?= $count ?>
+app/Views/admin/payments.php:<?= $rowClass ?>
 app/Views/admin/postal_requests.php:<?= $applicantId ?>
 app/Views/admin/postal_requests.php:<?= $badge ?>
 app/Views/admin/postal_requests.php:<?= $requestId ?>
@@ -233,11 +267,18 @@ app/Views/admin/register.php:<?= $y ?>
 app/Views/admin/report_stats.php:<?= $count ?>
 app/Views/admin/revisions.php:<?= $badge ?>
 app/Views/admin/service_types.php:<?= $applicantCount ?>
+app/Views/admin/service_types.php:<?= $formFieldCount ?>
+app/Views/admin/service_types.php:<?= $licenseTitleCount ?>
 app/Views/admin/service_types.php:<?= $sid ?>
+app/Views/admin/service_types.php:<?= $wizardStepCount ?>
+app/Views/admin/settings/index.php:<?= $hint ?>
+app/Views/admin/settings/index.php:<?= $id ?>
+app/Views/admin/settings/index.php:<?= $label ?>
 app/Views/admin/sms.php:<?= $badge ?>
 app/Views/admin/sms.php:<?= $entryId ?>
 app/Views/admin/sms.php:<?= $tid ?>
 app/Views/admin/view_application.php:<?= $conf ?>
+app/Views/admin/view_application.php:<?= $flashKindClass ?>
 app/Views/admin/wizard_steps.php:<?= $fieldCount ?>
 app/Views/admin/wizard_steps.php:<?= $sid ?>
 app/Views/document/pdf_viewer.php:<?= $src ?>
@@ -250,43 +291,9 @@ app/Views/registration/step4.php:<?= $i ?>
 roleLabel
 totalPages
 
-# 14. Phase 43 (v2.0.9) — settings view loop variables.
+# 16. Phase 51 (v2.1.7) — register.php loop counter.
 #
-# $id, $label, $hint in admin/settings/index.php are loop variables from
-# the $renderField closure — $id is a known setting key (string, from
-# KNOWN_SETTINGS), $label and $hint are Persian label strings from
-# KNOWN_SETTINGS. All controller-supplied, not user input.
+# $i in admin/register.php is a loop counter (int) used for
+# product_photos[] and optional_N indices. Provably safe.
 # -----------------------------------------------------------------------------
-app/Views/admin/settings/index.php:<?= $id ?>
-app/Views/admin/settings/index.php:<?= $label ?>
-app/Views/admin/settings/index.php:<?= $hint ?>
-
-# 15. Phase 48-49 (v2.1.4-v2.1.5) — integer variables in fee_tariff + service_types.
-#
-# $gid, $gDecMin, $gDecMax, $gSort, $itId, $itSrt in fee_tariff/index.php
-# are loop-extracted (int) values from fee_groups/fee_group_items rows.
-# $licenseTitleCount, $formFieldCount, $wizardStepCount in service_types.php
-# are COUNT(*) subquery results (int). All provably safe — not user input.
-# -----------------------------------------------------------------------------
-app/Views/admin/fee_tariff/index.php:<?= $gid ?>
-app/Views/admin/fee_tariff/index.php:<?= $gDecMin ?>
-app/Views/admin/fee_tariff/index.php:<?= $gDecMax ?>
-app/Views/admin/fee_tariff/index.php:<?= $gSort ?>
-app/Views/admin/fee_tariff/index.php:<?= $itId ?>
-app/Views/admin/fee_tariff/index.php:<?= $itSrt ?>
-app/Views/admin/service_types.php:<?= $licenseTitleCount ?>
-app/Views/admin/service_types.php:<?= $formFieldCount ?>
-app/Views/admin/service_types.php:<?= $wizardStepCount ?>
-
-# 16. Phase 50 (v2.1.6) — Bootstrap CSS class literal in admin/view_application.php.
-#
-# $flashKindClass is assigned via a `match { ... }` against fixed Bootstrap
-# alert-class literals ('alert-success', 'alert-danger', 'alert-warning',
-# 'alert-info') based on the controller-set $flashKind ('success'|'danger'
-# |'warning'|'info'). Same pattern as Phase 15/17's $badge — not user input.
-# $rowClass in admin/payments.php is the same pattern as Phase 25's
-# $rowClass in bulk_preview/bulk_result (match against fixed Bootstrap
-# table-* class literals '' | 'table-warning' | 'table-info').
-# -----------------------------------------------------------------------------
-app/Views/admin/view_application.php:<?= $flashKindClass ?>
-app/Views/admin/payments.php:<?= $rowClass ?>
+app/Views/admin/register.php:<?= $i ?>

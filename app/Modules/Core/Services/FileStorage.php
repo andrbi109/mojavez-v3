@@ -21,10 +21,21 @@ use RuntimeException;
  *   6. Real MIME detection via finfo on tmp_name.
  *   7. ext↔MIME consistency check (defeats `shell.php` → `x.jpg` rename).
  *
- * Storage layout: uploads/{tracking_code}/{doc_type}_{rand6}.ext
+ * Storage layout (Phase 52 / v2.1.8): storage/uploads/{tracking_code}/{doc_type}_{rand6}.ext
  *  - Outside public/ web root.
  *  - chmod 0640.
  *  - Images re-encoded with GD to max 1920px (defeats polyglot payloads).
+ *
+ * The directory is keyed by the applicant's tracking code (v2 style), NOT
+ * the applicant row id. Rationale: the tracking code is the user-visible
+ * handle for the application; grouping uploads under it keeps the
+ * storage layout human-browsable (`ls storage/uploads/HG-AB12CD34/`) and
+ * survives applicant-row id changes (e.g. a migrate-from-v2 import that
+ * preserves tracking codes but allocates new row ids).
+ *
+ * The `$applicantId` parameter on storeUpload() is accepted for
+ * forward-compat (future audit tables may reference it) but is NOT used
+ * for the storage path — only `$trackingCode` is.
  *
  * Path traversal protection (docs/00-MASTER.md §12.5):
  *   - All access goes through getFullPath() which uses realpath() + str_starts_with().
@@ -96,7 +107,11 @@ final class FileStorage
             return $this->fail('عدم تطابق پسوند و نوع واقعی فایل.');
         }
 
-        // Build the storage path: uploads/{tracking_code}/{doc_type}_{rand6}.ext
+        // Build the storage path: storage/uploads/{tracking_code}/{doc_type}_{rand6}.ext
+        // Phase 52 (v2.1.8) — the directory is keyed by the applicant's
+        // tracking code (v2 style), NOT by the applicant row id. The
+        // $applicantId parameter is accepted for forward-compat but is
+        // intentionally unused here.
         $rand = bin2hex(random_bytes(3));  // 6 hex chars
         $fileName = "{$docType}_{$rand}.{$ext}";
         $relativePath = "/{$trackingCode}/{$fileName}";
@@ -186,10 +201,14 @@ final class FileStorage
 
     /**
      * Get the uploads directory (from config).
+     *
+     * Phase 52 (v2.1.8) — defaults to `storage/uploads/` to match the
+     * AvatarService layout (`storage/uploads/avatars/`). Configured via
+     * `app.upload_dir` in `config/app.php`.
      */
     public function getUploadDir(): string
     {
-        return (string)Config::get('app.upload_dir', dirname(__DIR__, 4) . '/uploads');
+        return (string)Config::get('app.upload_dir', dirname(__DIR__, 4) . '/storage/uploads');
     }
 
     // ---------------- private helpers ----------------

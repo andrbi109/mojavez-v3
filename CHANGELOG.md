@@ -149,125 +149,74 @@ planned sections without hitting a dead end.
 
 ---
 
-## [2.1.6] — 2026-11-19
+## [2.1.8] — 2026-11-19
 
-### Phase 50: Tehran timezone + payment-request modal + payments registration + Jalali filters
+### Phase 52: auto-fill wizard + status-badge colors + tracking-code storage + initial status fix
 
-**v2.1.6** is a SemVer **patch** release on top of v2.1.5 (commit `12c537c`).
-It bundles four user-facing fixes that close UX gaps surfaced by the
-production rollout, plus a new migration (no schema-break, additive
-column on `payments`).
+**v2.1.8** is a SemVer **patch** release on top of v2.1.5 (released at
+commit `dc608ee`'s descendant). It bundles four functional improvements
+that close small UX gaps from the production rollout without
+introducing new routes, schema, or domain abstractions.
 
-1. **Session timezone → +03:30 (Tehran).** The PDO session `time_zone`
-   was `+00:00` (UTC) since v3 Phase 1. Switched to `+03:30` so
-   `DATETIME`/`TIMESTAMP` columns read back in Tehran local time without
-   needing the server-side MySQL tz_tables load (which some
-   shared-hosting installs don't have, silently turning
-   `Asia/Tehran` into UTC). The config regex in
-   `Connection::bootSession()` was also fixed — the previous regex
-   silently fell back to the default for bare offsets like `+03:30`,
-   so changing `config/database.php` alone had no effect. The new
-   regex accepts both bare offsets and IANA names.
+#### 1. Registration wizard: auto-fill user info
+- `selectService()` now loads the user's `user_account` row (mobile,
+  display_name) and their most recent previous application (first_name,
+  last_name). The new applicants row is created with these fields
+  pre-filled so step 1 of the wizard shows them automatically.
+- Step 1 view shows a small "نام نمایشی حساب کاربری شما: …" hint when
+  no previous application exists but the user has a `display_name`.
+- Steps 2 and 3 fall back to the most recent previous application's
+  `property_details` / `job_details` when the current applicant has
+  none yet — returning users don't have to re-enter their business
+  address or license title.
 
-2. **Payment-request modal in `admin/view_application`.** The
-   "درخواست پرداخت" button previously POSTed directly to
-   `/admin/request-payment` which returned JSON (rendered as raw text
-   by the browser). Replaced with a Bootstrap modal that collects
-   `applicant_id` (hidden), `amount` (pre-filled from settings
-   `registration_fee_amount` → `fee_default_amount` → 500000
-   fallback, editable, with thousands-separator preview), and
-   `description` (free-form Persian note, max 500 chars). The form
-   POSTs to `/admin/request-payment` and the controller now
-   **redirects** back to `/admin/view/{id}` with a flash banner
-   (success or error) — no more raw JSON.
+#### 2. Status badge colors: single source of truth
+- New `App\Shared\Support\StatusBadge::color()` helper reads the
+  Bootstrap colour class from `config/statuses.php` (the 18-status
+  cycle definitions).
+- `ApplicantStatus::badgeColor()` now delegates to
+  `StatusBadge::color()` instead of duplicating the colour values in
+  a `match` statement — config is the single source of truth.
+- All views that render an applicant `current_status` badge now use
+  `StatusBadge::color()`:
+  - `admin/applications.php` (was hard-coded `text-bg-secondary`).
+  - `admin/applicant_account_view.php` (was hard-coded `text-bg-info`).
+  - `records.php` (was hard-coded `text-bg-secondary`).
+  - `user/overview.php` (was hard-coded `bg-info`).
+  - `user/requests.php` (was an inline if/elseif — now config-driven).
+  - `guide.php` (the 18-status cycle diagram now reads colours from
+    `StatusBadge::color()` instead of hard-coded values per row).
+  - `admin/view_application.php` — already used `$badgeColorFor()`
+    reading `$statusMeta` from the config; now also consults
+    `StatusBadge::color()` so the lookup is the same code path as
+    every other view.
 
-3. **`AdminController::requestPayment()` rewritten** to:
-   - Accept `amount` + `description` from the POST body.
-   - Insert a `payments` row with `status='در انتظار'` (a NEW status,
-     distinct from `'در انتظار رسید'` — the former means "admin
-     requested, awaiting user payment"; the latter means "user
-     uploaded receipt, awaiting admin review"). `purpose='هزینهٔ ثبت‌نام'`
-     (matches schema default + PaymentController whitelist).
-     `description` goes into the new `payments.description` column
-     (added by migration `20261118_001_payments_description_column.sql`).
-   - Link the `user_account_id` if the applicant has one (so the row
-     shows up in the user's `/panel/payments`).
-   - Keep the existing `payment_required=1` flag, status-log entry,
-     and user-notification insert for the audit trail.
-   - Redirect to `/admin/view/{id}` with a flash message (NOT JSON).
+#### 3. Document storage: tracking-code-keyed (v2 style)
+- `config/app.php` `upload_dir` moved from the top-level `uploads/`
+  to `storage/uploads/` so documents share the same parent as the
+  `AvatarService` layout (`storage/uploads/avatars/`).
+- `FileStorage::getUploadDir()` default fallback updated to match.
+- `FileStorage::storeUpload()` already keyed the storage path by the
+  applicant's tracking code (`{upload_dir}/{tracking_code}/{file}`) —
+  no path-building change was needed, only the configured `upload_dir`
+  moved.
+- `DocumentController` needs no code change: `$document->filePath`
+  is the stored relative path `/{tracking_code}/{file_name}`, and
+  `FileStorage::getFullPath()` resolves it against the configured
+  `upload_dir`.
 
-4. **User payments page** (`user/payments.php`) extended to surface
-   the new admin-requested payments: a new "توضیحات" column shows the
-   description the admin entered, a "پرداخت" button is shown for
-   `status='در انتظار'` rows (opens a placeholder modal — the online
-   payment flow is coming in a later phase), and the badge palette
-   distinguishes `'در انتظار'` (warning) from `'در انتظار رسید'`
-   (info).
+#### 4. Initial status: InfoComplete (was InitialApproval)
+- `RegistrationController::processStep4()` now transitions the
+  applicant to `تکمیل اطلاعات` (`ApplicantStatus::InfoComplete`)
+  instead of `تأیید اولیه` (`ApplicantStatus::InitialApproval`).
+- The wizard leaves the applicant at "InfoComplete" so the admin
+  can review the submission and advance the status manually. Before
+  Phase 52, the wizard skipped the admin-review step by jumping
+  straight to "InitialApproval".
 
-5. **Admin payments page** (`admin/payments.php`) extended to show
-   all payment requests including the new `'در انتظار'` status: new
-   "درخواست‌شده" summary card (count + sum for `'در انتظار'`), new
-   status filter option, new "تاریخ ثبت" column (Jalali formatted
-   `created_at`), new "توضیحات" column (admin-entered note),
-   badge palette distinguishes the two pending statuses, and a small
-   "در انتظار پرداخت کاربر" inline badge for `'در انتظار'` rows
-   (instead of the review button, which only makes sense once the
-   user uploads a receipt).
-
-6. **Jalali date-range filters.** The `from` / `to` date inputs on
-   the admin payments page were Gregorian `<input type="date">`. Now
-   they're Jalali text inputs (`pattern="\d{4}/\d{1,2}/\d{1,2}"` +
-   placeholder `YYYY/MM/DD`). The controller (`PaymentController
-   ::parseDateRange`) validates the regex, converts to Gregorian via
-   `PersianDate::jalaliStringToGregorian`, and applies the bound
-   Y-m-d range to the WHERE clause. The original Jalali strings are
-   preserved in the `filters` array so the inputs re-populate with
-   what the admin typed. The CSV export link + the new `from`/`to`
-   CSV columns also use the Jalali-aware path. No other admin view
-   has date filters (verified by grep on `type="date"` + `name=from`
-   / `name=to` — only `admin/payments.php` and
-   `admin/fee_tariff/edit.php` use date inputs, and the latter is
-   for tariff validity, not a filter).
-
-### Files changed (Phase 50)
-
-| File | Change |
-|---|---|
-| `VERSION` | `2.1.5` → `2.1.6` |
-| `README.md` | Version header lines 3 + 7 updated to `2.1.6` / `v2.1.6` |
-| `CHANGELOG.md` | New `## [2.1.6]` section |
-| `config/database.php` | `'timezone' => '+00:00'` → `'+03:30'` (Tehran) |
-| `app/Shared/Persistence/Connection.php` | `bootSession()` timezone regex fixed (now accepts both bare offsets like `+03:30` and IANA names like `Asia/Tehran`); default fallback `+00:00` → `+03:30`; docblock updated |
-| `database/schema.sql` | `SET time_zone = '+00:00'` → `'+03:30'` (fresh-install session); added `description` column to `payments` table |
-| `scripts/generate_schema_sql.py` | `SET time_zone = '+00:00'` → `'+03:30'` (so the next regen stays consistent) |
-| `app/Modules/Core/migrations/20261118_001_payments_description_column.sql` | NEW — adds `description VARCHAR(500) NULL DEFAULT NULL AFTER reference_code` to `payments` |
-| `app/Modules/Core/Controllers/AdminController.php` | `requestPayment()` rewritten (accepts amount+description, inserts `payments` row with `status='در انتظار'`, redirects to `/admin/view/{id}` with flash — no JSON). `viewApplication()` now reads the flash message + suggested amount from settings and forwards them to the view. |
-| `app/Views/admin/view_application.php` | New flash banner at the top (success/danger). The "درخواست پرداخت" button now opens a Bootstrap modal (applicant name read-only, editable amount with thousands-separator preview, description textarea, submit+cancel). JS at the bottom strips non-digits, shows a Persian-digit preview, and asks for confirmation before submit. |
-| `app/Views/user/payments.php` | New "توضیحات" column. New "پرداخت" button for `status='در انتظار'` rows (opens a placeholder modal). Badge palette now distinguishes `'در انتظار'` (warning) from `'در انتظار رسید'` (info). Status labels are translated for display. |
-| `app/Modules/Core/Controllers/PaymentController.php` | New `STATUS_FILTERS` whitelist (adds `'در انتظار'`). `index()` and `csv()` use the new whitelist. `parseDateRange()` now accepts Jalali `YYYY/MM/DD` and converts to Gregorian via a lazy-loaded `PersianDate` instance (new `persianDate()` helper + private `$persianDate` property). `index()` SQL now also fetches `p.description`; the `filters` array carries the original Jalali strings. `csv()` adds new "تاریخ ثبت" + "توضیحات" columns. `computeStats()` adds `requestedCount` + `requestedSum` for the new status. New `use` for `PersianDate`. |
-| `app/Views/admin/payments.php` | Summary cards restructured to 5 cards (added "درخواست پرداخت"). Date filter inputs converted from `<input type="date">` (Gregorian) to Jalali text inputs (`pattern` + `placeholder` + title). Status filter dropdown gained `'در انتظار'`. Table gained "تاریخ ثبت" (Jalali formatted `created_at`) and "توضیحات" columns. Badge palette distinguishes `'در انتظار'` (warning) from `'در انتظار رسید'` (info). Rows for `'در انتظار'` show a "در انتظار پرداخت کاربر" inline badge instead of the review button. |
-
-### Backward compatibility
-
-- The `payments` migration is additive (new nullable column) — no
-  existing data is changed.
-- The new `'در انتظار'` status is only set by the new code path
-  (AdminController::requestPayment) — existing rows keep their
-  previous status. PaymentController's status filter whitelist was
-  extended to accept the new value; existing status filters still
-  work the same.
-- The timezone change is observable: any code that called
-  `SELECT NOW()` or relied on a `DATETIME` column's session-tz
-  interpretation will now see Tehran local time instead of UTC. This
-  is the intended user-visible behavior (Persian users see Persian
-  times in the admin panel); no code change is required elsewhere
-  because the application already formats via `PersianDate::format()`
-  which works on absolute timestamps.
-- The Jalali date filter is backward-incompatible at the URL level
-  (`?from=2026-11-19` no longer filters; `?from=1405/08/28` does).
-  This is intentional — the admin-facing filter UI is the only entry
-  point, and it now sends Jalali. Programmatic callers (e.g. CSV
-  export links from the page) get Jalali too.
+#### 5. Version bump
+- `VERSION` → `2.1.8`
+- `README.md` header updated.
 
 ---
 
