@@ -224,12 +224,22 @@ ON DUPLICATE KEY UPDATE `sample_text` = VALUES(`sample_text`);
 -- if that migration already ran.
 
 -- === Fee Groups (simplified for v3 schema) ===
+-- Phase 54 (v2.2.0) — the four groups are now non-overlapping decile
+-- buckets that cover 1..10 with no gaps: A=1-2, B=3-4, C=5-6, D=7-10.
+-- The previous seed (1-3 / 4-6 / 7-9 / rural-1-10) left decile 10 in no
+-- group and the rural bucket overlapped everything. The new buckets are
+-- clean and the admin enables per-service checkboxes per group from the
+-- /admin/fee-tariff matrix (see app/Views/admin/fee_tariff/index.php).
 INSERT INTO `fee_groups` (`code`, `label`, `decile_min`, `decile_max`, `total_amount`, `is_active`, `sort_order`) VALUES
-('A', 'دهک ۱-۳ (پایین)', 1, 3, 100000, 1, 10),
-('B', 'دهک ۴-۶ (متوسط)', 4, 6, 300000, 1, 20),
-('C', 'دهک ۷-۹ (بالا)', 7, 9, 500000, 1, 30),
-('D', 'روستایی (مهمان)', 1, 10, 50000, 1, 40)
-ON DUPLICATE KEY UPDATE `label` = VALUES(`label`);
+('A', 'دهک ۱-۲ (پایین)',     1, 2,  100000, 1, 10),
+('B', 'دهک ۳-۴ (متوسط)',    3, 4,  300000, 1, 20),
+('C', 'دهک ۵-۶ (بالا)',     5, 6,  500000, 1, 30),
+('D', 'دهک ۷-۱۰ (بسیار بالا)', 7, 10, 50000, 1, 40)
+ON DUPLICATE KEY UPDATE
+  `label`      = VALUES(`label`),
+  `decile_min` = VALUES(`decile_min`),
+  `decile_max` = VALUES(`decile_max`),
+  `sort_order` = VALUES(`sort_order`);
 
 -- === Payment Channels ===
 INSERT INTO `payment_channels` (`title`, `channel_type`, `sort_order`) VALUES

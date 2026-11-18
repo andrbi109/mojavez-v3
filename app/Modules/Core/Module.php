@@ -339,6 +339,14 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/fee-tariff/group/save',        'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'groupSave'],
             ['method' => 'POST', 'path' => '/admin/fee-tariff/group/{id}/delete', 'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'groupDelete'],
             ['method' => 'POST', 'path' => '/admin/fee-tariff/items/save',        'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'itemsSave'],
+            // Phase 54 (v2.2.0) — per-service × per-group matrix (4 decile
+            // groups A/B/C/D + checkboxes per service). All three routes
+            // MUST be registered BEFORE the {id} catch-all below — otherwise
+            // `update()` would steal /services/matrix-save (3 path segments
+            // after /admin/fee-tariff, same as /admin/fee-tariff/{id}).
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/services/matrix-save', 'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'servicesMatrixSave'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/services/add',          'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'serviceAddAll'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/services/delete',       'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'serviceDeleteAll'],
             // The {id} catch-all MUST come after the /settings, /group/save,
             // /items/save, /group/{id}/delete routes above (otherwise
             // `update()` would steal /settings). The {id} segment matches
@@ -580,6 +588,13 @@ final class Module implements ModuleInterface
             // further status changes after the case is closed.
             // Idempotent ALTER (information_schema guard).
             '20261119_001_applicants_closed_at_column.sql',
+            // Phase 54 (v2.2.0) — updates the four fee_groups rows to the
+            // new non-overlapping decile buckets: A=1-2, B=3-4, C=5-6,
+            // D=7-10. The previous seed (A=1-3, B=4-6, C=7-9, D=روستایی
+            // 1-10) left decile 10 in no group and the D bucket overlapped
+            // all the others. Idempotent UPDATEs by `code` (UNIQUE) so
+            // existing fee_group_items FK rows are preserved.
+            '20261120_001_fee_groups_new_decile_buckets.sql',
         ];
     }
 

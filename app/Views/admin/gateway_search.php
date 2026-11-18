@@ -10,17 +10,27 @@
  * params. The controller runs LicenseService::searchLocal() and passes
  * the results back to this view.
  *
+ * Phase 54 (v2.2.0) — when the local cache is completely empty
+ * ($cacheTotal === 0, i.e. national_licenses has 0 rows), the page shows
+ * a prominent info banner with the exact text the user requested:
+ * "هیچ مجوزی در کش محلی وجود ندارد. برای پر کردن کش، به صفحه وضعیت
+ * همگام‌سازی بروید و دکمه اجرای همگام‌سازی را بزنید." This replaces the
+ * previous "نتیجه‌ای یافت نشد — کش محلی خالی است" message that lived
+ * inside the empty results row (less prominent + easy to miss).
+ *
  * @var array<string,mixed> $filter
  * @var array<int,array<string,mixed>> $rows
  * @var int $total
  * @var int $page
  * @var int $pageSize
  * @var int $totalPages
+ * @var int $cacheTotal  Phase 54 — total rows in national_licenses (unfiltered)
  * @var array<int,array{id:string,title:string}> $provinces
  * @var array<int,array{id:string,title:string}> $organizations
  * @var string $csrfField
  * @var string $baseUrl
  */
+$cacheTotal ??= 0;
 $q = static function (string $key) use ($filter): string {
     return htmlspecialchars((string)($filter[$key] ?? ''), ENT_QUOTES, 'UTF-8');
 };
@@ -61,6 +71,25 @@ $q = static function (string $key) use ($filter): string {
         </span>
     </div>
 </div>
+
+<?php if ($cacheTotal === 0): ?>
+<!-- Phase 54 (v2.2.0) — the cache is completely empty. Show a prominent
+     info banner with the exact message the user requested so the admin
+     immediately knows where to go instead of staring at "no results". -->
+<div class="alert alert-info d-flex align-items-start gap-2 mb-3" role="alert">
+    <i class="bi bi-database-slash fs-4 mt-1"></i>
+    <div>
+        <strong>هیچ مجوزی در کش محلی وجود ندارد.</strong>
+        برای پر کردن کش، به صفحهٔ
+        <a class="alert-link" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status">«وضعیت همگام‌سازی»</a>
+        بروید و دکمهٔ «اجرای همگام‌سازی» را بزنید.
+        <div class="small text-muted mt-1">
+            می‌توانید همین حالا از دکمهٔ سبز «اجرای همگام‌سازی» در بالای همین صفحه هم
+            استفاده کنید — پس از پایان دور، نتایج به‌طور خودکار در این جدول نمایش داده می‌شوند.
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Filter form -->
 <div class="card mb-3">
@@ -206,11 +235,21 @@ $q = static function (string $key) use ($filter): string {
                             <div class="d-flex flex-column align-items-center gap-2">
                                 <span>
                                     <i class="bi bi-inbox"></i>
-                                    نتیجه‌ای یافت نشد — کش محلی خالی است یا فیلتر بیش‌ازحد سخت‌گیرانه است.
+                                    <?php if ($cacheTotal === 0): ?>
+                                        نتیجه‌ای یافت نشد — کش محلی خالی است.
+                                    <?php else: ?>
+                                        نتیجه‌ای یافت نشد — فیلتر بیش‌ازحد سخت‌گیرانه است
+                                        (مجوزی با این معیارها در کش وجود ندارد).
+                                    <?php endif; ?>
                                 </span>
                                 <span class="small">
-                                    برای پر کردن کش از درگاه ملی، دکمهٔ «اجرای همگام‌سازی» را بزنید
-                                    یا به صفحهٔ <a class="link-primary" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status">وضعیت همگام‌سازی</a> بروید.
+                                    <?php if ($cacheTotal === 0): ?>
+                                        برای پر کردن کش از درگاه ملی، دکمهٔ «اجرای همگام‌سازی» را بزنید
+                                        یا به صفحهٔ <a class="link-primary" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status">وضعیت همگام‌سازی</a> بروید.
+                                    <?php else: ?>
+                                        فیلترها را سست‌تر کنید (مثلاً استان یا وضعیت را روی «همه» بگذارید)
+                                        و دوباره جستجو کنید.
+                                    <?php endif; ?>
                                 </span>
                             </div>
                         </td>

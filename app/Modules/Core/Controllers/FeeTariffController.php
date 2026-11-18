@@ -97,12 +97,125 @@ final class FeeTariffController extends Controller
             $itemsByGroup[$gid][] = $it;
         }
 
+        // Phase 54 (v2.2.0) — build the master list of services for the
+        // "تعرفهٔ پایه" matrix section. The matrix shows every unique
+        // item_key across all fee_groups, with one row per service and
+        // a per-group checkbox + amount input for each of the 4 groups.
+        //
+        // Services are keyed by item_key (the admin's stable identifier
+        // — "new_request", "reissue", etc.). For each service we collect:
+        //   - the canonical item_label (the most recent non-empty label)
+        //   - sort_order + notes (canonicalized similarly)
+        //   - per-group state: enabled (bool) + amount (int) + row id
+        //     for each fee_group_id (so the view can render a checkbox
+        //     + an amount input, and the saveMatrix() handler can
+        //     upsert/delete exactly the right rows).
+        $services = $this->buildServicesMatrix($groups, $items);
+
         return $this->render('admin/fee_tariff/index', [
             'title'         => 'تعرفهٔ هزینه',
             'rows'          => $rows,
             'groups'        => $groups,
             'itemsByGroup'  => $itemsByGroup,
+            'services'      => $services,
         ]);
+    }
+
+    /**
+     * Phase 54 (v2.2.0) — build the master list of services with
+     * per-group state, used by the "تعرفهٔ پایه" matrix section.
+     *
+     * Returns a list (preserving discovery order) of associative arrays:
+     *
+     *   [
+     *     'item_key'   => 'new_request',
+     *     'item_label' => 'ثبت درخواست',
+     *     'sort_order' => 10,
+     *     'notes'      => 'note text or empty string',
+     *     'groups'     => [
+     *       3 => ['enabled' => true,  'amount' => 50000, 'row_id' => 12],
+     *       5 => ['enabled' => false, 'amount' => 0,     'row_id' => null],
+     *       ...
+     *     ],
+     *   ]
+     *
+     * The view iterates `groups` (the fee_groups list, in sort_order) to
+     * render one checkbox + amount input per group; the controller keys
+     * by fee_group_id (int) so the view doesn't need to look up the id
+     * again.
+     *
+     * @param array<int,array<string,mixed>> $groups  fee_groups rows
+     * @param array<int,array<string,mixed>> $items   fee_group_items rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function buildServicesMatrix(array $groups, array $items): array
+    {
+        // Index group IDs in sort_order so the matrix renders groups
+        // in the same order as the per-group cards below.
+        $groupIds = [];
+        foreach ($groups as $g) {
+            $groupIds[] = (int)$g['id'];
+        }
+
+        $services = [];
+        $index = [];  // item_key → index in $services
+        foreach ($items as $it) {
+            $key   = (string)$it['item_key'];
+            $gid   = (int)$it['fee_group_id'];
+            $label = (string)$it['item_label'];
+            $sort  = (int)$it['sort_order'];
+            $amt   = (int)$it['amount'];
+            $rid   = (int)$it['id'];
+            $nts   = (string)($it['notes'] ?? '');
+
+            if (!isset($index[$key])) {
+                $svc = [
+                    'item_key'   => $key,
+                    'item_label' => $label,
+                    'sort_order' => $sort,
+                    'notes'      => $nts,
+                    'groups'     => [],
+                ];
+                foreach ($groupIds as $gid0) {
+                    $svc['groups'][$gid0] = [
+                        'enabled' => false,
+                        'amount'  => 0,
+                        'row_id'  => null,
+                    ];
+                }
+                $services[] = $svc;
+                $index[$key] = count($services) - 1;
+            } else {
+                // Merge canonical label/sort/notes — most recent non-empty wins.
+                $svc = &$services[$index[$key]];
+                if ($label !== '' && $svc['item_label'] === '') {
+                    $svc['item_label'] = $label;
+                }
+                if ($sort > $svc['sort_order']) {
+                    $svc['sort_order'] = $sort;
+                }
+                if ($nts !== '' && $svc['notes'] === '') {
+                    $svc['notes'] = $nts;
+                }
+            }
+            // Mark this service as enabled in this group + record amount + row id.
+            $services[$index[$key]]['groups'][$gid] = [
+                'enabled' => true,
+                'amount'  => $amt,
+                'row_id'  => $rid,
+            ];
+            unset($svc);
+        }
+
+        // Sort services by sort_order, then item_key for stability.
+        usort($services, static function (array $a, array $b): int {
+            if ($a['sort_order'] !== $b['sort_order']) {
+                return $a['sort_order'] <=> $b['sort_order'];
+            }
+            return strcmp($a['item_key'], $b['item_key']);
+        });
+
+        return $services;
     }
 
     public function create(Request $request, array $params = []): Response
@@ -405,6 +518,214 @@ final class FeeTariffController extends Controller
             }
         }
         return Response::redirect('/admin/fee-tariff#group-' . $groupId);
+    }
+
+    /**
+     * POST /admin/fee-tariff/services/matrix-save — bulk upsert + delete
+     * of fee_group_items based on the per-service × per-group matrix in
+     * the "تعرفهٔ پایه" section of /admin/fee-tariff.
+     *
+     * Phase 54 (v2.2.0) — the view renders a checkbox + amount input for
+     * every (service, group) pair. This handler accepts the submitted
+     * form and:
+     *   - For each service × group where the checkbox is checked → upsert
+     *     the fee_group_items row (insert if missing, update label /
+     *     amount / sort / notes if existing).
+     *   - For each service × group where the checkbox is unchecked AND
+     *     a row exists → DELETE the row.
+     *
+     * Expected body shape (PHP parses nested form-encoded array keys
+     * into a nested array):
+     *
+     *   services[<item_key>][label]      = "ثبت درخواست"
+     *   services[<item_key>][sort]       = 10
+     *   services[<item_key>][notes]      = "note text"
+     *   services[<item_key>][groups][<gid>][enabled] = "1"  (present iff checked)
+     *   services[<item_key>][groups][<gid>][amount]  = 50000
+     *
+     * Validation:
+     *   - item_key matches /^[A-Za-z][A-Za-z0-9_]{0,49}$/ (same rule as
+     *     the inline add-item form). Invalid keys are silently skipped.
+     *   - amount is clamped to [0, PHP_INT_MAX].
+     *   - label is trimmed; empty label is silently skipped (the row
+     *     is left as-is to avoid wiping out an existing label).
+     *
+     * Auth: requireRole(['admin']).
+     * Returns: 302 redirect to /admin/fee-tariff#services-matrix.
+     */
+    public function servicesMatrixSave(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $body = $request->body();
+
+        // Load the current set of fee_group_ids so we only ever touch
+        // rows for groups that actually exist (defense in depth — the
+        // view only renders checkboxes for real groups, but a malicious
+        // POST could try to write into a non-existent group_id).
+        $groupRows = $this->conn->all('SELECT id FROM fee_groups ORDER BY sort_order, id');
+        $groupIds = array_map(static fn (array $r): int => (int)$r['id'], $groupRows);
+
+        $services = $body['services'] ?? [];
+        if (!is_array($services)) {
+            $services = [];
+        }
+
+        foreach ($services as $rawKey => $data) {
+            $key = trim((string)$rawKey);
+            if ($key === '' || preg_match('/^[A-Za-z][A-Za-z0-9_]{0,49}$/', $key) !== 1) {
+                continue;
+            }
+            $label = trim((string)($data['label'] ?? ''));
+            $sort  = (int)($data['sort'] ?? 0);
+            $notes = trim((string)($data['notes'] ?? ''));
+            $groupStates = is_array($data['groups'] ?? null) ? $data['groups'] : [];
+
+            foreach ($groupIds as $gid) {
+                $state     = $groupStates[$gid] ?? [];
+                $isEnabled = !empty($state['enabled']);
+                $amount    = max(0, (int)($state['amount'] ?? 0));
+
+                $existing = $this->conn->one(
+                    'SELECT id FROM fee_group_items WHERE fee_group_id = ? AND item_key = ?',
+                    [$gid, $key]
+                );
+
+                if (!$isEnabled) {
+                    // Checkbox unchecked → delete the row if it exists.
+                    if ($existing !== null) {
+                        $this->conn->execute(
+                            'DELETE FROM fee_group_items WHERE id = ?',
+                            [(int)$existing['id']]
+                        );
+                    }
+                    continue;
+                }
+
+                // Checkbox checked → upsert. Skip if label is empty (would
+                // violate NOT NULL on item_label); leave the existing row
+                // alone so the admin doesn't accidentally wipe a label.
+                if ($label === '') {
+                    continue;
+                }
+
+                if ($existing !== null) {
+                    $this->conn->execute(
+                        'UPDATE fee_group_items
+                            SET item_label = ?, amount = ?, sort_order = ?, notes = ?
+                          WHERE id = ?',
+                        [$label, $amount, $sort, $notes !== '' ? $notes : null, (int)$existing['id']]
+                    );
+                } else {
+                    $this->conn->execute(
+                        'INSERT INTO fee_group_items
+                            (fee_group_id, item_key, item_label, amount, sort_order, notes)
+                         VALUES (?, ?, ?, ?, ?, ?)',
+                        [$gid, $key, $label, $amount, $sort, $notes !== '' ? $notes : null]
+                    );
+                }
+            }
+        }
+        return Response::redirect('/admin/fee-tariff#services-matrix');
+    }
+
+    /**
+     * POST /admin/fee-tariff/services/add — add a NEW service to ALL
+     * fee_groups at once (Phase 54 / v2.2.0 matrix requirement: "When a
+     * new service is added, it should be auto-added to all 4 groups").
+     *
+     * The handler iterates every fee_group_id and inserts a
+     * fee_group_items row with the same item_key, item_label, amount,
+     * sort_order, notes for each group. If a row already exists for a
+     * (group, key) pair (e.g. the admin clicked "add" twice by mistake,
+     * or the service already existed in some groups), the existing row
+     * is updated instead of duplicating.
+     *
+     * Validation:
+     *   - item_key matches /^[A-Za-z][A-Za-z0-9_]{0,49}$/ (same as
+     *     itemsSave()).
+     *   - item_label is non-empty after trim (NOT NULL constraint).
+     *   - amount clamped to [0, PHP_INT_MAX].
+     * On validation failure: silent redirect (PRG), no error banner —
+     * the admin sees the row didn't get added and tries again.
+     *
+     * Auth: requireRole(['admin']).
+     * Returns: 302 redirect to /admin/fee-tariff#services-matrix.
+     */
+    public function serviceAddAll(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $body = $request->body();
+        $key   = trim((string)($body['item_key'] ?? ''));
+        $label = trim((string)($body['item_label'] ?? ''));
+        if ($key === '' || $label === '') {
+            return Response::redirect('/admin/fee-tariff#services-matrix');
+        }
+        if (preg_match('/^[A-Za-z][A-Za-z0-9_]{0,49}$/', $key) !== 1) {
+            return Response::redirect('/admin/fee-tariff#services-matrix');
+        }
+        $amount = max(0, (int)($body['amount'] ?? 0));
+        $sort   = (int)($body['sort_order'] ?? 0);
+        $notes  = trim((string)($body['notes'] ?? ''));
+
+        $groupRows = $this->conn->all('SELECT id FROM fee_groups ORDER BY sort_order, id');
+        foreach ($groupRows as $g) {
+            $gid = (int)$g['id'];
+            $existing = $this->conn->one(
+                'SELECT id FROM fee_group_items WHERE fee_group_id = ? AND item_key = ?',
+                [$gid, $key]
+            );
+            if ($existing !== null) {
+                $this->conn->execute(
+                    'UPDATE fee_group_items
+                        SET item_label = ?, amount = ?, sort_order = ?, notes = ?
+                      WHERE id = ?',
+                    [$label, $amount, $sort, $notes !== '' ? $notes : null, (int)$existing['id']]
+                );
+            } else {
+                $this->conn->execute(
+                    'INSERT INTO fee_group_items
+                        (fee_group_id, item_key, item_label, amount, sort_order, notes)
+                     VALUES (?, ?, ?, ?, ?, ?)',
+                    [$gid, $key, $label, $amount, $sort, $notes !== '' ? $notes : null]
+                );
+            }
+        }
+        return Response::redirect('/admin/fee-tariff#services-matrix');
+    }
+
+    /**
+     * POST /admin/fee-tariff/services/delete — permanently delete a
+     * service (every fee_group_items row with the given item_key,
+     * across all fee_groups).
+     *
+     * Phase 54 (v2.2.0) — paired with serviceAddAll() so the admin can
+     * both add and remove a service as a whole (rather than clicking
+     * "delete" four times — once per group card).
+     *
+     * Defense:
+     *   - item_key is validated with the same pattern as serviceAddAll()
+     *     so a malicious POST can't do anything via SQL injection (the
+     *     DELETE uses a bound placeholder, so injection is already
+     *     impossible, but we also reject obviously bad keys).
+     *   - The DELETE touches only fee_group_items (no FK to payments
+     *     or other tables), so no cascade risk.
+     *
+     * Auth: requireRole(['admin']).
+     * Returns: 302 redirect to /admin/fee-tariff#services-matrix.
+     */
+    public function serviceDeleteAll(Request $request, array $params = []): Response
+    {
+        $this->requireRole(['admin']);
+        $body = $request->body();
+        $key = trim((string)($body['item_key'] ?? ''));
+        if ($key === '' || preg_match('/^[A-Za-z][A-Za-z0-9_]{0,49}$/', $key) !== 1) {
+            return Response::redirect('/admin/fee-tariff#services-matrix');
+        }
+        $this->conn->execute(
+            'DELETE FROM fee_group_items WHERE item_key = ?',
+            [$key]
+        );
+        return Response::redirect('/admin/fee-tariff#services-matrix');
     }
 
     /**

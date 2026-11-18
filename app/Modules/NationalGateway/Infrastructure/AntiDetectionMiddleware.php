@@ -103,11 +103,26 @@ final readonly class AntiDetectionMiddleware
         ];
     }
 
+    /**
+     * HTTP timeouts (connect + response) in seconds.
+     *
+     * Phase 54 (v2.2.0) — normalize both the legacy key names (`connect`,
+     * `response`) and the documented config key names (`connect_s`,
+     * `response_s`) so HttpClient.php can always read `$timeouts['connect']`
+     * and `$timeouts['response']` without an "Undefined array key" warning.
+     * The config file (config/anti-detection.php) ships `connect_s` /
+     * `response_s`, but the previous implementation returned the config
+     * array as-is — which left `connect` and `response` undefined and
+     * surfaced as "Undefined array key 'connect'" on the sync status page.
+     *
+     * @return array{connect:int,response:int}
+     */
     public function timeouts(): array
     {
-        return $this->config['timeout'] ?? [
-            'connect' => 15,
-            'response' => 30,
+        $t = is_array($this->config['timeout'] ?? null) ? $this->config['timeout'] : [];
+        return [
+            'connect'  => (int)($t['connect']  ?? $t['connect_s']  ?? 15),
+            'response' => (int)($t['response'] ?? $t['response_s'] ?? 30),
         ];
     }
 }

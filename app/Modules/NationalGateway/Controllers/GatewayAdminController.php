@@ -148,6 +148,13 @@ final class GatewayAdminController extends Controller
         $provinces = $this->lookupRepo->provinces();
         $organizations = $this->lookupRepo->mainOrganizations();
 
+        // Phase 54 (v2.2.0) — distinguish "cache is empty" from "filter is
+        // too strict" in the search view. When the cache has zero rows
+        // (countAll === 0), the view shows a clear info banner telling
+        // the admin to run a sync cycle first. Otherwise, the no-results
+        // message just blames the filter being too restrictive.
+        $cacheTotal = $this->licenseRepo->countAll();
+
         return $this->render('admin/gateway_search', [
             'title'        => 'جستجوی پیشرفتهٔ درگاه ملی',
             'filter'        => $filter,
@@ -158,6 +165,7 @@ final class GatewayAdminController extends Controller
             'totalPages'    => $totalPages,
             'provinces'     => $provinces,
             'organizations' => $organizations,
+            'cacheTotal'    => $cacheTotal,
         ]);
     }
 
