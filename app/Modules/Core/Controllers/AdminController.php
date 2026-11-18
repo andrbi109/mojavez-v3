@@ -281,32 +281,102 @@ final class AdminController extends Controller
     /**
      * POST /admin/register — process manual registration.
      *
-     * Validates inputs (Persian name, 10-digit national code with parity
-     * check, 11-digit mobile, 10-digit postal code, valid service_type_id)
-     * and creates a new applicants row with:
-     *   - current_status = 'تأیید اولیه' (admin-created, not draft)
-     *   - tracking_code  = HG-XXXXXXXX (CSPRNG)
-     *   - registration_started_at = registration_completed_at = NOW()
-     *
-     * The optional `address` field is stored as property_details.address_street
-     * (the applicants table has no address column — only postal_code).
+     * Phase 35 (v2.0.1): ported the full v2 41-field form. Validates the
+     * required fields (first_name, last_name, national_code, mobile,
+     * service_type_id, postal_code), builds a birth_date from the three
+     * Jalali year/month/day selects, normalizes the custom_license_title
+     * fallback, and creates:
+     *   - applicants row with all identity + income_decile +
+     *     has_court_case/has_active_loan/has_overdue_installments +
+     *     consent_external_share + the 5 tracking fields
+     *     (tracking_code HG-XXXXXXXX, current_status = 'تأیید اولیه',
+     *     registration_started_at, registration_completed_at, version = 1).
+     *   - property_details row via jobAndProperty->upsertPropertyDetail()
+     *     with the 13 property fields.
+     *   - job_details row via jobAndProperty->upsertJobDetail() with the
+     *     3 job fields (license_title, experience_months, training_method).
+     *   - documents rows for the 5 uploaded files via handleDocumentUploads().
      *
      * On success: redirect to /admin/view/{id}.
      * On validation error: re-render the form with errors + submitted values.
+     *
+     * @phpstan-return Response
      */
     public function registerProcess(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
         $body = $request->body();
 
-        $firstName  = Validator::nonEmptyString($body['first_name'] ?? '', 50);
-        $lastName   = Validator::nonEmptyString($body['last_name'] ?? '', 50);
+        // ---------- Identity (11 fields) ----------
+        $firstName    = Validator::nonEmptyString($body['first_name'] ?? '', 50);
+        $lastName     = Validator::nonEmptyString($body['last_name'] ?? '', 50);
         $nationalCode = Validator::nationalCode($body['national_code'] ?? '');
-        $mobile     = Validator::mobile($body['mobile'] ?? '');
-        $postalCode = self::validPostalCode($body['postal_code'] ?? '');
-        $address    = Validator::sanitizeText($body['address'] ?? '', 255);
-        $serviceTypeId = Validator::positiveIntOrNull($body['service_type_id'] ?? '');
+        $mobile       = Validator::mobile($body['mobile'] ?? '');
+        $fatherName   = Validator::sanitizeText($body['father_name'] ?? '', 50);
+        $applicantType = Validator::inEnum($body['applicant_type'] ?? '', ['حقیقی', 'حقوقی']) ?? 'حقیقی';
+        $maritalStatus = Validator::inEnum($body['marital_status'] ?? '', ['مجرد', 'متأهل']) ?? 'مجرد';
+        $childrenCount = Validator::intInRange($body['children_count'] ?? 0, 0, 50) ?? 0;
+        $physicalCondition = Validator::inEnum($body['physical_condition'] ?? '', ['سالم', 'معلولیت']) ?? 'سالم';
+        $disabilityDetails = Validator::sanitizeText($body['disability_details'] ?? '', 255);
 
+        // Birth date — combine the three Jalali selects to a Gregorian date.
+        $birthDate = $this->birthDateFromInputs(
+            (int)($body['birth_year'] ?? 0),
+            (int)($body['birth_month'] ?? 0),
+            (int)($body['birth_day'] ?? 0)
+        );
+
+        // ---------- Service + Job (5 fields) ----------
+        $serviceTypeId = Validator::positiveIntOrNull($body['service_type_id'] ?? '');
+        $licenseTitle  = Validator::sanitizeText($body['license_title'] ?? '', 100);
+        // If "سایر" selected, fall back to the custom title.
+        if (str_starts_with($licenseTitle, 'سایر')) {
+            $customTitle = Validator::nonEmptyString($body['custom_license_title'] ?? '', 100);
+            if ($customTitle !== null) {
+                $licenseTitle = $customTitle;
+            } else {
+                $licenseTitle = '';
+            }
+        }
+        $experienceMonths = Validator::intInRange($body['experience_months'] ?? '', 0, 1200);
+        $trainingMethod   = Validator::inEnum(
+            $body['training_method'] ?? '',
+            ['در خانه', 'استاد شاگردی', 'کارگاهی']
+        );
+
+        // ---------- Property (12 fields — postal_code lives on applicants) ----------
+        $postalCode       = self::validPostalCode($body['postal_code'] ?? '');
+        $ownershipStatus  = Validator::inEnum($body['ownership_status'] ?? '', ['شخص', 'مستأجر', 'سرپرست']) ?? 'شخص';
+        $province         = Validator::sanitizeText($body['province'] ?? '', 50);
+        $county           = Validator::sanitizeText($body['county'] ?? '', 50);
+        $city             = Validator::sanitizeText($body['city'] ?? '', 50);
+        $district         = Validator::sanitizeText($body['district'] ?? '', 50);
+        $ruralDistrict    = Validator::sanitizeText($body['rural_district'] ?? '', 50);
+        $village          = Validator::sanitizeText($body['village'] ?? '', 50);
+        $electricityBillId = Validator::sanitizeText($body['electricity_bill_id'] ?? '', 20);
+        $addressStreet    = Validator::sanitizeText($body['address_street'] ?? '', 100);
+        $addressAlley     = Validator::sanitizeText($body['address_alley'] ?? '', 100);
+        $addressPlaque    = Validator::sanitizeText($body['address_plaque'] ?? '', 20);
+
+        // ---------- Income (1) + supplementary (3) ----------
+        $incomeDecile = Validator::intInRange($body['income_decile'] ?? '', 1, 10);
+        $hasCourtCase = Validator::inEnum($body['has_court_case'] ?? 'خیر', ['بله', 'خیر']) ?? 'خیر';
+        $hasActiveLoan = Validator::inEnum($body['has_active_loan'] ?? 'خیر', ['بله', 'خیر']) ?? 'خیر';
+        $hasOverdueInstallments = Validator::inEnum($body['has_overdue_installments'] ?? 'خیر', ['بله', 'خیر']) ?? 'خیر';
+
+        // ---------- Consent (1) ----------
+        $consentExternalShare = !empty($body['consent_external_share']) ? 1 : 0;
+
+        // Marital-status coupling: children_count is only meaningful for متأهل.
+        if ($maritalStatus !== 'متأهل') {
+            $childrenCount = 0;
+        }
+        // Physical-condition coupling: clear disability_details if سالم.
+        if ($physicalCondition !== 'معلولیت') {
+            $disabilityDetails = '';
+        }
+
+        // ---------- Validation ----------
         $errors = [];
         if ($firstName === null) {
             $errors[] = 'نام الزامی است (حداکثر ۵۰ نویسه).';
@@ -327,6 +397,21 @@ final class AdminController extends Controller
             $errors[] = 'نوع خدمت الزامی است.';
         } elseif ($this->serviceTypes->findById($serviceTypeId) === null) {
             $errors[] = 'نوع خدمت انتخاب‌شده یافت نشد.';
+        }
+        if ($licenseTitle === '') {
+            $errors[] = 'عنوان مجوز الزامی است.';
+        }
+        if ($experienceMonths === null) {
+            $errors[] = 'سابقه کار (ماه) نامعتبر است.';
+        }
+        if ($trainingMethod === null) {
+            $errors[] = 'نحوه آموزش الزامی است (در خانه / استاد شاگردی / کارگاهی).';
+        }
+        if ($province === '') {
+            $errors[] = 'استان الزامی است.';
+        }
+        if ($county === '') {
+            $errors[] = 'شهرستان الزامی است.';
         }
 
         if ($errors !== []) {
@@ -360,31 +445,55 @@ final class AdminController extends Controller
 
         $now = date('Y-m-d H:i:s');
         $applicantId = $this->applicants->create([
-            'service_type_id'         => $serviceTypeId,
-            'first_name'              => $firstName,
-            'last_name'               => $lastName,
-            'national_code'           => $nationalCode,
-            'postal_code'             => $postalCode,
-            'mobile'                  => $mobile,
-            'tracking_code'           => $trackingCode,
-            'current_status'          => ApplicantStatus::InitialApproval->value, // 'تأیید اولیه'
-            'registration_started_at'  => $now,
+            'service_type_id'          => $serviceTypeId,
+            'first_name'               => $firstName,
+            'last_name'                => $lastName,
+            'national_code'            => $nationalCode,
+            'postal_code'              => $postalCode,
+            'mobile'                   => $mobile,
+            'tracking_code'             => $trackingCode,
+            'birth_date'               => $birthDate,
+            'father_name'              => $fatherName !== '' ? $fatherName : null,
+            'current_status'           => ApplicantStatus::InitialApproval->value, // 'تأیید اولیه'
+            'applicant_type'           => $applicantType,
+            'marital_status'           => $maritalStatus,
+            'children_count'           => $childrenCount,
+            'physical_condition'       => $physicalCondition,
+            'disability_details'       => $disabilityDetails !== '' ? $disabilityDetails : null,
+            'income_decile'            => $incomeDecile,
+            'has_court_case'           => $hasCourtCase,
+            'has_active_loan'          => $hasActiveLoan,
+            'has_overdue_installments' => $hasOverdueInstallments,
+            'consent_external_share'   => $consentExternalShare,
+            'registration_started_at'   => $now,
             'registration_completed_at' => $now,
         ]);
 
-        // Optional address → property_details.address_street (the
-        // applicants table has no address column; we use the 1:1
-        // property_details row as the canonical address home).
-        if ($address !== '') {
-            $this->jobAndProperty->upsertPropertyDetail($applicantId, [
-                'ownership_status' => 'شخص',
-                'province'          => '',
-                'county'            => '',
-                'city'              => '',
-                'electricity_bill_id' => '',
-                'address_street'    => $address,
-            ]);
-        }
+        // Job details (3 fields) — upsert into job_details (1:1 with applicants).
+        $this->jobAndProperty->upsertJobDetail($applicantId, [
+            'license_title'     => $licenseTitle,
+            'experience_months' => $experienceMonths,
+            'training_method'   => $trainingMethod,
+        ]);
+
+        // Property details (12 fields) — upsert into property_details.
+        $this->jobAndProperty->upsertPropertyDetail($applicantId, [
+            'ownership_status'   => $ownershipStatus,
+            'province'           => $province,
+            'county'             => $county,
+            'city'               => $city,
+            'district'           => $district !== '' ? $district : null,
+            'rural_district'     => $ruralDistrict !== '' ? $ruralDistrict : null,
+            'village'            => $village !== '' ? $village : null,
+            'electricity_bill_id' => $electricityBillId !== '' ? $electricityBillId : '',
+            'address_street'     => $addressStreet !== '' ? $addressStreet : null,
+            'address_alley'      => $addressAlley !== '' ? $addressAlley : null,
+            'address_plaque'     => $addressPlaque !== '' ? $addressPlaque : null,
+        ]);
+
+        // Documents (5 file uploads) — best-effort: each upload failure is
+        // logged but does not abort the whole registration.
+        $this->handleDocumentUploads($request, $applicantId, $trackingCode);
 
         // Audit-log the admin creation.
         $this->statusLog->create([
@@ -402,6 +511,71 @@ final class AdminController extends Controller
         ]);
 
         return $this->redirect('/admin/view/' . $applicantId);
+    }
+
+    /**
+     * Convert three Jalali year/month/day inputs into a Gregorian 'YYYY-MM-DD'
+     * string suitable for the applicants.birth_date DATE column. Returns null
+     * when any of the three inputs is missing or out of range.
+     */
+    private function birthDateFromInputs(int $jy, int $jm, int $jd): ?string
+    {
+        if ($jy <= 0 || $jm < 1 || $jm > 12 || $jd < 1 || $jd > 31) {
+            return null;
+        }
+        try {
+            $persian = $this->container->make(\App\Shared\Support\PersianDate::class);
+            [$gy, $gm, $gd] = $persian->jalaliToGregorian($jy, $jm, $jd);
+            return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Best-effort document upload handler. Iterates over the five known
+     * file fields (national_id, personal_photo, ownership_deed,
+     * skill_certificate, optional_document), stores each via FileStorage's
+     * 7-layer pipeline, and inserts a documents row. Failures are logged
+     * but never abort the registration.
+     *
+     * @return array<string,string>  map of field => error (empty on success)
+     */
+    private function handleDocumentUploads(Request $request, int $applicantId, string $trackingCode): array
+    {
+        $fields = [
+            'national_id'       => 'national_id',
+            'personal_photo'    => 'personal_photo',
+            'ownership_deed'    => 'ownership_deed',
+            'skill_certificate' => 'skill_certificate',
+            'optional_document' => 'optional_document',
+        ];
+        $errors = [];
+        foreach ($fields as $fieldKey => $docType) {
+            $file = $request->file($fieldKey);
+            if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                continue;  // optional — admin may skip any subset of files
+            }
+            $result = $this->storage->storeUpload($file, $applicantId, $trackingCode, $docType);
+            if (!$result['success']) {
+                $errors[$fieldKey] = (string)($result['error'] ?? 'خطای ناشناخته');
+                $this->logger->warning('Manual-register document upload failed', [
+                    '_module'      => 'core',
+                    'applicant_id' => $applicantId,
+                    'field'        => $fieldKey,
+                    'error'        => $errors[$fieldKey],
+                ]);
+                continue;
+            }
+            $this->documents->create([
+                'applicant_id'   => $applicantId,
+                'doc_type'       => $docType,
+                'file_name'      => $result['file_name'],
+                'original_name'  => $result['original_name'],
+                'file_path'      => $result['file_path'],
+            ]);
+        }
+        return $errors;
     }
 
     /**

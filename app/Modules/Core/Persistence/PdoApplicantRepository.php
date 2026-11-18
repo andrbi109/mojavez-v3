@@ -108,6 +108,11 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
             'has_overdue_installments', 'priority', 'payment_required', 'payment_requested_at',
             'license_state', 'license_valid_until', 'registration_started_at',
             'registration_completed_at',
+            // Phase 35 (v2.0.1): persist on create so the admin manual
+            // registration form's consent checkbox is actually saved. The
+            // column has DEFAULT 0, so older create() callers that omit it
+            // still get the same value as before.
+            'consent_external_share',
         ];
         $cols = [];
         $placeholders = [];
