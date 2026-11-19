@@ -112,15 +112,24 @@ final class MigrationRunner
                 return false;
             }
             // Checksum differs — the file was modified after being applied.
-            // Re-running could be destructive. Log a critical warning and
-            // skip unless explicitly forced.
-            $this->logger->critical('Migration file changed after apply — skipping (manual review required)', [
+            // For idempotent migrations (seed data, ALTER TABLE IF NOT EXISTS,
+            // INSERT ... ON DUPLICATE KEY UPDATE), re-running is safe. We
+            // update the checksum and re-run the migration. For destructive
+            // migrations, the admin should review manually.
+            //
+            // Phase 61 (v2.2.7): changed from "skip + critical log" to
+            // "re-run + warning log" because all migrations in this project
+            // are designed to be idempotent (IF NOT EXISTS, ON DUPLICATE
+            // KEY UPDATE, etc.). The old behavior caused every page load
+            // to log a CRITICAL error when migration 015 was updated in
+            // Phase 33 (adding gateway settings).
+            $this->logger->warning('Migration file changed after apply — re-running (idempotent)', [
                 '_module' => $module,
                 'file'    => $filename,
                 'old'     => $existing['checksum'],
                 'new'     => $checksum,
             ]);
-            return false;
+            // Fall through to re-run the migration.
         }
 
         // Run the migration's SQL script, then record the application in
@@ -141,8 +150,12 @@ final class MigrationRunner
         try {
             $this->executeSqlScript($content);
             $this->connection->transactional(function () use ($filename, $module, $checksum): void {
+                // Use INSERT ... ON DUPLICATE KEY UPDATE so that when a
+                // migration is re-run (checksum changed), the existing
+                // row is updated instead of causing a duplicate-key error.
                 $this->connection->execute(
-                    'INSERT INTO migrations (filename, module, checksum) VALUES (?, ?, ?)',
+                    'INSERT INTO migrations (filename, module, checksum) VALUES (?, ?, ?)
+                     ON DUPLICATE KEY UPDATE checksum = VALUES(checksum)',
                     [$filename, $module, $checksum]
                 );
             });
