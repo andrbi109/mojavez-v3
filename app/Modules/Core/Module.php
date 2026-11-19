@@ -595,6 +595,12 @@ final class Module implements ModuleInterface
             // all the others. Idempotent UPDATEs by `code` (UNIQUE) so
             // existing fee_group_items FK rows are preserved.
             '20261120_001_fee_groups_new_decile_buckets.sql',
+            // Phase 57b — adds an `account_info` TEXT NULL column to
+            // `payment_channels` so the admin can store the card number /
+            // IBAN / gateway URL for each channel and the user can see
+            // those details in the payment modal before paying.
+            // Idempotent ALTER (information_schema guard).
+            '20261120_002_payment_channels_account_info.sql',
         ];
     }
 

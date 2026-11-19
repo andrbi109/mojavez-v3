@@ -185,18 +185,54 @@ final class FileStorage
     /**
      * Resolve a relative path to a full path, with path-traversal protection.
      * Returns null if the path escapes UPLOAD_DIR.
+     *
+     * Phase 57b — now accepts BOTH storage-path conventions used in the
+     * codebase:
+     *   1. upload-dir-relative (e.g., `/{tracking_code}/{$fileName}`) —
+     *      produced by FileStorage::storeUpload (Phase 52 layout).
+     *   2. project-root-relative (e.g.,
+     *      `storage/uploads/avatars/account-1.jpg` or
+     *      `storage/uploads/licenses/{applicant_id}/{rand}.jpg`) —
+     *      produced by AvatarService::upload and
+     *      LicenseController::storeUploadUnder.
+     *
+     * Both interpretations are tried and the result is constrained to the
+     * upload-dir subtree (path-traversal defense: `..` is stripped from
+     * the input and the realpath() result must start with the realpath
+     * of the upload_dir). The fallback (try 2) is what makes the avatar
+     * (`/document/avatar`) and the admin document modal (`/document/
+     * inline/{id}`) work again after the LicenseController + AvatarService
+     * started storing project-root-relative paths.
      */
     public function getFullPath(string $relativePath): ?string
     {
         $uploadDir = $this->getUploadDir();
-        // Strip .. and NUL from the path.
+        // Strip .. and NUL from the path (path-traversal defense).
         $cleanPath = str_replace(['..', "\0"], '', $relativePath);
-        $filePath = realpath($uploadDir . $cleanPath);
         $base = realpath($uploadDir);
-        if ($filePath === false || $base === false || !str_starts_with($filePath, $base)) {
+        if ($base === false) {
             return null;
         }
-        return $filePath;
+
+        // Try 1 — upload-dir-relative (e.g., "/{tracking_code}/{$fileName}").
+        // This is what FileStorage::storeUpload writes.
+        $filePath = realpath($uploadDir . $cleanPath);
+        if ($filePath !== false && str_starts_with($filePath, $base)) {
+            return $filePath;
+        }
+
+        // Try 2 — project-root-relative (e.g.,
+        // "storage/uploads/avatars/account-1.jpg"). This is what
+        // AvatarService::upload and LicenseController::storeUploadUnder
+        // write. We resolve against the project root, then re-check the
+        // resolved path stays within the upload-dir subtree.
+        $projectRoot = dirname(__DIR__, 4);
+        $filePath2 = realpath($projectRoot . '/' . $cleanPath);
+        if ($filePath2 !== false && str_starts_with($filePath2, $base)) {
+            return $filePath2;
+        }
+
+        return null;
     }
 
     /**

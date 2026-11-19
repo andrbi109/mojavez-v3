@@ -469,6 +469,7 @@ CREATE TABLE IF NOT EXISTS `payment_channels` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `title` varchar(100) NOT NULL,
   `channel_type` varchar(50) NOT NULL,
+  `account_info` text DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `sort_order` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)

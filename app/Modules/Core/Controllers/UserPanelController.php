@@ -95,16 +95,48 @@ final class UserPanelController extends Controller
         $payments    = $this->userAccounts->getPayments((int)$account['id']);
         $notifs      = $this->notifications->findByUser((int)$account['id'], 5);
 
+        // Phase 57b — the stats row was under-counting "rejected" (the
+        // 'pending' bucket used to include everything not in
+        // ['لغو','صدور مجوز','تحویل مجوز'], which meant rejected
+        // applications were lumped into "در حال بررسی"). The fix:
+        //   - 'pending' now counts ONLY the pre-issue non-terminal
+        //     statuses (the 10 in-review statuses from
+        //     config/statuses.php 'pre_issue' list, plus the 2
+        //     household-business-only pre-issue ones).
+        //   - 'rejected' counts 'رد درخواست'.
+        //   - 'issued' counts 'صدور مجوز' + 'تحویل مجوز' (unchanged).
+        //   - 'closed' counts the remaining terminal statuses that
+        //     don't already have their own widget — 'لغو' and the
+        //     household-business final receipt ('تأیید نهایی دریافت
+        //     کد رهگیری'). 'تحویل مجوز' is terminal too but is already
+        //     counted under 'issued'.
+        $preIssue = [
+            'پیش‌نویس', 'تکمیل اطلاعات', 'احراز نشانی', 'بررسی کارشناسی رشته',
+            'ثبت درخواست صدور', 'بارگذاری مدارک به سازمان', 'درخواست اصلاح مدارک',
+            'تأیید اولیه', 'تأیید نهایی', 'تطبیق آدرس با ثبت احوال',
+        ];
+        $closedExtra = ['لغو', 'تأیید نهایی دریافت کد رهگیری'];
+
         $total   = count($applications);
         $issued  = 0;
         $pending = 0;
+        $rejected = 0;
+        $closed  = 0;
         foreach ($applications as $a) {
             $st = (string)($a['current_status'] ?? '');
-            if (in_array($st, ['صدور مجوز', 'تحویل مجوز'], true)) {
+            if ($st === 'رد درخواست') {
+                $rejected++;
+            } elseif (in_array($st, ['صدور مجوز', 'تحویل مجوز'], true)) {
                 $issued++;
-            } elseif (!in_array($st, ['لغو', 'صدور مجوز', 'تحویل مجوز'], true)) {
+            } elseif (in_array($st, $preIssue, true)) {
                 $pending++;
+            } elseif (in_array($st, $closedExtra, true)) {
+                $closed++;
             }
+            // Other statuses (e.g. 'مشاهده و چاپ', 'دریافت تصویر مجوز',
+            // 'تأیید اولیه در سامانه مشاغل خانگی') are not in any widget
+            // — they're edge states that fall through. Total still counts
+            // them, so the widgets sum to ≤ total.
         }
 
         $latestApp = $applications[0] ?? null;
@@ -131,9 +163,11 @@ final class UserPanelController extends Controller
             'serviceTypes' => $this->serviceTypeMap(),
             'unreadCount'  => $unread,
             'stats' => [
-                'total_apps'   => $total,
-                'pending_apps' => $pending,
-                'issued_apps'  => $issued,
+                'total_apps'    => $total,
+                'pending_apps'  => $pending,
+                'issued_apps'   => $issued,
+                'rejected_apps' => $rejected,
+                'closed_apps'   => $closed,
             ],
         ], 'user_layout');
     }
@@ -305,17 +339,45 @@ final class UserPanelController extends Controller
 
     /**
      * GET /panel/payments — list of the user's payments.
+     *
+     * Phase 57b — also loads the active `payment_channels` rows (now
+     * carrying an `account_info` column added by migration
+     * 20261120_002) so the per-row payment modal can show them as
+     * radio options and the user can choose how to pay through each
+     * one (online gateway / card transfer / IBAN / etc.). Channels
+     * are sorted by `sort_order` and only `is_active = 1` rows are
+     * surfaced — disabled channels stay admin-only.
      */
     public function payments(Request $request, array $params = []): Response
     {
         $this->requireUserLogin();
         $account = $this->currentAccount();
         $rows = $this->userAccounts->getPayments((int)$account['id']);
+
+        // Phase 57b — load active payment channels. Best-effort
+        // (a DB hiccup should never break the payments page — the
+        // modal just falls back to the inline alert with no channels).
+        $channels = [];
+        try {
+            $channels = $this->conn->all(
+                'SELECT id, title, channel_type, account_info
+                   FROM payment_channels
+                  WHERE is_active = 1
+                  ORDER BY sort_order ASC, id ASC'
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('Failed to load payment_channels for user payments view', [
+                '_module' => 'core',
+                'error'   => $e->getMessage(),
+            ]);
+        }
+
         return $this->render('user/payments', [
             'title'      => 'پرداخت‌های من',
             'activeMenu' => 'payments',
             'account'    => $account,
             'payments'   => $rows,
+            'channels'   => $channels,
             'unreadCount' => $this->notifications->unreadCount((int)$account['id']),
         ], 'user_layout');
     }
@@ -667,13 +729,20 @@ final class UserPanelController extends Controller
      *
      * Phase 12 (v1.3.0): the avatar document id lives on
      * `user_accounts.avatar_document_id` (FK→documents.id, set by
-     * AvatarService::upload). There is currently NO public route that
-     * serves the avatar file from disk — that's tracked as a known
-     * limitation (the file is served by the front controller through
-     * a future `/panel/avatar/file` route, or by reading
-     * `documents.file_path` directly when the admin/user views the
-     * profile). For now we return null and the view falls back to the
-     * initial-letter avatar circle.
+     * AvatarService::upload).
+     *
+     * Phase 57b — now returns the real serving URL `/document/avatar`
+     * (the route is registered in Core/Module.php and handled by
+     * DocumentController::avatar, which streams the file via
+     * FileStorage::getFullPath). FileStorage was extended in this same
+     * phase to resolve both upload-dir-relative paths (regular
+     * documents) and project-root-relative paths (avatars stored by
+     * AvatarService as `storage/uploads/avatars/account-{id}.jpg`).
+     *
+     * Before this phase, `avatarUrlFor()` always returned null — the
+     * view therefore fell back to the letter avatar and the user never
+     * saw the uploaded image even though it was correctly stored on
+     * disk + registered in the documents table.
      *
      * @param array<string,mixed> $account
      */
@@ -683,22 +752,24 @@ final class UserPanelController extends Controller
         if ($docId <= 0) {
             return null;
         }
-        // Best-effort: if AvatarService can resolve a real on-disk path,
-        // we surface a relative URL to it (the file lives under
-        // storage/uploads/avatars/account-{id}.jpg — which is outside
-        // the web root for security). The future `/panel/avatar/file`
-        // route will serve it through the front controller; for now
-        // return null and let the view fall back to the letter avatar.
+        // Best-effort: confirm the file actually exists on disk before
+        // surfacing the URL (so we don't ship a broken <img> when the
+        // document row is set but the file was lost — e.g. by a manual
+        // cleanup). If anything goes wrong, fall through to the URL
+        // anyway (the controller will return a 1x1 placeholder PNG,
+        // which the <img> can render without a broken-image icon).
         try {
             $path = $this->avatars->getPath($docId);
             if ($path !== null && is_file($path)) {
-                // Return a cache-busting URL once the serving route exists.
-                // For now this stays null — the view shows the letter avatar.
-                return null;
+                return $this->environment->baseUrl . 'document/avatar';
             }
         } catch (\Throwable) {
             // best-effort — never break the profile page over a missing file.
         }
-        return null;
+        // If the document row exists but the file is missing on disk,
+        // the /document/avatar endpoint will gracefully return a 1x1
+        // transparent PNG placeholder. We still surface the URL so the
+        // browser never shows a broken-image icon.
+        return $this->environment->baseUrl . 'document/avatar';
     }
 }

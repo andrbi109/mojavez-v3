@@ -398,12 +398,27 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
             <div class="card-body">
                 <?php foreach ($channels as $ch): ?>
                 <div class="border rounded p-2 mb-2 d-flex justify-content-between align-items-start <?= (int)$ch['is_active'] ? '' : 'bg-light' ?>">
-                    <div>
+                    <div class="flex-grow-1">
                         <strong class="small"><?= htmlspecialchars((string)$ch['title'], ENT_QUOTES, 'UTF-8') ?></strong>
                         <div>
                             <span class="badge text-bg-secondary"><?= htmlspecialchars((string)$ch['channel_type'], ENT_QUOTES, 'UTF-8') ?></span>
                             <?php if (!(int)$ch['is_active']): ?><span class="badge text-bg-light text-muted">غیرفعال</span><?php endif; ?>
                         </div>
+                        <?php
+                        // Phase 57b — show the account_info (card number /
+                        // IBAN / gateway URL) under each channel so the
+                        // admin can see what the user will see in the
+                        // payment modal. Truncate long values to keep the
+                        // sidebar tidy (the full text is editable in the
+                        // form below).
+                        $acctInfo = (string)($ch['account_info'] ?? '');
+                        if ($acctInfo !== ''):
+                        ?>
+                            <div class="small text-muted mt-1" style="white-space:pre-wrap;line-height:1.4;">
+                                <?= htmlspecialchars(mb_substr($acctInfo, 0, 200), ENT_QUOTES, 'UTF-8') ?>
+                                <?= mb_strlen($acctInfo) > 200 ? '…' : '' ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <form method="post" action="/admin/payment-channels/delete" onsubmit="return confirm('کانال حذف شود؟');">
                         <?= $csrfField ?>
@@ -431,6 +446,20 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                             <label class="form-label small mb-1">ترتیب</label>
                             <input type="number" class="form-control form-control-sm" name="sort_order" id="ch_sort" value="100">
                         </div>
+                    </div>
+                    <?php
+                    // Phase 57b — account_info free-form text. The admin
+                    // writes whatever the user needs to know to pay
+                    // through this channel (card number, IBAN, gateway
+                    // URL, account holder, working hours, etc.). It is
+                    // shown verbatim in the user-side payment modal.
+                    ?>
+                    <div class="mb-2 mt-2">
+                        <label class="form-label small mb-1">اطلاعات حساب (شماره کارت / شبا / آدرس درگاه)</label>
+                        <textarea class="form-control form-control-sm" name="account_info" id="ch_account_info"
+                                  rows="3" maxlength="1000"
+                                  placeholder="مثلاً: شماره کارت: ۶۰۳۷-xxxx-xxxx-xxxx — به نام محمد حسینی"></textarea>
+                        <div class="form-text">این متن در پنجرهٔ پرداخت کاربر نمایش داده می‌شود.</div>
                     </div>
                     <div class="form-check form-switch my-2">
                         <input class="form-check-input" type="checkbox" role="switch" id="ch_active" name="is_active" value="1" checked>

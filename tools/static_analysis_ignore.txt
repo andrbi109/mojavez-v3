@@ -312,3 +312,13 @@ app/Views/admin/fee_tariff/index.php:<?= $svcSort ?>
 app/Views/admin/fee_tariff/index.php:<?= $cbId ?>
 app/Views/admin/fee_tariff/index.php:<?= $keyId ?>
 app/Views/admin/fee_tariff/index.php:<?= $gAmount ?>
+
+# 18. Phase 57 (v2.2.3) — integer variables in user views.
+#
+# $licenseDocId in user/licenses.php is (int) from Document id.
+# $chId in user/payments.php is (int) loop counter for channel radio IDs.
+# Both provably safe — not user input.
+# -----------------------------------------------------------------------------
+app/Views/user/licenses.php:<?= $licenseDocId ?>
+app/Views/user/payments.php:<?= $chId ?>
+app/Views/admin/fee_tariff/index.php:<?= $itemSeq ?>
