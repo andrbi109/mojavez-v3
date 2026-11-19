@@ -91,7 +91,7 @@ $renderLinks = function (array $items) use ($baseUrl): void {
 </div>
 <div class="moj-admin-body">
     <aside class="moj-admin-sidebar">
-        <div class="d-flex align-items-center justify-content-between mb-3 px-2 gap-2">
+        <div class="mb-3 px-2">
             <?php if ($ownerImageAbs !== ''): ?>
                 <img src="<?= htmlspecialchars($baseUrl . $ownerImageAbs, ENT_QUOTES) ?>"
                      alt="تصویر مدیر"

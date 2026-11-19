@@ -114,13 +114,51 @@ final class AdminController extends Controller
                AND matched_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
         );
 
+        // Phase 57a — admin notifications widget. Pull the 5 most recent
+        // events of each kind directly from the DB (no repository
+        // indirection — the dashboard is a low-stakes read view).
+        $recentRegistrations = $this->conn->all(
+            'SELECT id, tracking_code, first_name, last_name, national_code, created_at
+               FROM applicants
+              WHERE deleted_at IS NULL
+              ORDER BY created_at DESC, id DESC
+              LIMIT 5'
+        );
+        $pendingPayments = $this->conn->all(
+            "SELECT p.id, p.applicant_id, p.amount, p.purpose, p.created_at,
+                    a.tracking_code, a.first_name, a.last_name
+               FROM payments p
+               JOIN applicants a ON a.id = p.applicant_id
+              WHERE p.status = 'در انتظار'
+              ORDER BY p.created_at DESC, p.id DESC
+              LIMIT 5"
+        );
+        $recentLicenses = $this->conn->all(
+            'SELECT lf.id, lf.applicant_id, lf.issued_at,
+                    a.tracking_code, a.first_name, a.last_name
+               FROM license_files lf
+               JOIN applicants a ON a.id = lf.applicant_id
+              ORDER BY lf.issued_at DESC, lf.id DESC
+              LIMIT 5'
+        );
+        $recentSyncJobs = $this->conn->all(
+            'SELECT id, applicant_id, national_request_number, action, outcome, confidence, created_at
+               FROM sync_audit_log
+              ORDER BY created_at DESC, id DESC
+              LIMIT 5'
+        );
+
         return $this->render('admin/dashboard', [
-            'cancelled'         => $cancelled,
-            'prioritised'       => $prioritised,
-            'progressed'        => $progressed,
-            'totalApplicants'   => $totalApplicants,
-            'pendingReview'     => $pendingReview,
-            'issuedThisMonth'   => $issuedThisMonth,
+            'cancelled'           => $cancelled,
+            'prioritised'         => $prioritised,
+            'progressed'          => $progressed,
+            'totalApplicants'     => $totalApplicants,
+            'pendingReview'       => $pendingReview,
+            'issuedThisMonth'     => $issuedThisMonth,
+            'recentRegistrations' => $recentRegistrations,
+            'pendingPayments'    => $pendingPayments,
+            'recentLicenses'      => $recentLicenses,
+            'recentSyncJobs'      => $recentSyncJobs,
         ]);
     }
 

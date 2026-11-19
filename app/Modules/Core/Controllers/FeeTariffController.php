@@ -663,10 +663,18 @@ final class FeeTariffController extends Controller
         if (preg_match('/^[A-Za-z][A-Za-z0-9_]{0,49}$/', $key) !== 1) {
             return Response::redirect('/admin/fee-tariff#services-matrix');
         }
-        $amount = max(0, (int)($body['amount'] ?? 0));
-        $sort   = (int)($body['sort_order'] ?? 0);
-        $notes  = trim((string)($body['notes'] ?? ''));
+        $amount    = max(0, (int)($body['amount'] ?? 0));
+        $userSort  = (int)($body['sort_order'] ?? 0);
+        $notes     = trim((string)($body['notes'] ?? ''));
 
+        // Phase 57a — each group must number its items independently
+        // (1, 2, 3, ... per group) instead of sharing a single global
+        // sequence. We use `sort_order` as the per-group sequence: when
+        // the admin did not provide an explicit sort_order (0/empty),
+        // the controller queries MAX(sort_order) for that group and
+        // adds 1. If the admin DID provide a sort_order, we honour it
+        // (the matrix save handler still treats sort_order as a free-
+        // form integer per service).
         $groupRows = $this->conn->all('SELECT id FROM fee_groups ORDER BY sort_order, id');
         foreach ($groupRows as $g) {
             $gid = (int)$g['id'];
@@ -679,14 +687,27 @@ final class FeeTariffController extends Controller
                     'UPDATE fee_group_items
                         SET item_label = ?, amount = ?, sort_order = ?, notes = ?
                       WHERE id = ?',
-                    [$label, $amount, $sort, $notes !== '' ? $notes : null, (int)$existing['id']]
+                    [$label, $amount, $userSort, $notes !== '' ? $notes : null, (int)$existing['id']]
                 );
             } else {
+                // Per-group sequence: MAX(sort_order) + 1, defaulting
+                // to 1 for the first item in an empty group.
+                if ($userSort > 0) {
+                    $perGroupSort = $userSort;
+                } else {
+                    $maxRow = $this->conn->one(
+                        'SELECT COALESCE(MAX(sort_order), 0) AS max_sort
+                           FROM fee_group_items
+                          WHERE fee_group_id = ?',
+                        [$gid]
+                    );
+                    $perGroupSort = (int)($maxRow['max_sort'] ?? 0) + 1;
+                }
                 $this->conn->execute(
                     'INSERT INTO fee_group_items
                         (fee_group_id, item_key, item_label, amount, sort_order, notes)
                      VALUES (?, ?, ?, ?, ?, ?)',
-                    [$gid, $key, $label, $amount, $sort, $notes !== '' ? $notes : null]
+                    [$gid, $key, $label, $amount, $perGroupSort, $notes !== '' ? $notes : null]
                 );
             }
         }

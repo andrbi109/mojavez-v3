@@ -126,13 +126,13 @@ use App\Shared\Support\PersianDate;
                                                         <?php endif; ?>
                                                         <div class="alert alert-info small mb-0" role="alert">
                                                             <i class="bi bi-info-circle"></i>
-                                                            درگاه آنلاین پرداخت به‌زودی فعال خواهد شد. تا آن زمان می‌توانید رسید پرداخت را از طریق پنل کاربری تحویل دهید.
+                                                            می‌توانید رسید پرداخت را از طریق پنل کاربری تحویل دهید.
                                                         </div>
                                                     </div>
                                                     <div class="modal-footer">
                                                         <button type="button" class="btn btn-success" disabled
-                                                                title="به‌زودی فعال خواهد شد">
-                                                            <i class="bi bi-globe"></i> پرداخت آنلاین (به‌زودی)
+                                                                title="غیرفعال">
+                                                            <i class="bi bi-globe"></i> پرداخت آنلاین
                                                         </button>
                                                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بستن</button>
                                                     </div>
