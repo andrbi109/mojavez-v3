@@ -57,10 +57,19 @@ final class MojavecClient
         );
 
         if ($response === null || !$response->isSuccess()) {
+            // Phase 58 (v2.2.4): include the cURL-level error string in
+            // the warning so an unreachable upstream (DNS failure,
+            // connection refused, timeout) is distinguishable from a
+            // 4xx/5xx response. The HttpClient now sets HttpResponse
+            // .error to curl_error() verbatim, which carries either a
+            // "Could not resolve host" or "Connection timed out" message.
             $this->logger->warning('Search upstream failed', [
                 'filter' => $filter->describe(),
                 'status' => $response?->status,
+                'error'  => $response?->error,
             ]);
+            // Return an empty result set (NOT an exception) so the UI
+            // renders an "no licenses found" state instead of a 500.
             return new LicenseCollection([], $filter->page, $filter->pageSize, 0);
         }
 
@@ -249,10 +258,17 @@ final class MojavecClient
                 return $response;
             }
             if (!in_array($response->status, $retryStatuses, true)) {
-                // Non-retryable error
+                // Non-retryable error.
+                // Phase 58 (v2.2.4): distinguish transport failures
+                // (status=0, cURL could not connect / resolve / timed
+                // out) from HTTP error responses. The former carries an
+                // actionable error string in $response->error; the
+                // latter has a real HTTP status. Log both fields so the
+                // admin sync-status page can render a clear message.
                 $this->logger->warning('Upstream non-retryable error', [
-                    'label' => $label,
-                    'status' => $response->status,
+                    'label'   => $label,
+                    'status'  => $response->status,
+                    'error'   => $response->error,
                     'attempt' => $attempt,
                 ]);
                 return $response;

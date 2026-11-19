@@ -115,13 +115,17 @@ final readonly class AntiDetectionMiddleware
      * array as-is — which left `connect` and `response` undefined and
      * surfaced as "Undefined array key 'connect'" on the sync status page.
      *
+     * Phase 58 (v2.2.4) — tightened the connect-timeout default from 15s
+     * to 10s (and kept the response-timeout default at 30s) so a dead
+     * upstream fails fast instead of pinning the sync worker for 45s.
+     *
      * @return array{connect:int,response:int}
      */
     public function timeouts(): array
     {
         $t = is_array($this->config['timeout'] ?? null) ? $this->config['timeout'] : [];
         return [
-            'connect'  => (int)($t['connect']  ?? $t['connect_s']  ?? 15),
+            'connect'  => (int)($t['connect']  ?? $t['connect_s']  ?? 10),
             'response' => (int)($t['response'] ?? $t['response_s'] ?? 30),
         ];
     }

@@ -148,7 +148,12 @@ $issued = array_filter($applications, fn($a) => in_array((string)($a['current_st
                         setFeedback(fb, 'در حال باز کردن تصویر مجوز…', 'text-success');
                         var linkUrl = '/license/view/' + encodeURIComponent(d.token);
                         window.open(linkUrl, '_blank', 'noopener');
-                        var expires = d.expires_at ? ' (معتبر تا ' + d.expires_at + ')' : '';
+                        // Phase 58 (v2.2.4): prefer the server-side Jalali
+                        // expiry string (expires_at_jalali) and fall back
+                        // to the raw Gregorian expires_at only if the
+                        // server's response predates this fix.
+                        var expiresRaw = d.expires_at_jalali || d.expires_at || '';
+                        var expires = expiresRaw ? ' (معتبر تا ' + expiresRaw + ')' : '';
                         setFeedback(fb, 'لینک دسترسی صادر شد' + expires + '.', 'text-success');
                     } else {
                         setFeedback(fb, 'درخواست ثبت شد و در انتظار بررسی مدیر است.', 'text-info');

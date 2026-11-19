@@ -244,6 +244,22 @@ final class Module implements ModuleInterface
             // no conflict with any existing /panel/* route.
             ['method' => 'POST', 'path' => '/panel/change-postal-code',  'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'changePostalCode'],
 
+            // ----- Phase 58 (v2.2.4) user panel: upload payment receipt -----
+            // After the user selects a payment channel in the per-row
+            // "پرداخت" modal (user/payments.php) and clicks "تأیید", a
+            // file upload form is shown for non-online channels. The
+            // form POSTs (multipart) to this route. The handler saves
+            // the uploaded file under storage/uploads/receipts/{payment_id}/
+            // and updates the payments row: status='در انتظار رسید',
+            // receipt_file_path=$path, receipt_description=$userNote.
+            // Online-gateway channels skip the upload (the receipt is
+            // expected to come back from the gateway callback) and
+            // only show a placeholder "انتقال به درگاه" button in the
+            // modal — no POST to this route is made for those.
+            // The {id:\d+} placeholder is constrained to numeric ids
+            // so it cannot collide with any sibling /panel/* route.
+            ['method' => 'POST', 'path' => '/panel/payments/{id:\d+}/receipt', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'uploadReceipt'],
+
             // ----- Phase 2 admin auth routes -----
             ['method' => 'GET', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLoginForm'],
             ['method' => 'POST', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLogin'],
