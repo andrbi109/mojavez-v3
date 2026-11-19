@@ -24,7 +24,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
 };
 ?>
 <div class="row g-3 mb-4">
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-sm-6 col-lg-3">
         <div class="card text-center h-100">
             <div class="card-body">
                 <i class="bi bi-folder2-open display-6 text-brand"></i>
@@ -33,7 +33,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-sm-6 col-lg-3">
         <div class="card text-center h-100">
             <div class="card-body">
                 <i class="bi bi-hourglass-split display-6 text-warning"></i>
@@ -42,7 +42,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-sm-6 col-lg-3">
         <div class="card text-center h-100">
             <div class="card-body">
                 <i class="bi bi-patch-check display-6 text-success"></i>
@@ -51,6 +51,40 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             </div>
         </div>
     </div>
+    <?php
+    // Phase 57b — fourth widget: رد شده (rejected). Previously rejected
+    // applications were lumped into the "در حال بررسی" count because
+    // the controller's pending bucket only excluded
+    // ['لغو','صدور مجوز','تحویل مجوز']. The controller was fixed in
+    // this same phase to exclude rejected + cancelled and surface
+    // them as a separate count. ?>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-x-octagon display-6 text-danger"></i>
+                <div class="h2 mt-2 mb-0"><?= (int)($stats['rejected_apps'] ?? 0) ?></div>
+                <div class="text-muted small">رد شده</div>
+            </div>
+        </div>
+    </div>
+    <?php
+    // Phase 57b — fifth widget: بسته شده (closed). Terminal statuses
+    // other than rejected and تحویل مجوز (which is already counted
+    // under "صادرشده"). For typical users this is just 'لغو' (cancelled)
+    // — household-business applicants also pick up 'تأیید نهایی دریافت
+    // کد رهگیری'. Hidden entirely when the count is zero so the panel
+    // doesn't show an empty 5th card on a fresh account. ?>
+    <?php if ((int)($stats['closed_apps'] ?? 0) > 0): ?>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-archive display-6 text-secondary"></i>
+                <div class="h2 mt-2 mb-0"><?= (int)($stats['closed_apps'] ?? 0) ?></div>
+                <div class="text-muted small">بسته شده</div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <div class="row g-3">

@@ -110,10 +110,65 @@ $deletableStatuses = ['پیش‌نویس', 'تکمیل اطلاعات'];
                                 <td><?= htmlspecialchars($serviceTitle((int)($a['service_type_id'] ?? 0)), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td>
                                     <span class="badge bg-<?= $badge ?>"><?= htmlspecialchars($st, ENT_QUOTES, 'UTF-8') ?></span>
-                                    <?php if ($isRejected && $rejectionDesc !== ''): ?>
-                                        <div class="small text-danger mt-1" role="note">
-                                            <i class="bi bi-exclamation-octagon"></i>
-                                            علت رد درخواست: <?= htmlspecialchars($rejectionDesc, ENT_QUOTES, 'UTF-8') ?>
+                                    <?php
+                                    // Phase 57b — replaced the inline
+                                    // "علت رد درخواست: {description}" block
+                                    // (which stretched the row height and
+                                    // collided with the postal-code change
+                                    // button on the right) with a small
+                                    // info-icon button + Bootstrap modal.
+                                    // Clicking the button opens a modal
+                                    // whose body is the full rejection
+                                    // description (status_log.description
+                                    // of the latest 'رد درخواست' entry —
+                                    // attached to the row by
+                                    // UserPanelController::requests()).
+                                    // One modal per row keeps the
+                                    // description server-rendered (no
+                                    // JS data-attribute escaping needed).
+                                    if ($isRejected):
+                                        $rejModalId = 'rejectionModal-' . $appId;
+                                    ?>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-danger py-0 ms-1"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#<?= htmlspecialchars($rejModalId, ENT_QUOTES) ?>"
+                                                title="علت رد درخواست"
+                                                aria-label="علت رد درخواست">
+                                            <i class="bi bi-info-circle"></i>
+                                            علت رد
+                                        </button>
+                                        <div class="modal fade" id="<?= htmlspecialchars($rejModalId, ENT_QUOTES) ?>"
+                                             tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog modal-dialog-centered">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">
+                                                            <i class="bi bi-exclamation-octagon text-danger"></i>
+                                                            علت رد درخواست
+                                                        </h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <?php if ($rejectionDesc !== ''): ?>
+                                                            <div style="white-space:pre-wrap;line-height:1.7;">
+                                                                <?= htmlspecialchars($rejectionDesc, ENT_QUOTES, 'UTF-8') ?>
+                                                            </div>
+                                                        <?php else: ?>
+                                                            <div class="text-muted">
+                                                                دلیل رد درخواست توسط مدیر مشخص نشده است. برای کسب اطلاعات بیشتر با پشتیبانی تماس بگیرید.
+                                                            </div>
+                                                        <?php endif; ?>
+                                                        <div class="small text-muted mt-3 border-top pt-2">
+                                                            کد پیگیری:
+                                                            <code class="user-select-all"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بستن</button>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     <?php endif; ?>
                                 </td>

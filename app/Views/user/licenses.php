@@ -53,8 +53,25 @@ $issued = array_filter($applications, fn($a) => in_array((string)($a['current_st
                                     </div>
                                 <?php endif; ?>
                                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                                    <?php if ($license && !empty($license['document_id'])): ?>
-                                        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>document/inline/<?= (int)$license['document_id'] ?>"
+                                    <?php
+                                    // Phase 57b — $license is a LicenseFile domain
+                                    // object (App\Modules\Core\Domain\LicenseFile),
+                                    // not an array. The view was reading
+                                    // $license['document_id'] which always
+                                    // returned null (and the "دریافت مجوز"
+                                    // button never showed). Switch to object
+                                    // property access: $license->documentId.
+                                    $licenseDocId = 0;
+                                    if ($license instanceof \App\Modules\Core\Domain\LicenseFile) {
+                                        $licenseDocId = (int)$license->documentId;
+                                    } elseif (is_array($license)) {
+                                        // Defensive fallback for legacy callers
+                                        // that might still pass a raw array.
+                                        $licenseDocId = (int)($license['document_id'] ?? 0);
+                                    }
+                                    ?>
+                                    <?php if ($licenseDocId > 0): ?>
+                                        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>document/inline/<?= $licenseDocId ?>"
                                            class="btn btn-sm btn-success" target="_blank">
                                             <i class="bi bi-download"></i> دریافت مجوز
                                         </a>

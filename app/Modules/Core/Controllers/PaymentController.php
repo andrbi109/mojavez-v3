@@ -179,7 +179,7 @@ final class PaymentController extends Controller
               ORDER BY total DESC"
         );
         $channels = $this->conn->all(
-            'SELECT id, title, channel_type, is_active, sort_order FROM payment_channels ORDER BY sort_order, id'
+            'SELECT id, title, channel_type, account_info, is_active, sort_order FROM payment_channels ORDER BY sort_order, id'
         );
 
         return $this->render('admin/payments', [
@@ -339,9 +339,14 @@ final class PaymentController extends Controller
     /**
      * POST /admin/payment-channels/save — insert or update a payment channel.
      *
-     * Body: id (optional, for update), title, channel_type, sort_order, is_active.
-     * The v3 `payment_channels` table has columns: id, title, channel_type,
-     * is_active, sort_order.
+     * Body: id (optional, for update), title, channel_type, sort_order,
+     * is_active, account_info (optional free-form text describing the
+     * card number / IBAN / gateway URL — shown to users in the payment
+     * modal so they know how to pay through this channel).
+     *
+     * The v3 `payment_channels` table has columns: id, title,
+     * channel_type, account_info (added in Phase 57b migration
+     * 20261120_002), is_active, sort_order.
      */
     public function saveChannel(Request $request, array $params = []): Response
     {
@@ -352,6 +357,13 @@ final class PaymentController extends Controller
         $channelType = trim((string)($body['channel_type'] ?? ''));
         $sortOrder = (int)($body['sort_order'] ?? 100);
         $isActive = !empty($body['is_active']) ? 1 : 0;
+        // Phase 57b — free-form description shown to the user in the
+        // payment modal. Truncated to a reasonable size (TEXT column,
+        // but we cap input at 1000 chars to keep the admin UI sane).
+        $accountInfo = trim((string)($body['account_info'] ?? ''));
+        if (mb_strlen($accountInfo) > 1000) {
+            $accountInfo = mb_substr($accountInfo, 0, 1000);
+        }
 
         if ($title === '' || mb_strlen($title) > 100) {
             $this->session->set('payment_message', 'عنوان کانال الزامی است (حداکثر ۱۰۰ نویسه).');
@@ -364,14 +376,14 @@ final class PaymentController extends Controller
 
         if ($id > 0) {
             $this->conn->execute(
-                'UPDATE payment_channels SET title = ?, channel_type = ?, is_active = ?, sort_order = ? WHERE id = ?',
-                [$title, $channelType, $isActive, $sortOrder, $id]
+                'UPDATE payment_channels SET title = ?, channel_type = ?, account_info = ?, is_active = ?, sort_order = ? WHERE id = ?',
+                [$title, $channelType, $accountInfo !== '' ? $accountInfo : null, $isActive, $sortOrder, $id]
             );
             $this->session->set('payment_message', 'کانال «' . $title . '» ویرایش شد.');
         } else {
             $this->conn->execute(
-                'INSERT INTO payment_channels (title, channel_type, is_active, sort_order) VALUES (?, ?, ?, ?)',
-                [$title, $channelType, $isActive, $sortOrder]
+                'INSERT INTO payment_channels (title, channel_type, account_info, is_active, sort_order) VALUES (?, ?, ?, ?, ?)',
+                [$title, $channelType, $accountInfo !== '' ? $accountInfo : null, $isActive, $sortOrder]
             );
             $this->session->set('payment_message', 'کانال «' . $title . '» افزوده شد.');
         }

@@ -9,6 +9,61 @@ use App\Shared\Support\PersianDate;
 $trackingCode = $applicant->trackingCode;
 $licenseIssued = $applicant->licenseState === LicenseState::Issued;
 ?>
+<?php
+// Phase 57b — page-local layout hardening. The public layout.php is a
+// flex column (body has display:flex / flex-direction:column / min-height:100vh
+// + .moj-main has flex:1 0 auto + .moj-footer has margin-top:auto) which
+// normally sticks the footer to the bottom of the viewport. With the
+// rejection alert (added in Phase 53) and the conditional license
+// section (added in Phase 51) stacked on top of the row, on some
+// viewports the page contents end up overlapping the footer at the
+// bottom (the footer renders BELOW the main content but visually
+// peeks through the last card). The hardening here:
+//   - Wrap the whole view in .moj-tracking-status with position:relative
+//     and z-index:1 so the content layer always paints above the
+//     footer's stacking context.
+//   - Give the wrapper a min-height so short pages (e.g. a fresh
+//     tracking code with no status log yet) still push the footer
+//     down to the bottom of the viewport instead of leaving the
+//     footer floating mid-page over the license-request section.
+//   - The footer itself is left to the public layout's existing
+//     sticky-footer rule (margin-top:auto inside the flex body) —
+//     we only need the wrapper to keep its own painting above it.
+// No `position:absolute` is used anywhere in this view (verified by
+// grep), so removing that class isn't needed; the fix is purely the
+// z-index/min-height hardening below.
+//
+// Note: the wrapper uses a class selector (.moj-tracking-status) and
+// not an ID selector (#moj-tracking-status) on purpose — the simple
+// PHP linter (tools/php_lint_simple.py) treats any line that starts
+// with `#` as a PHP line comment, so an ID selector would confuse
+// its brace-balance check (the `{` on the `#id {` line would be
+// stripped, leaving the matching `}` unbalanced). The class selector
+// starts with `.` which the linter leaves alone.
+?>
+<style>
+.moj-tracking-status {
+    position: relative;
+    z-index: 1;
+    /* Reserve enough vertical space so short pages still push the
+       footer down — the public layout's sticky-footer rule
+       (margin-top:auto) does the actual stick-to-bottom work, this
+       just guarantees the wrapper has non-trivial height on its own
+       so the footer never overlaps the last card. */
+    min-height: 60vh;
+}
+/* The license-request-section card and the rejection alert both
+   carry `mt-4` / `mb-4` margins. On tight mobile viewports those
+   margins collapse with the section's own padding and the result
+   can read as "the footer is jammed under the section". Force a
+   small gap below the section so it always has breathing room
+   before the footer divider. */
+.moj-tracking-status > section:last-of-type {
+    margin-bottom: 1.5rem;
+}
+</style>
+
+<div class="moj-tracking-status">
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
         <h1 class="h4 mb-1">پیگیری پرونده</h1>
@@ -148,6 +203,8 @@ foreach ($statusLog as $entry) {
     </div>
 </section>
 <?php endif; ?>
+</div><!-- /#moj-tracking-status -->
+
 <script>
 (function () {
     'use strict';

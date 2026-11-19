@@ -253,10 +253,28 @@ final class DocumentController extends Controller
      * GET /document/inline/{id} — stream a file with
      * Content-Disposition: inline (the browser shows it inline, in an
      * <img>, <iframe>, or via its native PDF viewer).
+     *
+     * Phase 57b — auth relaxed from `requireLogin()` (admin-only) to
+     * `requireAnyLogin()` (admin OR user) so the user-side
+     * `user/licenses.php` "دریافت مجوز" link works for the logged-in
+     * applicant too. `canAccess($document->applicantId)` already
+     * enforces ownership for non-admin sessions (admin sees all, user
+     * only sees documents whose applicant.user_account_id matches
+     * their session user_id) — so the relaxation does NOT change the
+     * security posture, only who can reach the path-resolution code.
+     *
+     * The path resolution itself was the actual 404 source: with the
+     * Phase 52 / Phase 55 storage moves, some `documents.file_path`
+     * rows ended up stored as project-root-relative (`storage/uploads/
+     * avatars/account-1.jpg`, `storage/uploads/licenses/42/abc.jpg`)
+     * while `FileStorage::getFullPath()` only resolved upload-dir-
+     * relative paths (`/{tracking_code}/{$fileName}`). The Phase 57b
+     * FileStorage fallback now resolves both conventions and the file
+     * is found + served regardless of how it was stored.
      */
     public function inline(Request $request, array $params = []): Response
     {
-        $this->requireLogin();
+        $this->requireAnyLogin();
         $id = (int)($params['id'] ?? 0);
         $document = $this->documents->findById($id);
         if ($document === null) {

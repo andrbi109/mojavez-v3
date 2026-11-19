@@ -17,12 +17,29 @@
  *     - The badge palette was extended to recognize 'در انتظار رسید'
  *       (different from the new 'در انتظار' — the former means the
  *       user has uploaded a receipt and is awaiting admin review).
+ *
+ * Phase 57b — the placeholder modal is now a real channel chooser.
+ *   All active `payment_channels` rows are loaded by
+ *   UserPanelController::payments() and rendered as radio options.
+ *   Each radio shows the channel's title + type, and when selected
+ *   reveals the channel's `account_info` block (card number / IBAN /
+ *   gateway URL / etc.) so the user knows exactly how to pay through
+ *   that channel. If no channel is configured, the modal falls back to
+ *   the previous informational alert ("درگاه آنلاین به‌زودی…") so the
+ *   admin can still request a payment without breaking the user UI.
  */
 /** @var array $payments */
+/** @var array $channels */
 /** @var string $baseUrl */
 /** @var string $csrfField */
 
 use App\Shared\Support\PersianDate;
+
+// Phase 57b — guard the channels variable for older callers/tests
+// that might render this view without passing channels (defensive —
+// the controller always passes it now, but views should be robust
+// against partial data).
+$channels ??= [];
 ?>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -74,6 +91,7 @@ use App\Shared\Support\PersianDate;
                             $amount = (int)($p['amount'] ?? 0);
                             $description = (string)($p['description'] ?? '');
                             $canPay = ($status === 'در انتظار');
+                            $payModalId = 'payModal' . (int)($p['id'] ?? 0);
                         ?>
                             <tr class="<?= $canPay ? 'table-warning' : '' ?>">
                                 <td>#<?= (int)($p['id'] ?? 0) ?></td>
@@ -92,15 +110,18 @@ use App\Shared\Support\PersianDate;
                                     <?php if ($canPay): ?>
                                         <button type="button" class="btn btn-sm btn-success py-0"
                                                 data-bs-toggle="modal"
-                                                data-bs-target="#payModal<?= (int)($p['id'] ?? 0) ?>">
+                                                data-bs-target="#<?= htmlspecialchars($payModalId, ENT_QUOTES) ?>">
                                             <i class="bi bi-credit-card"></i> پرداخت
                                         </button>
-                                        <!-- Phase 50 placeholder modal — to be replaced by a real
-                                             payment form (gateway redirect / receipt upload) in a
-                                             later phase. For now it just tells the user the online
-                                             payment flow is coming and offers a receipt-upload
-                                             button (also a placeholder). -->
-                                        <div class="modal fade" id="payModal<?= (int)($p['id'] ?? 0) ?>" tabindex="-1" aria-hidden="true">
+                                        <!-- Phase 57b — real channel chooser modal.
+                                             All active payment_channels are rendered
+                                             as radio options. Selecting one reveals
+                                             its account_info (card number / IBAN /
+                                             gateway URL) inline. If no channel is
+                                             configured, the modal falls back to an
+                                             informational alert (same copy as the
+                                             Phase-50 placeholder). -->
+                                        <div class="modal fade" id="<?= htmlspecialchars($payModalId, ENT_QUOTES) ?>" tabindex="-1" aria-hidden="true">
                                             <div class="modal-dialog modal-dialog-centered">
                                                 <div class="modal-content">
                                                     <div class="modal-header">
@@ -116,24 +137,76 @@ use App\Shared\Support\PersianDate;
                                                             <strong><?= number_format($amount) ?></strong>
                                                             <small class="text-muted">تومان</small>
                                                         </p>
-                                                        <p class="mb-2 text-muted small">
+                                                        <p class="mb-3 text-muted small">
                                                             بابت: <?= htmlspecialchars((string)($p['purpose'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
                                                         </p>
                                                         <?php if ($description !== ''): ?>
-                                                            <p class="mb-2 text-muted small">
+                                                            <p class="mb-3 text-muted small">
                                                                 توضیح مدیر: <?= htmlspecialchars($description, ENT_QUOTES, 'UTF-8') ?>
                                                             </p>
                                                         <?php endif; ?>
-                                                        <div class="alert alert-info small mb-0" role="alert">
-                                                            <i class="bi bi-info-circle"></i>
-                                                            درگاه آنلاین پرداخت به‌زودی فعال خواهد شد. تا آن زمان می‌توانید رسید پرداخت را از طریق پنل کاربری تحویل دهید.
-                                                        </div>
+
+                                                        <?php if (!empty($channels)): ?>
+                                                            <h6 class="small text-uppercase text-muted mb-2">
+                                                                <i class="bi bi-list-check"></i> انتخاب کانال پرداخت
+                                                            </h6>
+                                                            <div class="mb-2" role="radiogroup" aria-label="کانال پرداخت">
+                                                                <?php foreach ($channels as $idx => $ch):
+                                                                    $chId = (int)($ch['id'] ?? 0);
+                                                                    $chTitle = (string)($ch['title'] ?? '');
+                                                                    $chType = (string)($ch['channel_type'] ?? '');
+                                                                    $chInfo = (string)($ch['account_info'] ?? '');
+                                                                    $radioName = 'pay_channel_' . (int)($p['id'] ?? 0);
+                                                                    $radioId = $radioName . '_' . $chId;
+                                                                    $infoId = $radioId . '_info';
+                                                                    $first = ($idx === 0);
+                                                                ?>
+                                                                    <div class="form-check border rounded p-2 mb-2 <?= $first ? 'border-success border-opacity-50' : '' ?>">
+                                                                        <input class="form-check-input" type="radio"
+                                                                               name="<?= htmlspecialchars($radioName, ENT_QUOTES) ?>"
+                                                                               id="<?= htmlspecialchars($radioId, ENT_QUOTES) ?>"
+                                                                               value="<?= $chId ?>"
+                                                                               data-pay-info-id="<?= htmlspecialchars($infoId, ENT_QUOTES) ?>"
+                                                                               <?= $first ? 'checked' : '' ?>>
+                                                                        <label class="form-check-label w-100" for="<?= htmlspecialchars($radioId, ENT_QUOTES) ?>">
+                                                                            <span class="fw-semibold"><?= htmlspecialchars($chTitle, ENT_QUOTES, 'UTF-8') ?></span>
+                                                                            <span class="badge text-bg-light text-muted ms-1"><?= htmlspecialchars($chType, ENT_QUOTES, 'UTF-8') ?></span>
+                                                                        </label>
+                                                                        <div id="<?= htmlspecialchars($infoId, ENT_QUOTES) ?>"
+                                                                             class="pay-channel-info small text-muted mt-2 ps-4 <?= $first ? '' : 'd-none' ?>"
+                                                                             style="white-space:pre-wrap;line-height:1.5;">
+                                                                            <?php if ($chInfo !== ''): ?>
+                                                                                <?= htmlspecialchars($chInfo, ENT_QUOTES, 'UTF-8') ?>
+                                                                            <?php else: ?>
+                                                                                <span class="text-muted">(اطلاعات حساب برای این کانال ثبت نشده است.)</span>
+                                                                            <?php endif; ?>
+                                                                        </div>
+                                                                    </div>
+                                                                <?php endforeach; ?>
+                                                            </div>
+                                                            <div class="alert alert-info small mb-0" role="alert">
+                                                                <i class="bi bi-info-circle"></i>
+                                                                پس از پرداخت از طریق کانال انتخاب‌شده، رسید را از طریق پنل کاربری تحویل دهید تا مدیر بررسی و تأیید کند.
+                                                            </div>
+                                                        <?php else: ?>
+                                                            <div class="alert alert-info small mb-0" role="alert">
+                                                                <i class="bi bi-info-circle"></i>
+                                                                درگاه آنلاین پرداخت به‌زودی فعال خواهد شد. تا آن زمان می‌توانید رسید پرداخت را از طریق پنل کاربری تحویل دهید.
+                                                            </div>
+                                                        <?php endif; ?>
                                                     </div>
                                                     <div class="modal-footer">
-                                                        <button type="button" class="btn btn-success" disabled
-                                                                title="به‌زودی فعال خواهد شد">
-                                                            <i class="bi bi-globe"></i> پرداخت آنلاین (به‌زودی)
-                                                        </button>
+                                                        <?php if (!empty($channels)): ?>
+                                                            <button type="button" class="btn btn-success"
+                                                                    onclick="alert('پس از پرداخت، رسید را از طریق پنل کاربری تحویل دهید. این مرحله در فاز بعد به‌صورت خودکار متصل خواهد شد.');">
+                                                                <i class="bi bi-check2-circle"></i> تأیید و ادامه
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <button type="button" class="btn btn-success" disabled
+                                                                    title="به‌زودی فعال خواهد شد">
+                                                                <i class="bi bi-globe"></i> پرداخت آنلاین (به‌زودی)
+                                                            </button>
+                                                        <?php endif; ?>
                                                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بستن</button>
                                                     </div>
                                                 </div>
@@ -151,3 +224,30 @@ use App\Shared\Support\PersianDate;
         <?php endif; ?>
     </div>
 </div>
+
+<?php if (!empty($payments)): ?>
+<script>
+// Phase 57b — wire up the channel radios in every payModal. When the
+// user selects a radio, hide every .pay-channel-info block in this
+// modal and show the one tied to the selected radio (the data-pay-info-id
+// attribute carries the id of the info block to reveal). Initial state
+// (first radio checked, first info block visible) is set by the
+// server-side template above.
+(function () {
+    'use strict';
+    document.querySelectorAll('.modal[id^="payModal"]').forEach(function (modalEl) {
+        modalEl.addEventListener('change', function (event) {
+            var target = event.target;
+            if (!target || target.type !== 'radio' || !target.dataset.payInfoId) return;
+            // Hide every pay-channel-info inside this modal, then
+            // reveal the one matching the selected radio.
+            modalEl.querySelectorAll('.pay-channel-info').forEach(function (info) {
+                info.classList.add('d-none');
+            });
+            var show = modalEl.querySelector('#' + target.dataset.payInfoId);
+            if (show) show.classList.remove('d-none');
+        });
+    });
+})();
+</script>
+<?php endif;
