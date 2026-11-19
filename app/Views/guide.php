@@ -140,7 +140,7 @@ foreach ($cycleHousehold as $k => $s) {
                     </p>
                 <?php endif; ?>
                 <?php if ($ownerUsername !== ''): ?>
-                    <p class="text-muted small mb-2" dir="ltr">
+                    <p class="text-muted small mb-2">
                         <i class="bi bi-at"></i> @<?= htmlspecialchars((string)$ownerUsername, ENT_QUOTES, 'UTF-8') ?>
                     </p>
                 <?php endif; ?>

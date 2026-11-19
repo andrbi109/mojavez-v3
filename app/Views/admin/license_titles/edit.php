@@ -52,7 +52,7 @@ $isEdit = !empty($title_['id']);
         </div>
         <div class="col-md-3">
             <label class="form-label">ترتیب</label>
-            <input type="number" class="form-control" name="sort_order" dir="ltr"
+            <input type="number" class="form-control" name="sort_order"
                    value="<?= (int)($title_['sort_order'] ?? 0) ?>">
         </div>
         <div class="col-md-9 d-flex align-items-end pt-1">

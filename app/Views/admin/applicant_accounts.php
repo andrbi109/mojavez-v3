@@ -85,11 +85,11 @@
                 ?>
                     <tr>
                         <td><?= $id ?></td>
-                        <td dir="ltr">
+                        <td>
                             <?= $username !== '' ? htmlspecialchars($username, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                         </td>
-                        <td dir="ltr"><?= htmlspecialchars((string)$r['mobile'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr">
+                        <td><?= htmlspecialchars((string)$r['mobile'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td>
                             <?= $email !== '' ? htmlspecialchars($email, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                         </td>
                         <td>
@@ -102,10 +102,10 @@
                                 <span class="badge text-bg-secondary">غیرفعال</span>
                             <?php endif; ?>
                         </td>
-                        <td dir="ltr" class="small text-muted">
+                        <td class="small text-muted">
                             <?= $lastLogin !== '' ? htmlspecialchars($lastLogin, ENT_QUOTES, 'UTF-8') : '—' ?>
                         </td>
-                        <td dir="ltr" class="small text-muted">
+                        <td class="small text-muted">
                             <?= $createdAt !== '' ? htmlspecialchars($createdAt, ENT_QUOTES, 'UTF-8') : '—' ?>
                         </td>
                         <td class="text-end">

@@ -89,11 +89,11 @@ $renderField = static function (string $key) use ($known, $settings, $baseUrl): 
             <?php else: ?>
                 <div class="small text-muted mb-2">
                     <i class="bi bi-info-circle"></i> هنوز تصویری آپلود نشده. از فرم آپلود بالا با کلید
-                    <code dir="ltr"><?= htmlspecialchars($key, ENT_QUOTES) ?></code> استفاده کنید.
+                    <code><?= htmlspecialchars($key, ENT_QUOTES) ?></code> استفاده کنید.
                 </div>
             <?php endif; ?>
             <input type="text" class="form-control" id="<?= $id ?>" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>"
-                   value="<?= htmlspecialchars($current, ENT_QUOTES, 'UTF-8') ?>" dir="ltr">
+                   value="<?= htmlspecialchars($current, ENT_QUOTES, 'UTF-8') ?>">
         <?php else: ?>
             <input type="text" class="form-control" id="<?= $id ?>" name="<?= htmlspecialchars($key, ENT_QUOTES) ?>"
                    value="<?= htmlspecialchars($current, ENT_QUOTES, 'UTF-8') ?>">
@@ -131,7 +131,7 @@ $renderTabPaneFields = static function (array $keys) use ($renderField): void {
     برخی کلیدهای سفارشی ذخیره نشدند:
     <ul class="mb-0">
         <?php foreach ($errors as $badKey => $msg): ?>
-            <li><code dir="ltr"><?= htmlspecialchars($badKey, ENT_QUOTES, 'UTF-8') ?></code> —
+            <li><code><?= htmlspecialchars($badKey, ENT_QUOTES, 'UTF-8') ?></code> —
                 <?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') ?></li>
         <?php endforeach; ?>
     </ul>
@@ -148,7 +148,7 @@ $renderTabPaneFields = static function (array $keys) use ($renderField): void {
         <p class="text-muted small">
             تصویر لوگوی سرصفحه/پاصفحه یا تصویر مدیر را آپلود کنید. فقط JPEG/PNG/WEBP حداکثر ۲ مگابایت.
             مسیر فایل در تنظیمی که در فیلد «کلید تنظیم» وارد می‌کنید ذخیره می‌شود
-            (پیش‌فرض: <code dir="ltr">site_logo</code>؛ برای تصویر مدیر: <code dir="ltr">owner_image</code>).
+            (پیش‌فرض: <code>site_logo</code>؛ برای تصویر مدیر: <code>owner_image</code>).
         </p>
         <?php if ($siteLogoPath !== '' && is_file(ROOT_PATH . '/' . $siteLogoPath)): ?>
             <div class="mb-3 d-flex align-items-center gap-3">
@@ -158,7 +158,7 @@ $renderTabPaneFields = static function (array $keys) use ($renderField): void {
                      style="max-height: 80px; max-width: 240px;">
                 <div class="small text-muted">
                     لوگوی فعلی ذخیره شده:<br>
-                    <code dir="ltr"><?= htmlspecialchars($siteLogoPath, ENT_QUOTES, 'UTF-8') ?></code>
+                    <code><?= htmlspecialchars($siteLogoPath, ENT_QUOTES, 'UTF-8') ?></code>
                 </div>
             </div>
         <?php else: ?>
@@ -172,7 +172,7 @@ $renderTabPaneFields = static function (array $keys) use ($renderField): void {
                 <div class="col-12 col-sm-5">
                     <label class="form-label small">کلید تنظیم</label>
                     <input type="text" class="form-control form-control-sm" name="setting_key"
-                           value="site_logo" dir="ltr" required
+                           value="site_logo" required
                            pattern="[a-zA-Z0-9_.\-]+">
                     <div class="form-text">پیش‌فرض: site_logo. برای تصویر مدیر: owner_image. فقط حروف انگلیسی/اعداد/_/.-</div>
                 </div>
@@ -334,7 +334,7 @@ if (isset($_SERVER['REQUEST_URI'])) {
                                      style="max-height: 80px; max-width: 80px; object-fit: cover;">
                                 <div class="small text-muted">
                                     تصویر فعلی:<br>
-                                    <code dir="ltr"><?= htmlspecialchars($ownerImagePath, ENT_QUOTES, 'UTF-8') ?></code>
+                                    <code><?= htmlspecialchars($ownerImagePath, ENT_QUOTES, 'UTF-8') ?></code>
                                 </div>
                             </div>
                         <?php endif; ?>
@@ -442,8 +442,8 @@ if (isset($_SERVER['REQUEST_URI'])) {
                         $cv = $settings[$ck];
                     ?>
                         <div class="row g-2 mb-2 align-items-center">
-                            <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" value="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
-                            <div class="col-10 col-sm-6"><input type="text" class="form-control" name="custom_values[]" value="<?= htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') ?>" dir="ltr"></div>
+                            <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" value="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>"></div>
+                            <div class="col-10 col-sm-6"><input type="text" class="form-control" name="custom_values[]" value="<?= htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') ?>"></div>
                             <div class="col-2 col-sm-2 d-grid">
                                 <button type="button" class="btn btn-sm btn-outline-danger py-1"
                                         data-delete-key="<?= htmlspecialchars($ck, ENT_QUOTES, 'UTF-8') ?>"
@@ -455,8 +455,8 @@ if (isset($_SERVER['REQUEST_URI'])) {
                     <?php $i++; endforeach; ?>
                     <!-- One empty row for adding a new custom setting. -->
                     <div class="row g-2 mb-2 align-items-center">
-                        <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" placeholder="کلید جدید" dir="ltr"></div>
-                        <div class="col-12 col-sm-8"><input type="text" class="form-control" name="custom_values[]" placeholder="مقدار" dir="ltr"></div>
+                        <div class="col-12 col-sm-4"><input type="text" class="form-control" name="custom_keys[]" placeholder="کلید جدید"></div>
+                        <div class="col-12 col-sm-8"><input type="text" class="form-control" name="custom_values[]" placeholder="مقدار"></div>
                     </div>
                 </div>
             </div>

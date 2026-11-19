@@ -53,7 +53,7 @@ use App\Shared\Support\StatusBadge;
                             <input type="tel" class="form-control" id="mobile" name="mobile"
                                    pattern="09\d{9}" maxlength="11" required
                                    value="<?= htmlspecialchars((string)($account['mobile'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                   dir="ltr" style="text-align: right;">
+                                   style="text-align: right;">
                             <div class="form-text">شمارهٔ موبایل باید با حساب کاربری شما مطابقت داشته باشد.</div>
                         </div>
                         <button type="submit" class="btn btn-primary">
@@ -87,7 +87,7 @@ use App\Shared\Support\StatusBadge;
                                     <?php foreach ($records as $r): ?>
                                         <tr>
                                             <td>
-                                                <code class="user-select-all" dir="ltr">
+                                                <code class="user-select-all">
                                                     <?= htmlspecialchars((string)($r['tracking_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                                 </code>
                                             </td>
@@ -102,7 +102,7 @@ use App\Shared\Support\StatusBadge;
                                                     <?= htmlspecialchars((string)($r['current_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
                                                 </span>
                                             </td>
-                                            <td class="text-muted small" dir="ltr">
+                                            <td class="text-muted small">
                                                 <?= htmlspecialchars((string)($r['created_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                             </td>
                                             <td>

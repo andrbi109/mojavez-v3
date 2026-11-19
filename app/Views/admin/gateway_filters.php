@@ -91,9 +91,9 @@
                                 <span class="badge text-bg-secondary">غیرفعال</span>
                             <?php endif; ?>
                         </td>
-                        <td class="small text-muted" dir="ltr"><?= htmlspecialchars((string)($f['last_run_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small text-muted"><?= htmlspecialchars((string)($f['last_run_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)($f['last_result_count'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td class="small text-muted" dir="ltr"><?= htmlspecialchars((string)($f['created_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small text-muted"><?= htmlspecialchars((string)($f['created_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="text-end text-nowrap">
                             <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/search?<?= htmlspecialchars($applyQuery, ENT_QUOTES, 'UTF-8') ?>"
                                class="btn btn-sm btn-outline-primary" title="اعمال فیلتر در جستجو">
@@ -153,7 +153,7 @@
             </div>
             <h6 class="mt-3 mb-2">معیارهای جستجو</h6>
             <div class="row g-2">
-                <div class="col-md-3"><label class="form-label small">شماره مجوز</label><input class="form-control form-control-sm" data-f="license_number" dir="ltr"></div>
+                <div class="col-md-3"><label class="form-label small">شماره مجوز</label><input class="form-control form-control-sm" data-f="license_number"></div>
                 <div class="col-md-3"><label class="form-label small">نام متقاضی</label><input class="form-control form-control-sm" data-f="name"></div>
                 <div class="col-md-3"><label class="form-label small">استان</label><input class="form-control form-control-sm" data-f="province_title"></div>
                 <div class="col-md-3"><label class="form-label small">سازمان</label><input class="form-control form-control-sm" data-f="organization_title"></div>
@@ -165,7 +165,7 @@
                         <option value="unknown">نامشخص</option>
                     </select>
                 </div>
-                <div class="col-md-3"><label class="form-label small">کد ملی</label><input class="form-control form-control-sm" data-f="national_code" dir="ltr"></div>
+                <div class="col-md-3"><label class="form-label small">کد ملی</label><input class="form-control form-control-sm" data-f="national_code"></div>
             </div>
         </div>
         <div class="modal-footer">

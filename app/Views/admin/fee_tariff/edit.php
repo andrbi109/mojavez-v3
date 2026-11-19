@@ -37,28 +37,28 @@ $isEdit = !empty($tariff['id']);
         </div>
         <div class="col-md-3">
             <label class="form-label">دهک حداقل <span class="text-danger">*</span></label>
-            <input type="number" class="form-control" name="decile_min" dir="ltr" min="1" max="10" required
+            <input type="number" class="form-control" name="decile_min" min="1" max="10" required
                    value="<?= (int)($tariff['decile_min'] ?? 1) ?>">
         </div>
         <div class="col-md-3">
             <label class="form-label">دهک حداکثر <span class="text-danger">*</span></label>
-            <input type="number" class="form-control" name="decile_max" dir="ltr" min="1" max="10" required
+            <input type="number" class="form-control" name="decile_max" min="1" max="10" required
                    value="<?= (int)($tariff['decile_max'] ?? 10) ?>">
         </div>
         <div class="col-md-6">
             <label class="form-label">مبلغ پایه (تومان) <span class="text-danger">*</span></label>
-            <input type="number" class="form-control" name="base_amount" dir="ltr" min="0" step="1" required
+            <input type="number" class="form-control" name="base_amount" min="0" step="1" required
                    value="<?= (int)($tariff['base_amount'] ?? 0) ?>">
             <div class="form-text">عدد صحیح به تومان. بدون ممیز.</div>
         </div>
         <div class="col-md-3">
             <label class="form-label">معتبر از</label>
-            <input type="date" class="form-control" name="valid_from" dir="ltr"
+            <input type="date" class="form-control" name="valid_from"
                    value="<?= htmlspecialchars((string)($tariff['valid_from'] ?? ''), ENT_QUOTES) ?>">
         </div>
         <div class="col-md-3">
             <label class="form-label">معتبر تا</label>
-            <input type="date" class="form-control" name="valid_until" dir="ltr"
+            <input type="date" class="form-control" name="valid_until"
                    value="<?= htmlspecialchars((string)($tariff['valid_until'] ?? ''), ENT_QUOTES) ?>">
         </div>
         <div class="col-12">

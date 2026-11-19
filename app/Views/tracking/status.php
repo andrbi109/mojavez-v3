@@ -162,7 +162,7 @@ foreach ($statusLog as $entry) {
                                         <?= htmlspecialchars($entry->statusName, ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                 </td>
-                                <td class="text-muted" dir="ltr"><?= htmlspecialchars(PersianDate::format($entry->createdAt), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="text-muted"><?= htmlspecialchars(PersianDate::format($entry->createdAt), ENT_QUOTES, 'UTF-8') ?></td>
                             </tr>
                         <?php endforeach; ?>
                         <?php if (empty($statusLog)): ?>

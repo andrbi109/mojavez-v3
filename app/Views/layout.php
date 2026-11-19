@@ -143,7 +143,7 @@ foreach ($socialLinks as $k => $sl) {
                        title="<?= htmlspecialchars((string)$sl['label'], ENT_QUOTES, 'UTF-8') ?>">
                         <i class="bi bi-chat-dots"></i>
                         <?= htmlspecialchars((string)$sl['label'], ENT_QUOTES, 'UTF-8') ?>
-                        <span dir="ltr">@<?= htmlspecialchars((string)($sl['handle'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
+                        <span>@<?= htmlspecialchars((string)($sl['handle'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 <?php endforeach; ?>
             </div>

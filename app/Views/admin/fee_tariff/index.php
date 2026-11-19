@@ -94,10 +94,10 @@ $services     ??= [];
                     <tr>
                         <td><?= (int)$r['id'] ?></td>
                         <td><?= htmlspecialchars((string)($r['service_type_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr"><?= (int)$r['decile_min'] ?> – <?= (int)$r['decile_max'] ?></td>
-                        <td dir="ltr"><?= htmlspecialchars(number_format((int)$r['base_amount']), ENT_QUOTES, 'UTF-8') ?> <span class="text-muted small">تومان</span></td>
-                        <td dir="ltr" class="small text-muted"><?= htmlspecialchars((string)($r['valid_from'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr" class="small text-muted"><?= htmlspecialchars((string)($r['valid_until'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
+                        <td><?= (int)$r['decile_min'] ?> – <?= (int)$r['decile_max'] ?></td>
+                        <td><?= htmlspecialchars(number_format((int)$r['base_amount']), ENT_QUOTES, 'UTF-8') ?> <span class="text-muted small">تومان</span></td>
+                        <td class="small text-muted"><?= htmlspecialchars((string)($r['valid_from'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small text-muted"><?= htmlspecialchars((string)($r['valid_until'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
                         <td>
                             <?php if ($isActive): ?><span class="badge text-bg-success">فعال</span><?php else: ?><span class="badge text-bg-secondary">غیرفعال</span><?php endif; ?>
                         </td>
@@ -175,7 +175,7 @@ foreach ($groups as $g) {
                                 $ghLabel = htmlspecialchars($gh['label'], ENT_QUOTES, 'UTF-8');
                             ?>
                                 <th class="text-center" title="<?= $ghLabel ?>">
-                                    <span class="badge text-bg-light text-body border" dir="ltr"><?= $ghCode ?></span>
+                                    <span class="badge text-bg-light text-body border"><?= $ghCode ?></span>
                                     <div class="small text-muted">دهک <?= $gh['dec_min'] ?>–<?= $gh['dec_max'] ?></div>
                                 </th>
                             <?php endforeach; ?>
@@ -201,7 +201,7 @@ foreach ($groups as $g) {
                         ?>
                         <tr>
                             <td><?= $rowIdx ?></td>
-                            <td dir="ltr"><code><?= htmlspecialchars($svcKey, ENT_QUOTES, 'UTF-8') ?></code></td>
+                            <td><code><?= htmlspecialchars($svcKey, ENT_QUOTES, 'UTF-8') ?></code></td>
                             <td>
                                 <input type="text" class="form-control form-control-sm"
                                        name="services[<?= htmlspecialchars($svcKey, ENT_QUOTES) ?>][label]"
@@ -230,7 +230,7 @@ foreach ($groups as $g) {
                                                data-amount-input="<?= $keyId ?>-amt-<?= $gid ?>"
                                                <?= $isEnabled ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="<?= $cbId ?>">
-                                            <span class="badge text-bg-<?= $isEnabled ? 'success' : 'secondary' ?> small" dir="ltr">
+                                            <span class="badge text-bg-<?= $isEnabled ? 'success' : 'secondary' ?> small">
                                                 <?= htmlspecialchars($gh['code'], ENT_QUOTES, 'UTF-8') ?>
                                             </span>
                                         </label>
@@ -262,7 +262,7 @@ foreach ($groups as $g) {
                         <tr class="table-light">
                             <td colspan="<?= 5 + count($groupHeaders) ?>" class="small text-muted">
                                 <i class="bi bi-sticky"></i>
-                                یادداشت <code dir="ltr"><?= htmlspecialchars($svcKey, ENT_QUOTES, 'UTF-8') ?></code>:
+                                یادداشت <code><?= htmlspecialchars($svcKey, ENT_QUOTES, 'UTF-8') ?></code>:
                                 <?= htmlspecialchars($svcNotes, ENT_QUOTES, 'UTF-8') ?>
                             </td>
                         </tr>
@@ -298,7 +298,7 @@ foreach ($groups as $g) {
             <div class="col-md-3">
                 <label class="form-label small mb-0">item_key <span class="text-danger">*</span></label>
                 <input type="text" class="form-control form-control-sm" name="item_key"
-                       placeholder="مثلاً new_request" required dir="ltr"
+                       placeholder="مثلاً new_request" required
                        pattern="[A-Za-z][A-Za-z0-9_]{0,49}" maxlength="50">
                 <div class="form-text small text-muted">
                     حروف انگلیسی، عدد و زیرخط. باید با حرف شروع شود. یکتا در کل مجموعهٔ گروه‌ها.
@@ -346,7 +346,7 @@ foreach ($groups as $g) {
 <div class="card mb-3" id="group-<?= $gid ?>">
     <div class="card-header d-flex flex-wrap align-items-center gap-2">
         <i class="bi bi-tags"></i>
-        <span class="badge text-bg-light text-body border" dir="ltr"><?= htmlspecialchars($gCode, ENT_QUOTES, 'UTF-8') ?></span>
+        <span class="badge text-bg-light text-body border"><?= htmlspecialchars($gCode, ENT_QUOTES, 'UTF-8') ?></span>
         <strong><?= htmlspecialchars($gLabel, ENT_QUOTES, 'UTF-8') ?></strong>
         <span class="text-muted small">دهک‌های <?= $gDecMin ?> تا <?= $gDecMax ?></span>
         <?php if ($gActive): ?>
@@ -401,7 +401,7 @@ foreach ($groups as $g) {
                 <tfoot class="table-light">
                     <tr>
                         <th colspan="3" class="text-end">مجموع آیتم‌ها</th>
-                        <th dir="ltr"><?= htmlspecialchars(number_format($gTotal), ENT_QUOTES, 'UTF-8') ?> <span class="text-muted small">تومان</span></th>
+                        <th><?= htmlspecialchars(number_format($gTotal), ENT_QUOTES, 'UTF-8') ?> <span class="text-muted small">تومان</span></th>
                         <th colspan="2"></th>
                     </tr>
                 </tfoot>

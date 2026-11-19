@@ -82,7 +82,7 @@ $badgeFor = static function (string $status): string {
                             <tr>
                                 <td><?= $requestId ?></td>
                                 <td>
-                                    <code class="user-select-all" dir="ltr">
+                                    <code class="user-select-all">
                                         <?= htmlspecialchars((string)$r['tracking_code'], ENT_QUOTES, 'UTF-8') ?>
                                     </code>
                                 </td>
@@ -95,8 +95,8 @@ $badgeFor = static function (string $status): string {
                                         ) ?>
                                     </a>
                                 </td>
-                                <td dir="ltr"><?= htmlspecialchars((string)$r['old_postal_code'], ENT_QUOTES, 'UTF-8') ?></td>
-                                <td dir="ltr">
+                                <td><?= htmlspecialchars((string)$r['old_postal_code'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td>
                                     <strong><?= htmlspecialchars((string)$r['new_postal_code'], ENT_QUOTES, 'UTF-8') ?></strong>
                                 </td>
                                 <td>
@@ -109,7 +109,7 @@ $badgeFor = static function (string $status): string {
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td class="text-muted small" dir="ltr">
+                                <td class="text-muted small">
                                     <?= htmlspecialchars((string)$r['requested_at'], ENT_QUOTES, 'UTF-8') ?>
                                 </td>
                                 <td class="text-end">

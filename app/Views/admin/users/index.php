@@ -21,7 +21,7 @@
                         <td><?= htmlspecialchars((string)$u['username'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)$u['display_name'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
                         <td><span class="badge text-bg-secondary"><?= $roleLabel ?></span></td>
-                        <td class="text-muted small" dir="ltr"><?= htmlspecialchars((string)$u['created_at'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="text-muted small"><?= htmlspecialchars((string)$u['created_at'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="text-end">
                             <a href="/admin/users/<?= (int)$u['id'] ?>/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
                             <form method="post" action="/admin/users/<?= (int)$u['id'] ?>/delete" class="d-inline" onsubmit="return confirm('حذف این کاربر؟')">

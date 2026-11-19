@@ -47,7 +47,7 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                                 <td><?= (int)$a['id'] ?></td>
                                 <td><code><?= $esc($a['tracking_code']) ?></code></td>
                                 <td><?= $esc((string)$a['first_name'] . ' ' . (string)$a['last_name']) ?></td>
-                                <td dir="ltr"><code><?= $esc($a['national_code']) ?></code></td>
+                                <td><code><?= $esc($a['national_code']) ?></code></td>
                                 <td class="small"><?= $esc((string)($a['service_title'] ?? '—')) ?></td>
                                 <td>
                                     <span class="badge text-bg-<?= $cls ?>"><?= $dc ?></span>

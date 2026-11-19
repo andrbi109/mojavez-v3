@@ -122,7 +122,7 @@ $monthlyTrend   ??= [];
                     <tbody>
                     <?php foreach ($monthlyTrend as $r): ?>
                         <tr>
-                            <td dir="ltr"><?= htmlspecialchars((string)$r['label'], ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)$r['label'], ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= (int)$r['cnt'] ?></td>
                         </tr>
                     <?php endforeach; ?>

@@ -39,7 +39,7 @@ $baseUrl      ??= '';
                 <div class="alert alert-info d-inline-block" role="alert">
                     <i class="bi bi-hash"></i>
                     کد رهگیری شما:
-                    <strong class="fs-5" dir="ltr"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></strong>
+                    <strong class="fs-5"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></strong>
                 </div>
 
                 <div class="mt-4 d-flex justify-content-center gap-2">

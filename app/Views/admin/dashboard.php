@@ -128,11 +128,11 @@ $fmtDate = static function (?string $ts): string {
                                     'UTF-8'
                                 ) ?>
                             </span>
-                            <span class="text-muted" style="font-size:.72rem" dir="ltr">
+                            <span class="text-muted" style="font-size:.72rem">
                                 <?= $fmtDate((string)$r['created_at']) ?>
                             </span>
                         </div>
-                        <div class="text-muted" style="font-size:.72rem" dir="ltr">
+                        <div class="text-muted" style="font-size:.72rem">
                             <?= htmlspecialchars((string)$r['tracking_code'], ENT_QUOTES, 'UTF-8') ?>
                             · <?= htmlspecialchars((string)$r['national_code'], ENT_QUOTES, 'UTF-8') ?>
                         </div>
@@ -162,11 +162,11 @@ $fmtDate = static function (?string $ts): string {
                                     'UTF-8'
                                 ) ?>
                             </span>
-                            <span class="text-muted" style="font-size:.72rem" dir="ltr">
+                            <span class="text-muted" style="font-size:.72rem">
                                 <?= $fmtDate((string)$p['created_at']) ?>
                             </span>
                         </div>
-                        <div class="text-muted" style="font-size:.72rem" dir="ltr">
+                        <div class="text-muted" style="font-size:.72rem">
                             <?= htmlspecialchars((string)$p['tracking_code'], ENT_QUOTES, 'UTF-8') ?>
                             · <?= htmlspecialchars(number_format((int)$p['amount']), ENT_QUOTES, 'UTF-8') ?> تومان
                             · <?= htmlspecialchars((string)$p['purpose'], ENT_QUOTES, 'UTF-8') ?>
@@ -197,11 +197,11 @@ $fmtDate = static function (?string $ts): string {
                                     'UTF-8'
                                 ) ?>
                             </span>
-                            <span class="text-muted" style="font-size:.72rem" dir="ltr">
+                            <span class="text-muted" style="font-size:.72rem">
                                 <?= $fmtDate((string)$l['issued_at']) ?>
                             </span>
                         </div>
-                        <div class="text-muted" style="font-size:.72rem" dir="ltr">
+                        <div class="text-muted" style="font-size:.72rem">
                             <?= htmlspecialchars((string)$l['tracking_code'], ENT_QUOTES, 'UTF-8') ?>
                         </div>
                     </li>
@@ -229,11 +229,11 @@ $fmtDate = static function (?string $ts): string {
                                     <?= htmlspecialchars((string)($s['outcome'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
                                 </span>
                             </span>
-                            <span class="text-muted" style="font-size:.72rem" dir="ltr">
+                            <span class="text-muted" style="font-size:.72rem">
                                 <?= $fmtDate((string)$s['created_at']) ?>
                             </span>
                         </div>
-                        <div class="text-muted" style="font-size:.72rem" dir="ltr">
+                        <div class="text-muted" style="font-size:.72rem">
                             <?php if (!empty($s['national_request_number'])): ?>
                                 <?= htmlspecialchars((string)$s['national_request_number'], ENT_QUOTES, 'UTF-8') ?>
                             <?php else: ?>

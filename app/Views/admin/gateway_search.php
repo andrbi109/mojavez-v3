@@ -18,6 +18,13 @@
  * previous "نتیجه‌ای یافت نشد — کش محلی خالی است" message that lived
  * inside the empty results row (less prominent + easy to miss).
  *
+ * Phase 59a — license modal: every date field is now formatted as
+ * Jalali via PersianDate::format() (responded_at, expires_at). The
+ * modal previously rendered raw Gregorian "2026-11-17 18:01:49" strings
+ * which were both hard to read and inconsistent with the rest of the
+ * admin UI. The data-* attributes carry the Jalali strings directly so
+ * the JS only needs to set textContent.
+ *
  * @var array<string,mixed> $filter
  * @var array<int,array<string,mixed>> $rows
  * @var int $total
@@ -30,9 +37,21 @@
  * @var string $csrfField
  * @var string $baseUrl
  */
+
+use App\Shared\Support\PersianDate;
+
 $cacheTotal ??= 0;
 $q = static function (string $key) use ($filter): string {
     return htmlspecialchars((string)($filter[$key] ?? ''), ENT_QUOTES, 'UTF-8');
+};
+// Phase 59a — pre-format dates as Jalali for the row buttons' data-*
+// attributes so the modal JS only needs textContent assignment.
+$jDate = static function (?string $greg): string {
+    if ($greg === null || $greg === '') {
+        return '';
+    }
+    $formatted = PersianDate::format($greg);
+    return $formatted === '—' ? '' : $formatted;
 };
 ?>
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -100,11 +119,11 @@ $q = static function (string $key) use ($filter): string {
         <form method="get" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/search" class="row g-2">
             <div class="col-md-3">
                 <label class="form-label small">کد ملی</label>
-                <input class="form-control form-control-sm" type="text" name="national_code" dir="ltr" value="<?= $q('national_code') ?>" placeholder="۰۰۱۲۳۴۵۶۷۸">
+                <input class="form-control form-control-sm" type="text" name="national_code" value="<?= $q('national_code') ?>" placeholder="۰۰۱۲۳۴۵۶۷۸">
             </div>
             <div class="col-md-3">
                 <label class="form-label small">شماره مجوز</label>
-                <input class="form-control form-control-sm" type="text" name="license_number" dir="ltr" value="<?= $q('license_number') ?>" placeholder="۱۲۳۴۵">
+                <input class="form-control form-control-sm" type="text" name="license_number" value="<?= $q('license_number') ?>" placeholder="۱۲۳۴۵">
             </div>
             <div class="col-md-3">
                 <label class="form-label small">نام متقاضی</label>
@@ -192,7 +211,7 @@ $q = static function (string $key) use ($filter): string {
                         $matched = (int)($r['matched_applicant_id'] ?? 0);
                     ?>
                     <tr>
-                        <td class="small" dir="ltr"><?= htmlspecialchars((string)$r['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small"><?= htmlspecialchars((string)$r['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)$r['applicant_name'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small"><?= htmlspecialchars((string)($r['license_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small"><?= htmlspecialchars((string)($r['organization_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
@@ -215,13 +234,13 @@ $q = static function (string $key) use ($filter): string {
                                 data-province="<?= htmlspecialchars((string)($r['province_title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-township="<?= htmlspecialchars((string)($r['township_title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-status="<?= $stLabel ?>"
-                                data-responded="<?= htmlspecialchars((string)($r['responded_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-responded="<?= htmlspecialchars($jDate((string)($r['responded_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?>"
                                 data-father="<?= htmlspecialchars((string)($r['father_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-national="<?= htmlspecialchars((string)($r['masked_national_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-address="<?= htmlspecialchars((string)($r['business_address'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-isic="<?= htmlspecialchars((string)($r['isic_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-isic-title="<?= htmlspecialchars((string)($r['isic_title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                data-expires="<?= htmlspecialchars((string)($r['expires_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-expires="<?= htmlspecialchars($jDate((string)($r['expires_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?>"
                                 data-supervisors="<?= htmlspecialchars((string)($r['supervisory_authorities'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-conf="<?= htmlspecialchars((string)$conf, ENT_QUOTES, 'UTF-8') ?>">
                                 <i class="bi bi-eye"></i> مشاهده

@@ -73,7 +73,7 @@ $badgeFor = static function (string $status): string {
                             <tr class="<?= $status === 'در انتظار' ? 'table-warning' : '' ?>">
                                 <td><?= $requestId ?></td>
                                 <td>
-                                    <code class="user-select-all" dir="ltr">
+                                    <code class="user-select-all">
                                         <?= htmlspecialchars((string)($r['tracking_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                     </code>
                                 </td>
@@ -86,7 +86,7 @@ $badgeFor = static function (string $status): string {
                                         ) ?>
                                     </a>
                                 </td>
-                                <td class="small" dir="ltr">
+                                <td class="small">
                                     <?= htmlspecialchars((string)($r['mobile'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                 </td>
                                 <td>
@@ -112,7 +112,7 @@ $badgeFor = static function (string $status): string {
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td class="small <?= $isExpired ? 'text-danger' : 'text-muted' ?>" dir="ltr">
+                                <td class="small <?= $isExpired ? 'text-danger' : 'text-muted' ?>">
                                     <?= $expiresAt !== '' ? htmlspecialchars($expiresAt, ENT_QUOTES) : '—' ?>
                                     <?php if ($isExpired): ?>
                                         <span class="badge text-bg-danger">منقضی</span>
@@ -120,7 +120,7 @@ $badgeFor = static function (string $status): string {
                                 </td>
                                 <td>
                                     <?php if ($token !== ''): ?>
-                                        <code class="user-select-all small" dir="ltr" title="توکن دسترسی">
+                                        <code class="user-select-all small" title="توکن دسترسی">
                                             <?= htmlspecialchars(substr($token, 0, 12) . '…', ENT_QUOTES, 'UTF-8') ?>
                                         </code>
                                         <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>license/view/<?= htmlspecialchars($token, ENT_QUOTES) ?>"

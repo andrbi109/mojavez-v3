@@ -61,7 +61,7 @@ $supportEmailHref = $supportEmail !== '' ? 'mailto:' . rawurlencode($supportEmai
                         <a href="<?= htmlspecialchars($supportEmailHref, ENT_QUOTES) ?>">
                             پشتیبانی تماس بگیرید
                         </a>
-                        <span dir="ltr">(<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>)</span>.
+                        <span>(<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>)</span>.
                     <?php else: ?>
                         با مدیر سامانه تماس بگیرید.
                     <?php endif; ?>

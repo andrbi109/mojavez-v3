@@ -87,15 +87,15 @@ $lastSeen = (string)($stats['last_seen_at'] ?? '');
                 <form method="get" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/search">
                     <div class="mb-2">
                         <label class="form-label small">کد ملی</label>
-                        <input class="form-control form-control-sm" type="text" name="national_code" dir="ltr" placeholder="مثلاً ۰۰۱۲۳۴۵۶۷۸">
+                        <input class="form-control form-control-sm" type="text" name="national_code" placeholder="مثلاً ۰۰۱۲۳۴۵۶۷۸">
                     </div>
                     <div class="mb-2">
                         <label class="form-label small">شماره مجوز</label>
-                        <input class="form-control form-control-sm" type="text" name="license_number" dir="ltr" placeholder="مثلاً ۱۲۳۴۵">
+                        <input class="form-control form-control-sm" type="text" name="license_number" placeholder="مثلاً ۱۲۳۴۵">
                     </div>
                     <div class="mb-3">
                         <label class="form-label small">کد رهگیری</label>
-                        <input class="form-control form-control-sm" type="text" name="tracking_code" dir="ltr" placeholder="کد رهگیری درگاه">
+                        <input class="form-control form-control-sm" type="text" name="tracking_code" placeholder="کد رهگیری درگاه">
                     </div>
                     <button type="submit" class="btn btn-primary btn-sm w-100">
                         <i class="bi bi-search"></i> جستجو
@@ -142,7 +142,7 @@ $lastSeen = (string)($stats['last_seen_at'] ?? '');
                 <div class="small text-muted">
                     آخرین به‌روزرسانی کش:
                     <?php if ($lastSeen !== ''): ?>
-                        <span dir="ltr"><?= htmlspecialchars($lastSeen, ENT_QUOTES, 'UTF-8') ?></span>
+                        <span><?= htmlspecialchars($lastSeen, ENT_QUOTES, 'UTF-8') ?></span>
                     <?php else: ?>
                         <span>—</span>
                     <?php endif; ?>
@@ -188,7 +188,7 @@ $lastSeen = (string)($stats['last_seen_at'] ?? '');
                             ?>
                             <span class="badge <?= $badge ?>"><?= htmlspecialchars($st !== '' ? $st : '—', ENT_QUOTES, 'UTF-8') ?></span>
                         </td>
-                        <td class="small text-muted" dir="ltr"><?= htmlspecialchars((string)($b['created_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small text-muted"><?= htmlspecialchars((string)($b['created_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($recentBatches)): ?>
@@ -216,7 +216,7 @@ $lastSeen = (string)($stats['last_seen_at'] ?? '');
                 <tbody>
                 <?php foreach ($recentMatches as $m): ?>
                     <tr>
-                        <td class="small" dir="ltr"><?= htmlspecialchars((string)$m['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small"><?= htmlspecialchars((string)$m['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)$m['applicant_name'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small"><?= htmlspecialchars((string)($m['license_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small"><?= htmlspecialchars((string)($m['organization_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
@@ -225,7 +225,7 @@ $lastSeen = (string)($stats['last_seen_at'] ?? '');
                             <?php $cBadge = $conf >= 80 ? 'text-bg-success' : ($conf >= 50 ? 'text-bg-warning' : 'text-bg-secondary'); ?>
                             <span class="badge <?= $cBadge ?>"><?= htmlspecialchars((string)$conf, ENT_QUOTES, 'UTF-8') ?>٪</span>
                         </td>
-                        <td class="small text-muted" dir="ltr"><?= htmlspecialchars((string)($m['last_seen_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small text-muted"><?= htmlspecialchars((string)($m['last_seen_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($recentMatches)): ?>

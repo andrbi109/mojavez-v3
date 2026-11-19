@@ -81,7 +81,7 @@ $csrfField     ??= '';
             <h1 class="h4 fw-bold mb-2">درخواست شما در انتظار بررسی است</h1>
             <p class="text-muted">
                 درخواست دسترسی به تصویر مجوز برای پروندهٔ
-                <code dir="ltr"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code>
+                <code><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code>
                 ثبت شده و در انتظار تأیید مدیر سامانه است.
             </p>
             <p class="text-muted small">
@@ -92,7 +92,7 @@ $csrfField     ??= '';
             <h1 class="h4 fw-bold mb-2">تصویر مجوز هنوز صادر نشده است</h1>
             <p class="text-muted">
                 دسترسی شما تأیید شده است، اما تصویر مجوز برای پروندهٔ
-                <code dir="ltr"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code>
+                <code><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code>
                 هنوز توسط مدیر بارگذاری نشده است.
             </p>
             <p class="text-muted small">

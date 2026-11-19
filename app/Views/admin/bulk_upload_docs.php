@@ -13,7 +13,7 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h3 class="h5 mb-0 fw-bold">
             <i class="bi bi-upload me-2"></i> بارگذاری مدارک:
-            <code dir="ltr"><?= $esc($applicant->trackingCode) ?></code>
+            <code><?= $esc($applicant->trackingCode) ?></code>
         </h3>
         <a href="/admin/bulk-import/missing-docs" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-arrow-return-right"></i> بازگشت به لیست
@@ -33,9 +33,9 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                 <dt class="col-sm-2">نام</dt>
                 <dd class="col-sm-10"><?= $esc($applicant->firstName . ' ' . $applicant->lastName) ?></dd>
                 <dt class="col-sm-2">کد ملی</dt>
-                <dd class="col-sm-10" dir="ltr"><code><?= $esc($applicant->nationalCode) ?></code></dd>
+                <dd class="col-sm-10"><code><?= $esc($applicant->nationalCode) ?></code></dd>
                 <dt class="col-sm-2">موبایل</dt>
-                <dd class="col-sm-10" dir="ltr"><code><?= $esc($applicant->mobile) ?></code></dd>
+                <dd class="col-sm-10"><code><?= $esc($applicant->mobile) ?></code></dd>
             </dl>
         </div>
     </div>

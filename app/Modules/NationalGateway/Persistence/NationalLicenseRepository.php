@@ -296,8 +296,20 @@ final class NationalLicenseRepository implements NationalLicenseRepositoryInterf
             $params[] = $filter['license_id'];
         }
         if (!empty($filter['name'])) {
-            $clauses[] = 'applicant_name LIKE ?';
-            $params[] = '%' . $this->conn->escapeLike($filter['name']) . '%';
+            // Phase 59a — name-only search: the national_licenses table
+            // has no first_name/last_name columns. The only person-related
+            // text column is `applicant_name` (a full-name string), with
+            // `father_name` available on licenses scraped from the
+            // /track/{rn} page. Search across both OR-joined so the admin
+            // can find a license by either the applicant's name or the
+            // father's name. License title is also included so a search
+            // for the license type (e.g. "کافه" or "آرایشگاه") still
+            // surfaces results without switching to a separate field.
+            $like = '%' . $this->conn->escapeLike((string)$filter['name']) . '%';
+            $clauses[] = '(applicant_name LIKE ? OR father_name LIKE ? OR license_title LIKE ?)';
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
         }
         if (!empty($filter['province_title']) || !empty($filter['province'])) {
             $p = $filter['province_title'] ?? $filter['province'];

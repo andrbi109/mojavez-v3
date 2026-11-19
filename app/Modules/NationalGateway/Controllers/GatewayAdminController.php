@@ -170,11 +170,22 @@ final class GatewayAdminController extends Controller
     }
 
     /**
-     * GET /admin/gateway/saved — saved/cached national licenses.
+     * GET /admin/gateway/saved — cached national licenses.
      *
-     * Filter by status (all / active / expired / unknown) via ?status=
-     * query param. CSV export links to the existing /api/v1/licenses/export
-     * endpoint (the export logic is already there).
+     * Phase 59a — this page now lists ALL cached licenses
+     * (every row in national_licenses), not just rows with
+     * is_saved = 1. The is_saved flag is only set when an admin
+     * explicitly marks a license "saved" via the API; the sync
+     * cycle (NationalSyncOrchestrator::runCycle →
+     * LicenseService::searchUpstream) populates national_licenses
+     * WITHOUT setting is_saved, so filtering by is_saved = 1 hid
+     * every license the cache actually contained. The page title
+     * reflects this: "مجوزهای کش‌شده از درگاه ملی" (cached licenses
+     * from the national gateway).
+     *
+     * Optional status filter (all / active / expired / unknown) via
+     * ?status= query param. CSV export links to the existing
+     * /api/v1/licenses/export endpoint.
      */
     public function saved(Request $request, array $params = []): Response
     {
@@ -184,8 +195,9 @@ final class GatewayAdminController extends Controller
         $pageSize = 25;
         $statusFilter = (string)($request->queryParam('status', '') ?? '');
 
-        // Build a WHERE clause for is_saved = 1 + optional status filter.
-        $where = 'is_saved = 1';
+        // Phase 59a — show ALL cached licenses (no is_saved filter).
+        // Optional status filter narrows the result by status_slug.
+        $where = '1=1';
         $queryParams = [];
         if ($statusFilter === 'active' || $statusFilter === 'expired' || $statusFilter === 'unknown') {
             $where .= ' AND status_slug = ?';
@@ -194,7 +206,7 @@ final class GatewayAdminController extends Controller
 
         $offset = max(0, ($page - 1) * $pageSize);
         $rows = $this->conn->all(
-            "SELECT * FROM national_licenses WHERE {$where} ORDER BY saved_at DESC, last_seen_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM national_licenses WHERE {$where} ORDER BY last_seen_at DESC LIMIT ? OFFSET ?",
             array_merge($queryParams, [$pageSize, $offset])
         );
 
@@ -206,7 +218,7 @@ final class GatewayAdminController extends Controller
         $totalPages = $pageSize > 0 ? (int)ceil($total / $pageSize) : 0;
 
         return $this->render('admin/gateway_saved', [
-            'title'        => 'مجوزهای ذخیره‌شده',
+            'title'        => 'مجوزهای کش‌شده از درگاه ملی',
             'statusFilter' => $statusFilter,
             'rows'         => $rows,
             'total'        => $total,

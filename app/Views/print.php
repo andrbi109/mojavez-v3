@@ -255,8 +255,8 @@ $ownerName ??= '';
             <h2><span class="num">۱</span> اطلاعات متقاضی</h2>
             <table class="info-table">
                 <tr><td>نام و نام خانوادگی</td><td><?= htmlspecialchars($applicant->fullName(), ENT_QUOTES, 'UTF-8') ?></td></tr>
-                <tr><td>کد ملی</td><td dir="ltr"><?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?></td></tr>
-                <tr><td>شماره موبایل</td><td dir="ltr"><?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?></td></tr>
+                <tr><td>کد ملی</td><td><?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?></td></tr>
+                <tr><td>شماره موبایل</td><td><?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?></td></tr>
                 <tr><td>وضعیت فعلی</td><td><?= htmlspecialchars($applicant->currentStatus->titleFa(), ENT_QUOTES, 'UTF-8') ?></td></tr>
                 <tr><td>وضعیت مجوز</td><td><?= htmlspecialchars($applicant->licenseState->titleFa(), ENT_QUOTES, 'UTF-8') ?></td></tr>
             </table>
@@ -271,7 +271,7 @@ $ownerName ??= '';
                     <tr>
                         <td><?= $i + 1 ?></td>
                         <td><?= htmlspecialchars($entry->statusName, ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr"><?= htmlspecialchars(PersianDate::format($entry->createdAt), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td><?= htmlspecialchars(PersianDate::format($entry->createdAt), ENT_QUOTES, 'UTF-8') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

@@ -69,7 +69,7 @@ $groupLabels ??= [
                                 <?php if ($label === '' || $label === '— (ثبت نشده)'): ?>
                                     <span class="text-muted">— (ثبت نشده)</span>
                                 <?php elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $label)): ?>
-                                    <span dir="ltr"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
                                 <?php else: ?>
                                     <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
                                 <?php endif; ?>

@@ -60,16 +60,16 @@ if ($this->session->has('applicant_account_flash')) {
         <hr>
         <dl class="row mb-0 small">
             <dt class="col-sm-3">موبایل حساب</dt>
-            <dd class="col-sm-9" dir="ltr"><?= htmlspecialchars((string)$flash['mobile'], ENT_QUOTES, 'UTF-8') ?></dd>
+            <dd class="col-sm-9"><?= htmlspecialchars((string)$flash['mobile'], ENT_QUOTES, 'UTF-8') ?></dd>
             <dt class="col-sm-3">نام کاربری</dt>
-            <dd class="col-sm-9" dir="ltr">
+            <dd class="col-sm-9">
                 <?= $flash['username'] !== '' && $flash['username'] !== null
                     ? htmlspecialchars((string)$flash['username'], ENT_QUOTES, 'UTF-8')
                     : '<span class="text-muted">—</span>' ?>
             </dd>
             <dt class="col-sm-3">رمز عبور جدید</dt>
             <dd class="col-sm-9">
-                <code class="user-select-all fs-5" dir="ltr"><?= htmlspecialchars((string)$flash['password'], ENT_QUOTES, 'UTF-8') ?></code>
+                <code class="user-select-all fs-5"><?= htmlspecialchars((string)$flash['password'], ENT_QUOTES, 'UTF-8') ?></code>
             </dd>
         </dl>
     </div>
@@ -92,15 +92,15 @@ if ($this->session->has('applicant_account_flash')) {
                     </dd>
 
                     <dt class="col-sm-4 text-muted">نام کاربری</dt>
-                    <dd class="col-sm-8" dir="ltr">
+                    <dd class="col-sm-8">
                         <?= $username !== '' ? htmlspecialchars($username, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                     </dd>
 
                     <dt class="col-sm-4 text-muted">موبایل</dt>
-                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars($mobile, ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8"><?= htmlspecialchars($mobile, ENT_QUOTES, 'UTF-8') ?></dd>
 
                     <dt class="col-sm-4 text-muted">ایمیل</dt>
-                    <dd class="col-sm-8" dir="ltr">
+                    <dd class="col-sm-8">
                         <?= $email !== '' ? htmlspecialchars($email, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                     </dd>
 
@@ -122,17 +122,17 @@ if ($this->session->has('applicant_account_flash')) {
                     <dd class="col-sm-8"><?= $failedLogin ?></dd>
 
                     <dt class="col-sm-4 text-muted">قفل تا</dt>
-                    <dd class="col-sm-8" dir="ltr">
+                    <dd class="col-sm-8">
                         <?= $lockedUntil !== '' ? htmlspecialchars($lockedUntil, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                     </dd>
 
                     <dt class="col-sm-4 text-muted">آخرین ورود</dt>
-                    <dd class="col-sm-8" dir="ltr">
+                    <dd class="col-sm-8">
                         <?= $lastLogin !== '' ? htmlspecialchars($lastLogin, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                     </dd>
 
                     <dt class="col-sm-4 text-muted">تاریخ ایجاد</dt>
-                    <dd class="col-sm-8" dir="ltr">
+                    <dd class="col-sm-8">
                         <?= $createdAt !== '' ? htmlspecialchars($createdAt, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                     </dd>
                 </dl>
@@ -223,12 +223,12 @@ if ($this->session->has('applicant_account_flash')) {
                 ?>
                     <tr>
                         <td><?= $applicantId ?></td>
-                        <td dir="ltr"><?= htmlspecialchars($tracking, ENT_QUOTES, 'UTF-8') ?></td>
+                        <td><?= htmlspecialchars($tracking, ENT_QUOTES, 'UTF-8') ?></td>
                         <td>
                             <?= htmlspecialchars($firstName . ' ' . $lastName, ENT_QUOTES, 'UTF-8') ?>
                         </td>
-                        <td dir="ltr"><?= htmlspecialchars($aMobile, ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr">
+                        <td><?= htmlspecialchars($aMobile, ENT_QUOTES, 'UTF-8') ?></td>
+                        <td>
                             <?= $natCode !== '' ? htmlspecialchars($natCode, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                         </td>
                         <td>
@@ -241,10 +241,10 @@ if ($this->session->has('applicant_account_flash')) {
                                 <span class="badge text-bg-secondary"><?= htmlspecialchars($licenseState, ENT_QUOTES, 'UTF-8') ?></span>
                             <?php endif; ?>
                         </td>
-                        <td dir="ltr">
+                        <td>
                             <?= $rn !== '' ? htmlspecialchars($rn, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>' ?>
                         </td>
-                        <td dir="ltr" class="small text-muted">
+                        <td class="small text-muted">
                             <?= $aCreated !== '' ? htmlspecialchars($aCreated, ENT_QUOTES, 'UTF-8') : '—' ?>
                         </td>
                         <td class="text-end">

@@ -88,7 +88,7 @@ $showOwnerCard  = $ownerName !== '' || $ownerUsername !== '' || $ownerImageAbs !
                     <h2 class="h5 mb-1"><?= htmlspecialchars((string)$ownerName, ENT_QUOTES, 'UTF-8') ?></h2>
                 <?php endif; ?>
                 <?php if ($ownerUsername !== ''): ?>
-                    <p class="text-muted small mb-2" dir="ltr">@<?= htmlspecialchars((string)$ownerUsername, ENT_QUOTES, 'UTF-8') ?></p>
+                    <p class="text-muted small mb-2">@<?= htmlspecialchars((string)$ownerUsername, ENT_QUOTES, 'UTF-8') ?></p>
                 <?php endif; ?>
                 <?php if (!empty($activeSocial)): ?>
                 <div class="d-flex flex-wrap justify-content-center gap-2 mt-3">

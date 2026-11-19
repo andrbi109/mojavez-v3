@@ -40,7 +40,7 @@
                     ?>
                     <tr>
                         <td><?= (int)$r['id'] ?></td>
-                        <td dir="ltr"><?= htmlspecialchars((string)$r['field_key'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td><?= htmlspecialchars((string)$r['field_key'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)$r['field_label'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><span class="badge text-bg-secondary"><?= htmlspecialchars((string)$r['field_type'], ENT_QUOTES, 'UTF-8') ?></span></td>
                         <td><?= htmlspecialchars((string)($r['service_type_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
@@ -50,7 +50,7 @@
                             <?php if ($isRequired): ?><span class="badge text-bg-warning">اجباری</span><?php endif; ?>
                             <?php if ($isSystem): ?><span class="badge text-bg-info">سیستمی</span><?php endif; ?>
                         </td>
-                        <td dir="ltr"><?= (int)$r['sort_order'] ?></td>
+                        <td><?= (int)$r['sort_order'] ?></td>
                         <td class="text-end">
                             <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/form-fields/move" class="d-inline">
                                 <?= $csrfField ?>
