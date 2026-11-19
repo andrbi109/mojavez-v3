@@ -244,6 +244,21 @@ final class Module implements ModuleInterface
             // no conflict with any existing /panel/* route.
             ['method' => 'POST', 'path' => '/panel/change-postal-code',  'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'changePostalCode'],
 
+            // ----- Phase 60 (v2.2.6) user panel: one-time edit for imported applicants -----
+            // Bulk-imported applicants (those with imported_edit_locked=0
+            // AND registration_completed_at IS NULL — only the bulk-import
+            // flow leaves registration_completed_at NOT NULL but it ALSO
+            // sets imported_edit_locked=0, so the GET handler accepts
+            // them) can edit their application exactly ONCE via this
+            // form. After the POST saves, imported_edit_locked flips to 1
+            // and the user only sees a "تکمیل شده" badge in /panel/requests.
+            // The {id} placeholder is unconstrained (matches [^/]+); it
+            // cannot collide with /panel/requests (a GET registered above)
+            // or /panel/requests/{id}/delete (a POST registered above)
+            // because the methods + the trailing /edit segment differ.
+            ['method' => 'GET',  'path' => '/panel/requests/{id}/edit', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'editRequest'],
+            ['method' => 'POST', 'path' => '/panel/requests/{id}/edit', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'updateRequest'],
+
             // ----- Phase 58 (v2.2.4) user panel: upload payment receipt -----
             // After the user selects a payment channel in the per-row
             // "پرداخت" modal (user/payments.php) and clicks "تأیید", a

@@ -12,6 +12,7 @@ use App\Modules\Core\Services\AvatarService;
 use App\Modules\Core\Services\FileStorage;
 use App\Modules\Core\Support\ProfileUpdateValidator;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
+use App\Shared\Contracts\JobAndPropertyRepositoryInterface;
 use App\Shared\Contracts\LicenseFileRepositoryInterface;
 use App\Shared\Contracts\PaymentRepositoryInterface;
 use App\Shared\Contracts\ServiceTypeRepositoryInterface;
@@ -22,7 +23,9 @@ use App\Shared\Persistence\Connection;
 use App\Shared\Support\Config;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
+use App\Shared\Support\PersianDate;
 use App\Shared\Support\StructuredLogger;
+use App\Shared\Support\Validator;
 
 /**
  * UserPanelController — the applicant storefront panel (`/panel/*`).
@@ -78,6 +81,10 @@ final class UserPanelController extends Controller
         private readonly ApplicantRepositoryInterface $applicants,
         private readonly FileStorage $files,
         private readonly Connection $conn,
+        // Phase 60 (v2.2.6) — used by editRequest() / updateRequest()
+        // to upsert job_details + property_details for the one-time edit
+        // form (mirrors AdminController::updateApplication).
+        private readonly JobAndPropertyRepositoryInterface $jobAndProperty,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -338,6 +345,360 @@ final class UserPanelController extends Controller
             'serviceTypes' => $this->serviceTypeMap(),
             'unreadCount'  => $this->notifications->unreadCount((int)$account['id']),
         ], 'user_layout');
+    }
+
+    /**
+     * GET /panel/requests/{id}/edit — render the one-time edit form for
+     * a bulk-imported applicant's case file.
+     *
+     * Phase 60 (v2.2.6) — closes the "imported applicants can't complete
+     * their own info" gap. The bulk-import flow creates an applicants
+     * row with only the CSV columns (first_name, last_name, national_code,
+     * postal_code, mobile, service_type_id) and a user_account, but the
+     * job_details + property_details rows are empty. The user logs in
+     * and uses THIS form to fill in the rest of their case file.
+     *
+     * Auth + state guards (the route is a no-op otherwise):
+     *   - The applicant's user_account_id MUST match the current user's
+     *     session user_id (no cross-account edits — same pattern as
+     *     deleteApplication).
+     *   - imported_edit_locked MUST be 0 (not yet locked — they CAN edit
+     *     once). After the first POST, the handler flips this to 1 and
+     *     subsequent GETs redirect back to /panel/requests with a flash.
+     *   - registration_completed_at MUST be NULL. The bulk-import flow
+     *     (Phase 60) deliberately leaves this NULL so the guard admits
+     *     imported applicants. Self-signup wizard users reach this NULL
+     *     state too while still in the wizard — but they should use the
+     *     wizard to complete their info, not this form. The wizard's
+     *     final step sets registration_completed_at, after which this
+     *     guard rejects them. The two populations that reach this gate
+     *     with `registration_completed_at IS NULL` are:
+     *       (a) bulk-imported applicants (always — Phase 60 import flow)
+     *       (b) wizard draft applicants (still inside the wizard)
+     *     For (b), the user is expected to resume the wizard from the
+     *     /panel/requests "ادامه ثبت‌نام" link (not present in the
+     *     current view, but the wizard route /register is open). The
+     *     edit form here is only meant for (a). We don't have a separate
+     *     "is_imported" flag — the combination `imported_edit_locked = 0
+     *     AND registration_completed_at IS NULL` is the closest proxy
+     *     and matches the Phase 60 spec literally.
+     *
+     * On any auth/state failure: flash an error and redirect to
+     * /panel/requests (no 403 page — consistent with deleteApplication).
+     *
+     * On success: render user/edit_request with the applicant + job +
+     * property details + service-type lookup + PersianDate helper for
+     * the birth_date Jalali dropdown.
+     */
+    public function editRequest(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $account = $this->currentAccount();
+        $applicantId = (int)($params['id'] ?? 0);
+
+        $applicant = $this->applicants->findById($applicantId);
+        if ($applicant === null) {
+            $this->flash('درخواست مورد نظر یافت نشد.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // Authorization: the applicant's user_account_id must match the
+        // current user's session user_id (same check as deleteApplication).
+        if ($applicant->userAccountId === null
+            || (int)$applicant->userAccountId !== (int)$account['id']
+        ) {
+            $this->flash('شما اجازهٔ ویرایش این درخواست را ندارید.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // State guard — only bulk-imported applicants (imported_edit_locked=0
+        // AND registration_completed_at IS NULL) may use this form.
+        if ($applicant->registrationCompletedAt !== null) {
+            $this->flash(
+                'این درخواست قبلاً تکمیل شده است. برای ویرایش با مدیر سامانه تماس بگیرید.',
+                'warning'
+            );
+            return $this->redirect('/panel/requests');
+        }
+        // Load the raw applicants row for the editable fields the
+        // Applicant VO doesn't expose (father_name, marital_status,
+        // children_count, physical_condition, disability_details,
+        // income_decile, has_court_case, has_active_loan,
+        // has_overdue_installments, birth_date, postal_code,
+        // imported_edit_locked).
+        $row = $this->conn->one(
+            'SELECT * FROM applicants WHERE id = ? AND deleted_at IS NULL',
+            [$applicantId]
+        ) ?? [];
+        // The DB column DEFAULT is 0 — if the migration hasn't been
+        // applied yet on this environment, the column won't exist and
+        // array_key_exists returns false. Treat that as "0 = unlocked"
+        // so the form is reachable during the deploy window.
+        $importedEditLocked = (int)($row['imported_edit_locked'] ?? 0);
+        if ($importedEditLocked === 1) {
+            $this->flash(
+                'این درخواست قبلاً یک‌بار ویرایش شده و قفل شده است. برای ویرایش‌های بعدی با مدیر سامانه تماس بگیرید.',
+                'warning'
+            );
+            return $this->redirect('/panel/requests');
+        }
+
+        $jobDetail      = $this->jobAndProperty->findJobDetailByApplicantId($applicantId);
+        $propertyDetail = $this->jobAndProperty->findPropertyDetailByApplicantId($applicantId);
+        $serviceTypes   = $this->serviceTypes->getActive();
+        $persianDate    = $this->container->make(PersianDate::class);
+
+        return $this->render('user/edit_request', [
+            'title'          => 'ویرایش و تکمیل درخواست',
+            'activeMenu'     => 'requests',
+            'account'        => $account,
+            'applicant'      => $applicant,
+            'row'            => $row,
+            'jobDetail'      => $jobDetail,
+            'propertyDetail' => $propertyDetail,
+            'serviceTypes'   => $serviceTypes,
+            'persianDate'    => $persianDate,
+            'errors'         => [],
+            'unreadCount'    => $this->notifications->unreadCount((int)$account['id']),
+        ], 'user_layout');
+    }
+
+    /**
+     * POST /panel/requests/{id}/edit — validate + persist the one-time
+     * edit for a bulk-imported applicant, then lock further edits.
+     *
+     * Phase 60 (v2.2.6) — same auth + state guards as editRequest():
+     * the applicant must belong to the current user, must NOT be locked
+     * yet (imported_edit_locked=0), and must NOT have already completed
+     * registration (registration_completed_at IS NULL). On any guard
+     * failure: flash + redirect to /panel/requests.
+     *
+     * On validation failure: re-render the edit form with the user's
+     * input + the error list (same shape as AdminController::updateApplication's
+     * error path — the view reads $row + $errors).
+     *
+     * On success:
+     *   1. UPDATE applicants with the validated identity fields.
+     *   2. Upsert job_details + property_details (only if the user
+     *      provided enough info to satisfy the NOT NULL constraints —
+     *      same pattern as the admin handler).
+     *   3. UPDATE applicants SET imported_edit_locked = 1 — locks the
+     *      one-time edit window. Future GET /panel/requests/{id}/edit
+     *      will redirect with a flash.
+     *   4. Insert a status_log row noting the user-edited the case (audit
+     *      trail — the admin's status-cycle view shows this entry).
+     *   5. Flash the Persian success message + redirect to /panel/requests.
+     *
+     * national_code and tracking_code are NOT editable (identity anchors).
+     */
+    public function updateRequest(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $account = $this->currentAccount();
+        $applicantId = (int)($params['id'] ?? 0);
+
+        $applicant = $this->applicants->findById($applicantId);
+        if ($applicant === null) {
+            $this->flash('درخواست مورد نظر یافت نشد.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // Authorization.
+        if ($applicant->userAccountId === null
+            || (int)$applicant->userAccountId !== (int)$account['id']
+        ) {
+            $this->flash('شما اجازهٔ ویرایش این درخواست را ندارید.', 'danger');
+            return $this->redirect('/panel/requests');
+        }
+        // State guards — same as editRequest().
+        if ($applicant->registrationCompletedAt !== null) {
+            $this->flash(
+                'این درخواست قبلاً تکمیل شده است. برای ویرایش با مدیر سامانه تماس بگیرید.',
+                'warning'
+            );
+            return $this->redirect('/panel/requests');
+        }
+        $row = $this->conn->one(
+            'SELECT * FROM applicants WHERE id = ? AND deleted_at IS NULL',
+            [$applicantId]
+        ) ?? [];
+        $importedEditLocked = (int)($row['imported_edit_locked'] ?? 0);
+        if ($importedEditLocked === 1) {
+            $this->flash(
+                'این درخواست قبلاً یک‌بار ویرایش شده و قفل شده است. برای ویرایش‌های بعدی با مدیر سامانه تماس بگیرید.',
+                'warning'
+            );
+            return $this->redirect('/panel/requests');
+        }
+
+        $body = $request->body();
+
+        // ---- Identity fields (mirrors AdminController::updateApplication) ----
+        $firstName  = Validator::nonEmptyString($body['first_name'] ?? '', 50);
+        $lastName   = Validator::nonEmptyString($body['last_name'] ?? '', 50);
+        $mobile     = Validator::mobile($body['mobile'] ?? '');
+        $postalCode = self::validPostalCode($body['postal_code'] ?? '');
+        $fatherName = Validator::sanitizeText($body['father_name'] ?? '', 50);
+        $serviceTypeId = Validator::positiveIntOrNull($body['service_type_id'] ?? '');
+
+        $maritalStatus          = Validator::inEnum($body['marital_status'] ?? '', ['مجرد', 'متأهل']);
+        $childrenCount          = Validator::intOrNull($body['children_count'] ?? '');
+        $physicalCondition      = Validator::inEnum($body['physical_condition'] ?? '', ['سالم', 'معلولیت']);
+        $disabilityDetails      = Validator::sanitizeText($body['disability_details'] ?? '', 255);
+        $incomeDecile           = Validator::intInRange($body['income_decile'] ?? '', 1, 10);
+        $hasCourtCase           = Validator::inEnum($body['has_court_case'] ?? '', ['بله', 'خیر']);
+        $hasActiveLoan          = Validator::inEnum($body['has_active_loan'] ?? '', ['بله', 'خیر']);
+        $hasOverdueInstallments = Validator::inEnum($body['has_overdue_installments'] ?? '', ['بله', 'خیر']);
+        $birthDateGreg          = $this->birthDateFromInputs(
+            (int)($body['birth_year'] ?? 0),
+            (int)($body['birth_month'] ?? 0),
+            (int)($body['birth_day'] ?? 0),
+        );
+
+        // ---- Job-detail fields ----
+        $licenseTitle     = Validator::sanitizeText($body['license_title'] ?? '', 100);
+        $experienceMonths = Validator::intOrNull($body['experience_months'] ?? '');
+        $trainingMethod    = Validator::inEnum($body['training_method'] ?? '', ['در خانه', 'استاد شاگردی', 'کارگاهی']);
+
+        // ---- Property-detail fields ----
+        $ownershipStatus   = Validator::inEnum($body['ownership_status'] ?? '', ['شخص', 'مستأجر', 'سرپرست']);
+        $province          = Validator::sanitizeText($body['province'] ?? '', 50);
+        $county            = Validator::sanitizeText($body['county'] ?? '', 50);
+        $city              = Validator::sanitizeText($body['city'] ?? '', 50);
+        $district          = Validator::sanitizeText($body['district'] ?? '', 50);
+        $ruralDistrict     = Validator::sanitizeText($body['rural_district'] ?? '', 50);
+        $village           = Validator::sanitizeText($body['village'] ?? '', 50);
+        $electricityBillId = Validator::sanitizeText($body['electricity_bill_id'] ?? '', 20);
+        $addressStreet     = Validator::sanitizeText($body['address_street'] ?? '', 100);
+        $addressAlley      = Validator::sanitizeText($body['address_alley'] ?? '', 100);
+        $addressPlaque     = Validator::sanitizeText($body['address_plaque'] ?? '', 20);
+
+        $errors = [];
+        if ($firstName === null) {
+            $errors[] = 'نام الزامی است.';
+        }
+        if ($lastName === null) {
+            $errors[] = 'نام خانوادگی الزامی است.';
+        }
+        if ($mobile === null) {
+            $errors[] = 'موبایل نامعتبر است.';
+        }
+        if ($postalCode === null) {
+            $errors[] = 'کد پستی باید دقیقاً ۱۰ رقم باشد.';
+        }
+        if ($serviceTypeId !== null && $this->serviceTypes->findById($serviceTypeId) === null) {
+            $errors[] = 'نوع خدمت انتخاب‌شده یافت نشد.';
+        }
+
+        if ($errors !== []) {
+            // Re-render the form with the user's input + error list.
+            // Merge the existing DB row with the submitted body so the
+            // view's $val() helper falls back to the new input on the
+            // fields the user just typed.
+            $mergedRow = array_merge($row, $body);
+            return $this->render('user/edit_request', [
+                'title'          => 'ویرایش و تکمیل درخواست',
+                'activeMenu'     => 'requests',
+                'account'        => $account,
+                'applicant'      => $applicant,
+                'row'            => $mergedRow,
+                'jobDetail'      => $this->jobAndProperty->findJobDetailByApplicantId($applicantId),
+                'propertyDetail' => $this->jobAndProperty->findPropertyDetailByApplicantId($applicantId),
+                'serviceTypes'   => $this->serviceTypes->getActive(),
+                'persianDate'    => $this->container->make(PersianDate::class),
+                'errors'         => $errors,
+                'unreadCount'    => $this->notifications->unreadCount((int)$account['id']),
+            ], 'user_layout');
+        }
+
+        // ---- Persist (identity updatable, job + property upserted) ----
+        $update = array_filter([
+            'first_name'              => $firstName,
+            'last_name'               => $lastName,
+            'mobile'                  => $mobile,
+            'postal_code'             => $postalCode,
+            'father_name'             => $fatherName !== '' ? $fatherName : null,
+            'service_type_id'         => $serviceTypeId,
+            'birth_date'              => $birthDateGreg,
+            'marital_status'          => $maritalStatus,
+            'children_count'          => $childrenCount,
+            'physical_condition'      => $physicalCondition,
+            'disability_details'      => $disabilityDetails !== '' ? $disabilityDetails : null,
+            'income_decile'           => $incomeDecile,
+            'has_court_case'          => $hasCourtCase,
+            'has_active_loan'         => $hasActiveLoan,
+            'has_overdue_installments' => $hasOverdueInstallments,
+            // Phase 60 — lock the one-time edit window. Future GET
+            // /panel/requests/{id}/edit will redirect with a flash
+            // because imported_edit_locked is now 1.
+            'imported_edit_locked'    => 1,
+        ], static fn ($v): bool => $v !== null);
+        // Force the lock flag through even if array_filter above would
+        // drop it (it wouldn't, since 1 !== null, but be explicit — this
+        // is the whole point of the POST).
+        $update['imported_edit_locked'] = 1;
+        $this->applicants->update($applicantId, $update);
+
+        // Job detail upsert only if all three required fields are filled
+        // (mirrors AdminController — the table has NOT NULL constraints
+        // on license_title, experience_months, training_method).
+        if ($licenseTitle !== '' && $experienceMonths !== null && $trainingMethod !== null) {
+            $this->jobAndProperty->upsertJobDetail($applicantId, [
+                'license_title'     => $licenseTitle,
+                'experience_months' => $experienceMonths,
+                'training_method'   => $trainingMethod,
+            ]);
+        }
+
+        // Property detail upsert if any meaningful address field is set.
+        if ($ownershipStatus !== null || $province !== '' || $city !== ''
+            || $addressStreet !== '' || $district !== '' || $ruralDistrict !== ''
+            || $village !== ''
+        ) {
+            $this->jobAndProperty->upsertPropertyDetail($applicantId, [
+                'ownership_status'   => $ownershipStatus ?? 'شخص',
+                'province'            => $province,
+                'county'              => $county,
+                'city'                => $city,
+                'district'            => $district !== '' ? $district : null,
+                'rural_district'      => $ruralDistrict !== '' ? $ruralDistrict : null,
+                'village'             => $village !== '' ? $village : null,
+                'electricity_bill_id' => $electricityBillId,
+                'address_street'      => $addressStreet !== '' ? $addressStreet : null,
+                'address_alley'       => $addressAlley !== '' ? $addressAlley : null,
+                'address_plaque'      => $addressPlaque !== '' ? $addressPlaque : null,
+            ]);
+        }
+
+        // Audit-trail entry in status_log (the admin's status-cycle view
+        // surfaces this so the operator can see when the user self-edited).
+        try {
+            $this->statusLog->create([
+                'applicant_id' => $applicantId,
+                'status_name'   => $applicant->currentStatus->value,
+                'description'   => 'ویرایش و تکمیل اطلاعات توسط کاربر — '
+                                 . 'قفل ویرایش یک‌باره فعال شد.',
+                'triggered_by'  => 'user',
+            ]);
+        } catch (\Throwable $e) {
+            // status_log is an audit nicety, never fatal — the update
+            // itself has already committed by this point.
+            $this->logger->warning('User edit: status_log insert failed', [
+                '_module'      => 'core',
+                'applicant_id' => $applicantId,
+                'error'        => $e->getMessage(),
+            ]);
+        }
+
+        $this->logger->info('User completed one-time edit of imported application', [
+            '_module'      => 'core',
+            'applicant_id' => $applicantId,
+            'account_id'   => $account['id'],
+            'tracking_code' => $applicant->trackingCode,
+        ]);
+
+        $this->flash(
+            'اطلاعات شما با موفقیت ثبت شد. برای ویرایش‌های بعدی با مدیر سامانه تماس بگیرید.',
+            'success'
+        );
+        return $this->redirect('/panel/requests');
     }
 
     /**
@@ -1021,5 +1382,48 @@ final class UserPanelController extends Controller
         // transparent PNG placeholder. We still surface the URL so the
         // browser never shows a broken-image icon.
         return $this->environment->baseUrl . 'document/avatar';
+    }
+
+    /**
+     * Convert three Jalali year/month/day inputs into a Gregorian
+     * 'YYYY-MM-DD' string for the applicants.birth_date DATE column.
+     * Returns null when any of the three inputs is missing or out of
+     * range. Mirrors AdminController::birthDateFromInputs (kept private
+     * here so the user panel doesn't reach into the admin controller's
+     * surface — they happen to share the same Jalali→Gregorian logic).
+     *
+     * Phase 60 (v2.2.6) — used by updateRequest() for the birth_date
+     * dropdown on the one-time edit form.
+     */
+    private function birthDateFromInputs(int $jy, int $jm, int $jd): ?string
+    {
+        if ($jy <= 0 || $jm < 1 || $jm > 12 || $jd < 1 || $jd > 31) {
+            return null;
+        }
+        try {
+            $persian = $this->container->make(PersianDate::class);
+            [$gy, $gm, $gd] = $persian->jalaliToGregorian($jy, $jm, $jd);
+            return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Validate an Iranian postal code: exactly 10 digits. Returns the
+     * trimmed value, or null if invalid. Mirrors
+     * AdminController::validPostalCode (same private-copy rationale as
+     * birthDateFromInputs above).
+     */
+    private static function validPostalCode(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $value = trim($value);
+        if (!preg_match('/^\d{10}$/', $value)) {
+            return null;
+        }
+        return $value;
     }
 }

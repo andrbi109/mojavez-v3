@@ -632,8 +632,29 @@ final class BulkImportController extends Controller
                 'tracking_code'           => $trackingCode,
                 'current_status'          => 'تأیید اولیه',
                 'registration_started_at'  => $now,
-                'registration_completed_at' => $now,
+                // Phase 60 (v2.2.6) — leave registration_completed_at NULL
+                // so the one-time-edit guard (GET /panel/requests/{id}/edit
+                // checks `imported_edit_locked = 0 AND registration_completed_at
+                // IS NULL`) admits bulk-imported applicants. The POST handler
+                // of that form flips imported_edit_locked to 1 (which then
+                // blocks further edits independently of registration_completed_at).
+                // The previous behaviour set registration_completed_at = $now
+                // here, which (under the new guard) would have prevented
+                // imported applicants from ever reaching the edit form —
+                // contradicting the Phase 60 goal ("edit/complete exactly
+                // once"). Other callers (the wizard, the admin manual
+                // register form) continue to set registration_completed_at
+                // when their flow finishes, so they remain unaffected.
                 'user_account_id'         => $account['id'] > 0 ? $account['id'] : null,
+                // Phase 60 (v2.2.6) — bulk-imported applicants start
+                // UNLOCKED so they can edit their application exactly
+                // ONCE via /panel/requests/{id}/edit. The POST handler
+                // flips this to 1 after the first save, which then
+                // blocks further user-side edits (admin can still edit
+                // via /admin/edit/{id}). The column has DEFAULT 0, but
+                // we set it explicitly here so the intent is obvious
+                // at the call site and survives a future DEFAULT change.
+                'imported_edit_locked'    => 0,
             ]);
             $this->logger->info('Bulk import inserted applicant', [
                 '_module'          => 'core',

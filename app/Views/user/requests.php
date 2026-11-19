@@ -104,6 +104,24 @@ $deletableStatuses = ['پیش‌نویس', 'تکمیل اطلاعات'];
                                 $isRejected = $st === 'رد درخواست';
                                 // Per-row collapse id so multiple rows don't collide.
                                 $collapseId = 'postal-collapse-' . $appId;
+
+                                // Phase 60 (v2.2.6) — one-time-edit window for
+                                // bulk-imported applicants. The bulk-import flow
+                                // sets imported_edit_locked=0 AND leaves
+                                // registration_completed_at NULL, so the user
+                                // sees an "ویرایش و تکمیل" button linking to
+                                // /panel/requests/{id}/edit. After the first save
+                                // the POST handler flips imported_edit_locked
+                                // to 1 — at that point the badge "تکمیل شده"
+                                // replaces the button. Other rows (self-signup
+                                // wizard drafts, wizard-completed, rejected,
+                                // issued etc.) show neither — the column stays
+                                // muted so non-imported users don't see a
+                                // confusing locked-button on every row.
+                                $importedEditLocked  = (int)($a['imported_edit_locked'] ?? 0);
+                                $registrationComplete = !empty($a['registration_completed_at']);
+                                $showImportedEditBtn  = ($importedEditLocked === 0) && !$registrationComplete;
+                                $showImportedDoneBadge = ($importedEditLocked === 1);
                             ?>
                             <tr>
                                 <td><code class="user-select-all"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code></td>
@@ -190,6 +208,18 @@ $deletableStatuses = ['پیش‌نویس', 'تکمیل اطلاعات'];
                                            class="btn btn-sm btn-outline-primary">
                                             <i class="bi bi-eye"></i> پیگیری
                                         </a>
+                                        <?php if ($showImportedEditBtn): ?>
+                                            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>panel/requests/<?= (int)$appId ?>/edit"
+                                               class="btn btn-sm btn-primary"
+                                               title="ویرایش و تکمیل اطلاعات (تنها یک‌بار قابل انجام است)">
+                                                <i class="bi bi-pencil-square"></i> ویرایش و تکمیل
+                                            </a>
+                                        <?php elseif ($showImportedDoneBadge): ?>
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle"
+                                                  title="این درخواست یک‌بار ویرایش و تکمیل شده است. برای ویرایش‌های بعدی با مدیر سامانه تماس بگیرید.">
+                                                <i class="bi bi-check-circle-fill"></i> تکمیل شده
+                                            </span>
+                                        <?php endif; ?>
                                         <?php if ($canDelete): ?>
                                             <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>panel/requests/<?= (int)$appId ?>/delete" class="d-inline">
                                                 <?= $csrfField ?>
