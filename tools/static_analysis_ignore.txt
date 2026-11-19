@@ -337,3 +337,16 @@ app/Views/user/edit_request.php:<?= $m ?>
 app/Views/user/edit_request.php:<?= $d ?>
 app/Views/user/edit_request.php:<?= $name ?>
 app/Views/user/edit_request.php:<?= $sid ?>
+
+# 19. Phase 62 (v2.2.8) — gateway views integer variables.
+#
+# $total, $matched, $unmatched, $ln, $licenseId in gateway views
+# are all (int) loop counters / DB row IDs. Provably safe.
+# -----------------------------------------------------------------------------
+app/Modules/NationalGateway/Services/ExportService.php:<?= $total ?>
+app/Views/admin/gateway_batch.php:<?= $matched ?>
+app/Views/admin/gateway_batch.php:<?= $unmatched ?>
+app/Views/admin/gateway_batch.php:<?= $total ?>
+app/Views/admin/gateway_batch.php:<?= $ln ?>
+app/Views/admin/gateway_saved.php:<?= $licenseId ?>
+app/Views/admin/gateway_search.php:<?= $licenseId ?>
