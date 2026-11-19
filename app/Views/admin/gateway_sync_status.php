@@ -59,9 +59,28 @@ $directionClass = match ($direction) {
     default    => 'text-bg-secondary',
 };
 
-// Phase 42 (v2.0.8) — render the last-run flash summary as a contextual alert.
+// Phase 62 (v2.2.8) — render the last-run flash summary as a contextual alert.
 // $lastRun is null on a normal page view (no flash); it is set after a
 // /admin/sync/run POST redirects back here.
+//
+// Three states are distinguished, all guarded by `?? ''` / `?? false` so
+// the view never raises an "Undefined array key" notice when the
+// orchestrator summary is missing keys (it shouldn't be, but defensive
+// defaults keep the page from breaking on partial summaries):
+//   1. reached=true, degraded=false, fetched>=0 → green "درگاه ملی در
+//      دسترس بود". When fetched=0, this is NOT an error — it just means
+//      the upstream responded with an empty result set (no licenses match
+//      the saved filters' criteria). The alert says so explicitly so the
+//      admin doesn't confuse "0 fetched" with "upstream unreachable".
+//   2. degraded=true → yellow "درگاه ملی در دسترس نبود". The cycle ran
+//      against the local cache only (circuit breaker OPEN, DNS failure,
+//      connection refused, or HTTP 5xx). The error string is shown small
+//      so the admin can diagnose (geofence / network / outage).
+//   3. else → red alert "دور همگام‌سازی اجرا شد اما درگاه ملی پاسخ نداد".
+//      Reached=false and degraded=false is the unrecoverable-error path
+//      (shouldn't happen — degraded covers all non-reached cases — but
+//      the else branch is here as a defensive catch-all so the page
+//      never renders without an alert after a sync run).
 $runAlertHtml = '';
 if (is_array($lastRun)) {
     $reached   = (bool)($lastRun['upstream_reached']  ?? false);
@@ -74,18 +93,41 @@ if (is_array($lastRun)) {
     $proc      = (int)($lastRun['licenses_processed'] ?? 0);
     $tried     = (int)($lastRun['applicants_tried']  ?? 0);
     $err       = (string)($lastRun['upstream_error'] ?? '');
+    $skipped   = (bool)($lastRun['skipped'] ?? false);
 
-    if ($lastRun['skipped'] ?? false) {
+    if ($skipped) {
         $runAlertHtml = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> '
             . 'دور همگام‌سازی اجرا نشد — sync_direction=disabled.</div>';
     } elseif ($reached && !$degraded) {
-        $runAlertHtml = '<div class="alert alert-success">'
-            . '<i class="bi bi-check-circle-fill"></i> دور همگام‌سازی با موفقیت اجرا شد. '
-            . '<strong>' . $fetched . '</strong> مجوز از درگاه ملی دریافت و ذخیره شد'
-            . ($total !== null ? ' (از مجموع ' . (int)$total . ')' : '')
-            . '؛ <strong>' . $proc . '</strong> مجوز پردازش و <strong>' . $tried . '</strong> متقاضی بررسی شدند. '
-            . 'تطبیق‌ها: <strong>' . $ac . '</strong> تأیید خودکار، <strong>' . $of . '</strong> پرچم اپراتور، <strong>' . $ar . '</strong> رد خودکار.'
-            . '</div>';
+        // Upstream was reached (HTTP 200 with a valid response). The
+        // fetched count may legitimately be 0 when no licenses match
+        // the saved filters' criteria — that is NOT an error.
+        if ($fetched > 0) {
+            $runAlertHtml = '<div class="alert alert-success">'
+                . '<i class="bi bi-check-circle-fill"></i> درگاه ملی در دسترس بود. '
+                . '<strong>' . $fetched . '</strong> مجوز از درگاه ملی دریافت و ذخیره شد'
+                . ($total !== null ? ' (از مجموع ' . (int)$total . ')' : '')
+                . '؛ <strong>' . $proc . '</strong> مجوز پردازش و <strong>' . $tried . '</strong> متقاضی بررسی شدند. '
+                . 'تطبیق‌ها: <strong>' . $ac . '</strong> تأیید خودکار، <strong>' . $of . '</strong> پرچم اپراتور، <strong>' . $ar . '</strong> رد خودکار.'
+                . '</div>';
+        } else {
+            // Upstream reached but 0 licenses — the saved filters'
+            // criteria don't match any current upstream license. This
+            // is expected when, for example, the admin's filter has a
+            // narrow date range that excludes everything currently on
+            // the gateway. NOT an error.
+            $runAlertHtml = '<div class="alert alert-success">'
+                . '<i class="bi bi-check-circle-fill"></i> درگاه ملی در دسترس بود؛ '
+                . 'اما هیچ مجوزی با معیارهای فیلترهای ذخیره‌شده مطابقت نداشت '
+                . '(<strong>۰</strong> مجوز دریافت شد). '
+                . 'این یک خطا نیست — فقط نشان می‌دهد معیارهای فیلتر فعلی با هیچ مجوزی روی درگاه همخوانی ندارد. '
+                . 'می‌توانید فیلترها را در صفحهٔ «فیلترهای ذخیره‌شده» گسترش‌تر کنید یا منتظر صدور مجوزهای جدید بمانید. '
+                . '<span class="d-block small text-muted mt-1">'
+                . $proc . ' مجوز پردازش و ' . $tried . ' متقاضی بررسی شدند. '
+                . 'تطبیق‌ها: ' . $ac . ' تأیید خودکار، ' . $of . ' پرچم اپراتور، ' . $ar . ' رد خودکار.'
+                . '</span>'
+                . '</div>';
+        }
     } elseif ($degraded) {
         $msg = '<div class="alert alert-warning">'
             . '<i class="bi bi-exclamation-triangle-fill"></i> درگاه ملی در دسترس نبود؛ '
@@ -94,6 +136,22 @@ if (is_array($lastRun)) {
             . 'تطبیق‌ها: ' . $ac . ' تأیید خودکار، ' . $of . ' پرچم اپراتور، ' . $ar . ' رد خودکار.';
         if ($err !== '') {
             $msg .= '<br><span class="small text-muted">خطا: ' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</span>';
+        }
+        // Add a geofence hint when the error string looks like a
+        // transport failure (DNS / connection refused / timeout) —
+        // this is the most common cause outside Iran.
+        $errLower = mb_strtolower($err);
+        $looksGeofenced = $errLower !== ''
+            && (str_contains($errLower, 'resolve')
+                || str_contains($errLower, 'timed out')
+                || str_contains($errLower, 'connection refused')
+                || str_contains($errLower, 'could not connect'));
+        if ($looksGeofenced) {
+            $msg .= '<br><span class="small text-muted">'
+                . '<i class="bi bi-info-circle"></i> '
+                . 'این خطا معمولاً وقتی رخ می‌دهد که درگاه ملی از موقعیت جغرافیایی شما قابل دسترسی نیست '
+                . '(geofence روی qr.mojavez.ir فعال است). اگر از بیرون ایران اجرا می‌کنید، این رفتار طبیعی است.'
+                . '</span>';
         }
         $msg .= '</div>';
         $runAlertHtml = $msg;

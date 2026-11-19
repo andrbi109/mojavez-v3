@@ -10,6 +10,12 @@
  * active / expired / unknown) and a CSV export button (links to
  * the existing /api/v1/licenses/export endpoint).
  *
+ * Phase 62 (v2.2.8) — adds an all/saved/unsaved dropdown that
+ * selects by the is_saved flag, alongside the existing status
+ * dropdown. Each row also gets a save/unsave toggle button (the
+ * same one used on the search page) so the admin can mark or
+ * unmark licenses from this page directly without leaving it.
+ *
  * Phase 59a — license modal: every date field is now formatted as
  * Jalali via PersianDate::format() (responded_at in the table
  * column, plus responded_at + expires_at in the modal). The
@@ -17,6 +23,7 @@
  * matching the search modal.
  *
  * @var string $statusFilter
+ * @var string $savedFilter   Phase 62 — '' / '1' / '0'
  * @var array<int,array<string,mixed>> $rows
  * @var int $total
  * @var int $page
@@ -36,6 +43,8 @@ $jDate = static function (?string $greg): string {
     }
     return PersianDate::format($greg);
 };
+
+$savedFilter = $savedFilter ?? '';
 ?>
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <h2 class="h5 mb-0"><i class="bi bi-database"></i> مجوزهای کش‌شده از درگاه ملی</h2>
@@ -50,7 +59,7 @@ $jDate = static function (?string $greg): string {
     </div>
 </div>
 
-<!-- Status filter -->
+<!-- Status + saved filter -->
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/saved" class="row g-2 align-items-end">
@@ -64,6 +73,14 @@ $jDate = static function (?string $greg): string {
                 </select>
             </div>
             <div class="col-md-3">
+                <label class="form-label small">ذخیره‌شده</label>
+                <select class="form-select form-select-sm" name="saved">
+                    <option value="" <?= $savedFilter === '' ? 'selected' : '' ?>>— همه —</option>
+                    <option value="1" <?= $savedFilter === '1' ? 'selected' : '' ?>>فقط ذخیره‌شده</option>
+                    <option value="0" <?= $savedFilter === '0' ? 'selected' : '' ?>>فقط ذخیره‌نشده</option>
+                </select>
+            </div>
+            <div class="col-md-3">
                 <button type="submit" class="btn btn-primary btn-sm">
                     <i class="bi bi-funnel"></i> اعمال فیلتر
                 </button>
@@ -71,7 +88,7 @@ $jDate = static function (?string $greg): string {
                     <i class="bi bi-eraser"></i> پاک‌سازی
                 </a>
             </div>
-            <div class="col-md-6 text-end small text-muted align-self-center">
+            <div class="col-md-3 text-end small text-muted align-self-center">
                 صفحهٔ <?= htmlspecialchars((string)$page, ENT_QUOTES, 'UTF-8') ?> از <?= htmlspecialchars((string)$totalPages, ENT_QUOTES, 'UTF-8') ?> · <?= htmlspecialchars((string)$total, ENT_QUOTES, 'UTF-8') ?> رکورد
             </div>
         </form>
@@ -95,6 +112,7 @@ $jDate = static function (?string $greg): string {
                         <th>استان</th>
                         <th>تاریخ پاسخ</th>
                         <th>وضعیت</th>
+                        <th>ذخیره</th>
                         <th class="text-end">عملیات</th>
                     </tr>
                 </thead>
@@ -109,6 +127,8 @@ $jDate = static function (?string $greg): string {
                         };
                         $stLabel = htmlspecialchars((string)($r['status_title'] ?? $st), ENT_QUOTES, 'UTF-8');
                         $conf = (int)($r['match_confidence'] ?? 0);
+                        $isSaved = (int)($r['is_saved'] ?? 0) === 1;
+                        $licenseId = (int)($r['id'] ?? 0);
                     ?>
                     <tr>
                         <td class="small"><?= htmlspecialchars((string)$r['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
@@ -118,6 +138,25 @@ $jDate = static function (?string $greg): string {
                         <td class="small"><?= htmlspecialchars((string)($r['province_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small text-muted"><?= htmlspecialchars($jDate((string)($r['responded_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
                         <td><span class="badge <?= $stBadge ?>"><?= $stLabel !== '' ? $stLabel : '—' ?></span></td>
+                        <td>
+                            <?php if ($isSaved): ?>
+                                <button type="button"
+                                    class="btn btn-sm btn-success btn-toggle-save"
+                                    data-id="<?= $licenseId ?>"
+                                    data-saved="1"
+                                    title="حذف از ذخیره‌شده‌ها">
+                                    <i class="bi bi-bookmark-star-fill"></i>
+                                </button>
+                            <?php else: ?>
+                                <button type="button"
+                                    class="btn btn-sm btn-outline-secondary btn-toggle-save"
+                                    data-id="<?= $licenseId ?>"
+                                    data-saved="0"
+                                    title="افزودن به ذخیره‌شده‌ها">
+                                    <i class="bi bi-bookmark"></i>
+                                </button>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-end">
                             <button type="button"
                                 class="btn btn-sm btn-outline-info btn-view-license"
@@ -143,7 +182,7 @@ $jDate = static function (?string $greg): string {
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="8" class="text-center text-muted py-4">هیچ مجوزی در کش محلی وجود ندارد. برای پر کردن کش، یک دور همگام‌سازی اجرا کنید (صفحهٔ «وضعیت همگام‌سازی»).</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted py-4">هیچ مجوزی در کش محلی وجود ندارد. برای پر کردن کش، یک دور همگام‌سازی اجرا کنید (صفحهٔ «وضعیت همگام‌سازی»).</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -154,7 +193,10 @@ $jDate = static function (?string $greg): string {
         <nav>
             <ul class="pagination pagination-sm justify-content-center mb-0">
                 <?php
-                    $qStr = $statusFilter !== '' ? ('status=' . urlencode($statusFilter) . '&') : '';
+                    $parts = [];
+                    if ($statusFilter !== '') { $parts[] = 'status=' . urlencode($statusFilter); }
+                    if ($savedFilter !== '')  { $parts[] = 'saved='  . urlencode($savedFilter); }
+                    $qStr = $parts !== [] ? (implode('&', $parts) . '&') : '';
                     $link = static function (int $p) use ($qStr, $baseUrl): string {
                         return htmlspecialchars($baseUrl, ENT_QUOTES) . 'admin/gateway/saved?' . $qStr . 'page=' . $p;
                     };
@@ -233,6 +275,48 @@ $jDate = static function (?string $greg): string {
             var conf = btn.getAttribute('data-conf');
             set('glm-conf',      conf && conf !== '0' ? (conf + '٪') : '—');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('gatewayLicenseModal')).show();
+        });
+    });
+
+    // Phase 62 — save / unsave toggle per row (same as search page).
+    var CSRF = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
+    var API_BASE = '<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/licenses';
+    document.querySelectorAll('.btn-toggle-save').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var saved = btn.getAttribute('data-saved') === '1';
+            if (!id || id === '0') return;
+            btn.disabled = true;
+            var url = API_BASE + '/' + encodeURIComponent(id) + '/save';
+            var method = saved ? 'DELETE' : 'POST';
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': CSRF,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            }).then(function (r) { return r.json(); })
+              .then(function () {
+                  if (saved) {
+                      btn.classList.remove('btn-success');
+                      btn.classList.add('btn-outline-secondary');
+                      btn.querySelector('i').classList.remove('bi-bookmark-star-fill');
+                      btn.querySelector('i').classList.add('bi-bookmark');
+                      btn.setAttribute('data-saved', '0');
+                      btn.setAttribute('title', 'افزودن به ذخیره‌شده‌ها');
+                  } else {
+                      btn.classList.remove('btn-outline-secondary');
+                      btn.classList.add('btn-success');
+                      btn.querySelector('i').classList.remove('bi-bookmark');
+                      btn.querySelector('i').classList.add('bi-bookmark-star-fill');
+                      btn.setAttribute('data-saved', '1');
+                      btn.setAttribute('title', 'حذف از ذخیره‌شده‌ها');
+                  }
+              })
+              .catch(function (e) { alert('خطا در ذخیره‌سازی: ' + e.message); })
+              .finally(function () { btn.disabled = false; });
         });
     });
 })();

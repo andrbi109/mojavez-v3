@@ -157,6 +157,8 @@
                 <div class="col-md-3"><label class="form-label small">نام متقاضی</label><input class="form-control form-control-sm" data-f="name"></div>
                 <div class="col-md-3"><label class="form-label small">استان</label><input class="form-control form-control-sm" data-f="province_title"></div>
                 <div class="col-md-3"><label class="form-label small">سازمان</label><input class="form-control form-control-sm" data-f="organization_title"></div>
+                <div class="col-md-3"><label class="form-label small">تاریخ صدور (از)</label><input class="form-control form-control-sm" data-f="issue_date_start" placeholder="1405/08/21"></div>
+                <div class="col-md-3"><label class="form-label small">تاریخ صدور (تا)</label><input class="form-control form-control-sm" data-f="issue_date_end" placeholder="1405/08/29"></div>
                 <div class="col-md-3"><label class="form-label small">وضعیت</label>
                     <select class="form-select form-select-sm" data-f="status">
                         <option value="">— همه —</option>
@@ -166,6 +168,10 @@
                     </select>
                 </div>
                 <div class="col-md-3"><label class="form-label small">کد ملی</label><input class="form-control form-control-sm" data-f="national_code"></div>
+            </div>
+            <div class="small text-muted mt-2">
+                <i class="bi bi-info-circle"></i>
+                معیارها به‌صورت JSON در <code>filter_data</code> ذخیره می‌شوند و توسط دور همگام‌سازی برای جستجوی زنده در درگاه بالادستی به کار می‌روند.
             </div>
         </div>
         <div class="modal-footer">
@@ -244,7 +250,9 @@
     document.querySelectorAll('.btn-run-filter').forEach(function (b) {
         b.addEventListener('click', function () {
             var id = b.getAttribute('data-id');
-            if (!confirm('این فیلتر به‌صورت زنده در درگاه بالادستی اجرا شود؟ پس از اتمام کار، نتایج در صفحهٔ «جستجوی پیشرفته» نمایش داده می‌شوند.')) {
+            if (!confirm('این فیلتر به‌صورت زنده در درگاه بالادستی اجرا شود؟\n\n'
+                + 'یک کار جستجو در صف قرار می‌گیرد و پس از اجرای کارگر، نتایج در صفحهٔ «جستجوی پیشرفته» نمایش داده می‌شوند.\n\n'
+                + 'برای فعال‌سازی کارگر، به صفحهٔ «وضعیت همگام‌سازی» بروید (هر بار باز کردن آن صفحه یک کار از صف را اجرا می‌کند).')) {
                 return;
             }
             fetch('<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/admin/crawl', {
@@ -255,9 +263,11 @@
             }).then(function (r) { return r.json(); })
               .then(function (d) {
                   var jobId = d && d.data ? d.data.job_id : '?';
-                  alert('فیلتر در صف قرار گرفت (کار #' + jobId + ').\n'
-                      + 'پس از اجرای کارگر، برای مشاهدهٔ نتایج به صفحهٔ «جستجوی پیشرفته» مراجعه کنید:\n'
-                      + '<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/search');
+                  alert('فیلتر در صف قرار گرفت (کار #' + jobId + ').\n\n'
+                      + 'پس از اجرای کارگر، نتایج در صفحهٔ «جستجوی پیشرفته» نمایش داده می‌شوند:\n'
+                      + '<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/search\n\n'
+                      + 'برای اجرای کارگر، به صفحهٔ «وضعیت همگام‌سازی» بروید:\n'
+                      + '<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status');
               })
               .catch(function (e) { alert('خطا: ' + e.message); });
         });
