@@ -356,18 +356,19 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
         }
         .doc-list li .doc-name { direction: ltr; flex: 1; word-break: break-all; }
         .doc-list li .doc-date { color: var(--muted); font-size: .72rem; direction: ltr; }
-        /* === Document thumbnails grid (Phase 51, v2.1.7) ===
-           Five-up row of 130x150px image thumbnails (or filename-only
-           boxes for PDFs/other types). Uses flex+wrap so print output
-           naturally falls into rows of five on A4. */
+        /* === Document thumbnails grid (Phase 51, v2.1.7; Phase 57a) ===
+           Four-up row of thumbnail images (or filename-only boxes for
+           PDFs/other types). Phase 57a changes from 5-up to 4-up so
+           each thumb + its title fits cleanly on a single A4 row. The
+           `.doc-thumb-img` class replaces the inline style on <img>
+           so all thumbnail images share a single CSS rule. */
         .doc-thumbs {
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
             gap: 0.5rem;
             margin-top: 6px;
         }
         .doc-thumb {
-            width: 140px;
             border: 1px solid var(--card-border);
             border-radius: 6px;
             padding: 4px;
@@ -375,9 +376,13 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
             page-break-inside: avoid;
             break-inside: avoid;
         }
-        .doc-thumb img {
+        .doc-thumb img,
+        .doc-thumb-img {
             display: block;
-            margin: 0 auto;
+            width: 130px;
+            height: 150px;
+            object-fit: cover;
+            margin: 0.5rem auto;
             border-radius: 3px;
         }
         .doc-thumb-fallback {
@@ -535,6 +540,15 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
             .info-table td, .status-table tbody td { padding: 4px 7px; }
             h2 { margin: 16px 0 8px; }
             .sign-area { page-break-inside: avoid; }
+            /* Phase 57a — keep the document thumbnails section on a
+               single page: never break inside a thumb card, never
+               break inside the thumbs grid, and never break between
+               the section heading and the grid. The grid is 4-up so
+               on A4 portrait one row of 4 thumbs + their titles fits
+               inside the 14mm/12mm page margins. */
+            .doc-thumbs,
+            .doc-thumb { page-break-inside: avoid; break-inside: avoid; }
+            h2 + .doc-thumbs { page-break-before: avoid; break-before: avoid; }
             @page { size: A4 portrait; margin: 14mm 12mm; }
         }
         @media (max-width: 575.98px) {
@@ -774,12 +788,14 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
                 </small>
             </h2>
             <?php if (!empty($documents)): ?>
-                <!-- Phase 51 (v2.1.7): thumbnails as 130x150px images, 5 per row,
-                     via flex+wrap. PDFs and other non-image files show only the
-                     filename (no thumbnail) inside a same-sized placeholder box
-                     so the 5-up grid stays aligned. Each thumb carries the
-                     doc-type label, original filename and upload date below
-                     the image so the print output stays self-documenting. -->
+                <!-- Phase 51 (v2.1.7); Phase 57a: thumbnails 4 per row
+                     (.doc-thumb-img class replaces the inline style so
+                     all thumb images share one CSS rule). PDFs and other
+                     non-image files show only the filename inside a
+                     same-sized placeholder box so the 4-up grid stays
+                     aligned. Each thumb carries the doc-type label,
+                     original filename and upload date below the image
+                     so the print output stays self-documenting. -->
                 <div class="doc-thumbs">
                     <?php foreach ($documents as $doc): ?>
                         <?php \assert($doc instanceof Document); ?>
@@ -788,7 +804,7 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
                         <div class="doc-thumb">
                             <?php if ($doc->isImage()): ?>
                                 <img src="<?= $e($thumbUrl) ?>"
-                                     style="width:130px;height:150px;object-fit:cover;margin:0.5rem;"
+                                     class="doc-thumb-img"
                                      alt="<?= $e($label) ?>">
                             <?php elseif ($doc->isPdf()): ?>
                                 <div class="doc-thumb-fallback">

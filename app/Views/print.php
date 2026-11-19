@@ -205,18 +205,21 @@ $ownerName ??= '';
             .print-header { border-radius: 0; }
             .print-body { padding: 14px 0; }
             .info-table td, .status-table tbody td { padding: 4px 7px; }
-            /* Phase 53 (v2.1.9) — fix the footer to the bottom of the
-               printed page (each printed page gets a footer line).
-               position:fixed in @media print is the standard CSS
-               pattern for repeating headers/footers on every printed
-               page. left/right:0 spans the page width; bottom:0
-               anchors it to the bottom margin. */
+            /* Phase 57a — let the footer flow naturally at the end of
+               the printed content. The previous position:fixed;bottom:0
+               rule repeated the footer on EVERY printed page (CSS
+               position:fixed inside @media print is the standard
+               pattern for repeating headers/footers per page, but
+               here we only want ONE footer at the end of the document,
+               not one per page). The .print-footer's natural-flow
+               margin-top:auto on the flex column container already
+               pushes it to the bottom of the last page when the
+               content is shorter than one A4 sheet. When the content
+               spans multiple pages, the footer simply sits at the
+               end of the content as a normal block. */
             .print-footer {
-                position: fixed;
-                bottom: 0;
-                left: 0;
-                right: 0;
-                margin-top: 0;
+                position: static;
+                margin-top: auto;
             }
             @page { size: A4 portrait; margin: 14mm 12mm; }
         }

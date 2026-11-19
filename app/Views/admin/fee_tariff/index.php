@@ -293,7 +293,7 @@ foreach ($groups as $g) {
     <div class="card-body">
         <form method="post"
               action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/fee-tariff/services/add"
-              class="row g-2 align-items-end">
+              class="row g-2">
             <?= $csrfField ?>
             <div class="col-md-3">
                 <label class="form-label small mb-0">item_key <span class="text-danger">*</span></label>
@@ -373,8 +373,8 @@ foreach ($groups as $g) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($gItems as $it):
-                        $itId  = (int)$it['id'];
+                    <?php $itemSeq = 0; foreach ($gItems as $it):
+                        $itemSeq++;
                         $itKey = (string)$it['item_key'];
                         $itLbl = (string)$it['item_label'];
                         $itAmt = (int)$it['amount'];
@@ -382,11 +382,11 @@ foreach ($groups as $g) {
                         $itNts = (string)($it['notes'] ?? '');
                     ?>
                     <tr>
-                        <td><?= $itId ?></td>
-                        <td dir="ltr"><code><?= htmlspecialchars($itKey, ENT_QUOTES, 'UTF-8') ?></code></td>
+                        <td><?= $itemSeq ?></td>
+                        <td><code><?= htmlspecialchars($itKey, ENT_QUOTES, 'UTF-8') ?></code></td>
                         <td><?= htmlspecialchars($itLbl, ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr"><?= htmlspecialchars(number_format($itAmt), ENT_QUOTES, 'UTF-8') ?> <span class="text-muted small">تومان</span></td>
-                        <td dir="ltr"><?= $itSrt ?></td>
+                        <td><?= htmlspecialchars(number_format($itAmt), ENT_QUOTES, 'UTF-8') ?> <span class="text-muted small">تومان</span></td>
+                        <td><?= $itSrt ?></td>
                         <td class="small text-muted"><?= $itNts !== '' ? htmlspecialchars($itNts, ENT_QUOTES, 'UTF-8') : '—' ?></td>
                     </tr>
                     <?php endforeach; ?>

@@ -164,11 +164,11 @@ $renderTabPaneFields = static function (array $keys) use ($renderField): void {
         <?php else: ?>
             <div class="mb-3 text-muted small"><i class="bi bi-info-circle"></i> هنوز تصویری آپلود نشده.</div>
         <?php endif; ?>
-        <form id="upload-image-form" method="post"
+        <form id="upload-image-form" class="js-settings-upload-form" method="post"
               action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/settings/upload-image"
               enctype="multipart/form-data">
             <?= $csrfField ?>
-            <div class="row g-2 align-items-end">
+            <div class="row g-2">
                 <div class="col-12 col-sm-5">
                     <label class="form-label small">کلید تنظیم</label>
                     <input type="text" class="form-control form-control-sm" name="setting_key"
@@ -185,35 +185,45 @@ $renderTabPaneFields = static function (array $keys) use ($renderField): void {
                     <button type="submit" class="btn btn-sm btn-primary">
                         <i class="bi bi-cloud-upload"></i> آپلود تصویر
                     </button>
-                    <span id="upload-image-result" class="small text-muted ms-2"></span>
+                    <span class="js-upload-image-result small text-muted ms-2"></span>
                 </div>
             </div>
         </form>
         <script>
         (function () {
-            var form = document.getElementById('upload-image-form');
-            if (!form) return;
-            form.addEventListener('submit', function (e) {
-                e.preventDefault();
-                var out = document.getElementById('upload-image-result');
-                out.textContent = 'در حال آپلود...';
-                var fd = new FormData(form);
-                fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
-                    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
-                    .then(function (res) {
-                        if (res.ok && res.json && res.json.success) {
-                            out.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> آپلود شد. مسیر: <code>' +
-                                (res.json.data && res.json.data.path ? res.json.data.path : '') + '</code></span>';
-                            // Reload the page after 1.2s so the new image shows in the preview.
-                            setTimeout(function () { window.location.reload(); }, 1200);
-                        } else {
-                            var err = (res.json && res.json.error) ? res.json.error : 'خطای نامشخص';
-                            out.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> خطا: ' + err + '</span>';
-                        }
-                    })
-                    .catch(function () {
-                        out.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> خطای شبکه.</span>';
-                    });
+            // Phase 57a — class-based AJAX uploader. Any form with class
+            // `js-settings-upload-form` posts via fetch and writes the
+            // result into the closest `.js-upload-image-result` span.
+            // This lets the page host multiple upload forms (the generic
+            // site_logo form at the top + a dedicated owner_image form
+            // inside the "درباره و مدیر" tab) sharing one handler.
+            var forms = document.querySelectorAll('form.js-settings-upload-form');
+            if (forms.length === 0) return;
+            forms.forEach(function (form) {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var out = form.querySelector('.js-upload-image-result');
+                    if (!out) out = document.getElementById('upload-image-result');
+                    if (out) out.textContent = 'در حال آپلود...';
+                    var fd = new FormData(form);
+                    fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
+                        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+                        .then(function (res) {
+                            if (res.ok && res.json && res.json.success) {
+                                var msg = '<span class="text-success"><i class="bi bi-check-circle"></i> آپلود شد. مسیر: <code>' +
+                                    (res.json.data && res.json.data.path ? res.json.data.path : '') + '</code></span>';
+                                if (out) out.innerHTML = msg;
+                                // Reload the page after 1.2s so the new image shows in the preview.
+                                setTimeout(function () { window.location.reload(); }, 1200);
+                            } else {
+                                var err = (res.json && res.json.error) ? res.json.error : 'خطای نامشخص';
+                                if (out) out.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> خطا: ' + err + '</span>';
+                            }
+                        })
+                        .catch(function () {
+                            if (out) out.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> خطای شبکه.</span>';
+                        });
+                });
             });
         })();
         </script>
@@ -295,6 +305,61 @@ if (isset($_SERVER['REQUEST_URI'])) {
                         'about_title', 'about_content',
                         'owner_name', 'owner_username', 'owner_image',
                     ]); ?>
+
+                    <!-- Phase 57a — dedicated owner_image upload form. The
+                         general upload form above is shared across all
+                         image settings, but the admin landing on the
+                         "درباره و مدیر" tab without an existing
+                         owner_image sees only the "هنوز تصویری آپلود
+                         نشده" hint and has no inline upload button — they
+                         would have to scroll back to the top, switch
+                         the setting_key to `owner_image`, and submit.
+                         This dedicated form posts directly with
+                         setting_key=owner_image so the upload is a
+                         single click from the tab the admin is already
+                         on. Shares the class-based `.js-settings-upload-form`
+                         AJAX handler defined above. -->
+                    <div class="mt-3 border-top pt-3">
+                        <h3 class="h6 mb-2"><i class="bi bi-person-badge"></i> آپلود تصویر مدیر</h3>
+                        <p class="text-muted small mb-2">
+                            تصویر مدیر در نوار کناری پنل مدیریت و در صفحهٔ «دربارهٔ ما» نمایش داده می‌شود.
+                            فقط JPEG/PNG/WEBP حداکثر ۲ مگابایت.
+                        </p>
+                        <?php $ownerImagePath = (string)($settings['owner_image'] ?? ''); ?>
+                        <?php if ($ownerImagePath !== '' && is_file(ROOT_PATH . '/' . $ownerImagePath)): ?>
+                            <div class="mb-3 d-flex align-items-center gap-3">
+                                <img src="<?= htmlspecialchars($baseUrl . $ownerImagePath, ENT_QUOTES) ?>"
+                                     alt="تصویر فعلی مدیر"
+                                     class="img-thumbnail rounded-circle"
+                                     style="max-height: 80px; max-width: 80px; object-fit: cover;">
+                                <div class="small text-muted">
+                                    تصویر فعلی:<br>
+                                    <code dir="ltr"><?= htmlspecialchars($ownerImagePath, ENT_QUOTES, 'UTF-8') ?></code>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                        <form class="js-settings-upload-form" method="post"
+                              action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/settings/upload-image"
+                              enctype="multipart/form-data">
+                            <?= $csrfField ?>
+                            <input type="hidden" name="setting_key" value="owner_image">
+                            <div class="row g-2">
+                                <div class="col-12 col-sm-8">
+                                    <label class="form-label small">فایل تصویر مدیر</label>
+                                    <input type="file" class="form-control form-control-sm" name="image"
+                                           accept="image/jpeg,image/png,image/webp" required>
+                                </div>
+                                <div class="col-12 col-sm-4 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-cloud-upload"></i> آپلود تصویر مدیر
+                                    </button>
+                                </div>
+                                <div class="col-12">
+                                    <span class="js-upload-image-result small text-muted ms-2"></span>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

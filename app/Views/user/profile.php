@@ -8,7 +8,7 @@
  *
  * توجه: فقط `username` و `mobile` ذخیره می‌شوند. فیلدهای `email` و
  * `display_name` معتبر می‌شوند ولی به‌دلیل نبود ستون در `user_accounts`
- * ذخیره نمی‌شوند (D-12-1).
+ * ذخیره نمی‌شوند.
  */
 /** @var array $account */
 /** @var int $unreadCount */
@@ -112,32 +112,22 @@ $csrfToken  = $this->csrf->token();
                     <div class="mb-3">
                         <label for="email" class="form-label">
                             ایمیل
-                            <span class="text-muted small">(به‌زودی)</span>
                         </label>
                         <input type="email" class="form-control" id="email" name="email"
                                value=""
                                maxlength="254"
                                placeholder="example@domain.com"
                                dir="ltr" style="text-align:right;">
-                        <div class="form-text text-muted">
-                            این فیلد در نسخهٔ ۱.۳ ذخیره نمی‌شود (D-12-1) ولی برای
-                            نسخه‌های آینده اعتبارسنجی می‌شود.
-                        </div>
                     </div>
 
                     <div class="mb-3">
                         <label for="display_name" class="form-label">
                             نام نمایشی
-                            <span class="text-muted small">(به‌زودی)</span>
                         </label>
                         <input type="text" class="form-control" id="display_name" name="display_name"
                                value=""
                                maxlength="100"
                                placeholder="نام کامل شما">
-                        <div class="form-text text-muted">
-                            این فیلد در نسخهٔ ۱.۳ ذخیره نمی‌شود (D-12-1) ولی برای
-                            نسخه‌های آینده اعتبارسنجی می‌شود.
-                        </div>
                     </div>
 
                     <button type="submit" class="btn btn-primary" id="profile-submit">
