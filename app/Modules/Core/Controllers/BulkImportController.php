@@ -12,6 +12,7 @@ use App\Modules\Core\Services\FileStorage;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\DocumentRepositoryInterface;
 use App\Shared\Contracts\ServiceTypeRepositoryInterface;
+use App\Shared\Contracts\UserAccountRepositoryInterface;
 use App\Shared\Persistence\Connection;
 use App\Shared\Support\CsvReader;
 use App\Shared\Support\Environment;
@@ -81,6 +82,7 @@ final class BulkImportController extends Controller
         private readonly ServiceTypeRepositoryInterface $serviceTypes,
         private readonly DocumentRepositoryInterface $documents,
         private readonly FileStorage $storage,
+        private readonly UserAccountRepositoryInterface $userAccounts,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -545,8 +547,18 @@ final class BulkImportController extends Controller
      * Insert one normalized row as a new `applicants` row. Returns the
      * per-row outcome for the result page.
      *
+     * Phase 59b — after creating the applicant row, also resolve-or-create
+     * a `user_accounts` row for the applicant (username = mobile,
+     * password = bcrypt(national_code), is_active = 1) so the imported
+     * applicant can log in to the user panel and complete their
+     * application. If an account with this mobile already exists, just
+     * link it (no duplicate). The returned outcome now carries
+     * `account_status` ('created'|'linked'|'failed'|'skipped'),
+     * `username`, `user_account_id`, and `account_message` so the result
+     * page can show the user_account outcome per row.
+     *
      * @param array<string,mixed> $row
-     * @return array{idx:int, name:string, national_code:string, mobile:string, tracking_code:string, status:string, message:string}
+     * @return array{idx:int, name:string, national_code:string, mobile:string, tracking_code:string, status:string, message:string, account_status:string, username:string, user_account_id:int, account_message:string}
      */
     private function executeRow(array $row, int $adminId): array
     {
@@ -560,6 +572,8 @@ final class BulkImportController extends Controller
                 'idx' => $idx, 'name' => $name, 'national_code' => $nc, 'mobile' => $mobile,
                 'tracking_code' => '', 'status' => 'skipped',
                 'message' => 'نامعتبر — skip شد (' . implode('، ', $row['errors'] ?? []) . ')',
+                'account_status' => 'skipped', 'username' => '', 'user_account_id' => 0,
+                'account_message' => '',
             ];
         }
 
@@ -573,6 +587,8 @@ final class BulkImportController extends Controller
                 'idx' => $idx, 'name' => $name, 'national_code' => $nc, 'mobile' => $mobile,
                 'tracking_code' => '', 'status' => 'skipped',
                 'message' => 'کد ملی موجود در دیتابیس — skip شد',
+                'account_status' => 'skipped', 'username' => '', 'user_account_id' => 0,
+                'account_message' => '',
             ];
         }
 
@@ -594,8 +610,15 @@ final class BulkImportController extends Controller
                 'idx' => $idx, 'name' => $name, 'national_code' => $nc, 'mobile' => $mobile,
                 'tracking_code' => '', 'status' => 'failed',
                 'message' => 'تولید کد رهگیری ناموفق بود',
+                'account_status' => 'skipped', 'username' => '', 'user_account_id' => 0,
+                'account_message' => '',
             ];
         }
+
+        // Phase 59b — resolve-or-create a user_account BEFORE inserting
+        // the applicant so we can pass user_account_id into applicants->create()
+        // in one shot (no second UPDATE / linkApplication call needed).
+        $account = $this->resolveOrCreateUserAccount($mobile, $nc);
 
         try {
             $now = date('Y-m-d H:i:s');
@@ -610,23 +633,116 @@ final class BulkImportController extends Controller
                 'current_status'          => 'تأیید اولیه',
                 'registration_started_at'  => $now,
                 'registration_completed_at' => $now,
+                'user_account_id'         => $account['id'] > 0 ? $account['id'] : null,
             ]);
             $this->logger->info('Bulk import inserted applicant', [
-                '_module'       => 'core',
-                'applicant_id'  => $applicantId,
-                'tracking_code' => $trackingCode,
-                'admin_id'      => $adminId,
+                '_module'          => 'core',
+                'applicant_id'     => $applicantId,
+                'tracking_code'    => $trackingCode,
+                'admin_id'         => $adminId,
+                'user_account_id'  => $account['id'],
+                'account_status'   => $account['status'],
             ]);
             return [
                 'idx' => $idx, 'name' => $name, 'national_code' => $nc, 'mobile' => $mobile,
                 'tracking_code' => $trackingCode, 'status' => 'inserted',
                 'message' => 'درج شد — کد رهگیری ' . $trackingCode,
+                'account_status'  => $account['status'],
+                'username'        => $account['username'],
+                'user_account_id' => $account['id'],
+                'account_message' => $account['message'],
             ];
         } catch (\Throwable $e) {
             return [
                 'idx' => $idx, 'name' => $name, 'national_code' => $nc, 'mobile' => $mobile,
                 'tracking_code' => '', 'status' => 'failed',
                 'message' => 'خطا در درج: ' . $e->getMessage(),
+                'account_status'  => $account['status'],
+                'username'        => $account['username'],
+                'user_account_id' => $account['id'],
+                'account_message' => $account['message'],
+            ];
+        }
+    }
+
+    /**
+     * Resolve an existing user_account by mobile, or create a new one
+     * for this imported applicant.
+     *
+     * Phase 59b — each bulk-imported applicant gets a user_account so
+     * they can log in to the user panel and complete their application.
+     * Username = the mobile number from the CSV (the v3 user login form
+     * accepts either username or mobile, so this matches both fields
+     * cleanly). Password = bcrypt(national_code) — same convention as
+     * the manual `/admin/register` flow.
+     *
+     * If an account with this mobile already exists (e.g., from a
+     * previous import or a self-signup via /signup), just return its id
+     * — we never create a duplicate. The `mobile` column on
+     * `user_accounts` is UNIQUE so the database would also reject a
+     * duplicate INSERT, but resolving first avoids a wasted write +
+     * exception log.
+     *
+     * Returns a small descriptor with three keys:
+     *   - status:   'created' | 'linked' | 'failed' | 'skipped'
+     *   - id:       the user_account id (0 if none)
+     *   - username: the username we set / found (the mobile for new ones)
+     *   - message:  a short Persian label for the result page
+     *
+     * @return array{status:string, id:int, username:string, message:string}
+     */
+    private function resolveOrCreateUserAccount(string $mobile, string $nationalCode): array
+    {
+        if ($mobile === '') {
+            return ['status' => 'skipped', 'id' => 0, 'username' => '', 'message' => ''];
+        }
+        $existing = $this->userAccounts->findByMobile($mobile);
+        if ($existing !== null) {
+            return [
+                'status'   => 'linked',
+                'id'       => (int)($existing['id'] ?? 0),
+                'username' => (string)($existing['username'] ?? $mobile),
+                'message'  => 'حساب کاربری موجود پیوند شد',
+            ];
+        }
+        try {
+            $username = $mobile;  // Phase 59b convention: username = mobile.
+            $id = $this->userAccounts->create([
+                'username'  => $username,
+                'mobile'    => $mobile,
+                'password'  => $this->hash->passwordHash($nationalCode),
+                'is_active' => 1,
+            ]);
+            if ($id <= 0) {
+                return [
+                    'status'   => 'failed',
+                    'id'       => 0,
+                    'username' => $username,
+                    'message'  => 'خطا در ایجاد حساب کاربری',
+                ];
+            }
+            $this->logger->info('Bulk import created user_account', [
+                '_module'      => 'core',
+                'user_account_id' => $id,
+                'username'     => $username,
+            ]);
+            return [
+                'status'   => 'created',
+                'id'       => $id,
+                'username' => $username,
+                'message'  => 'حساب کاربری ایجاد شد — نام کاربری: ' . $username,
+            ];
+        } catch (\Throwable $e) {
+            $this->logger->error('Bulk import user_account create failed', [
+                '_module' => 'core',
+                'mobile'  => $mobile,
+                'error'   => $e->getMessage(),
+            ]);
+            return [
+                'status'   => 'failed',
+                'id'       => 0,
+                'username' => $mobile,
+                'message'  => 'خطا در ایجاد حساب کاربری',
             ];
         }
     }
