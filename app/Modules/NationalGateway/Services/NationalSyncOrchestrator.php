@@ -7,6 +7,7 @@ use App\Events\EventBus;
 use App\Events\Events\ApplicantMatched;
 use App\Events\Events\SyncCycleCompleted;
 use App\Modules\NationalGateway\Domain\Filter;
+use App\Shared\Contracts\NationalFilterRepositoryInterface;
 use App\Shared\Contracts\NationalLicenseRepositoryInterface;
 use App\Shared\Contracts\SyncAuditLogRepositoryInterface;
 use App\Shared\Persistence\Connection;
@@ -69,6 +70,11 @@ final class NationalSyncOrchestrator
         private readonly Connection $conn,
         private readonly ?OutboundSyncService $outboundService = null,
         private readonly ?Hash $hash = null,
+        // Phase 60 (v2.2.6) — saved-filter repository. Optional so the
+        // existing NationalSyncOrchestratorDedupTest (which doesn't pass
+        // this arg) keeps working — runCycle() falls back to the empty
+        // filter (page 1, pageSize 20) when null.
+        private readonly ?NationalFilterRepositoryInterface $filterRepo = null,
     ) {}
 
     /**
@@ -167,9 +173,29 @@ final class NationalSyncOrchestrator
         // helper returns a 'degraded' summary and the cycle continues with
         // whatever the local cache has (the matcher step below will still run
         // against existing national_licenses rows).
-        $upstreamFilter = new Filter(page: 1, pageSize: 20);
-        $upstreamSummary = $this->licenseService->searchUpstream($upstreamFilter);
-        $this->logIntegrationFetch($upstreamSummary);
+        //
+        // Phase 60 (v2.2.6) — instead of a single empty Filter(page:1,
+        // pageSize:20), the cycle now uses the SAVED filters from
+        // national_filters (WHERE is_active=1). Each saved filter is decoded
+        // from its filter_data JSON into a Filter VO and applied via
+        // searchUpstream(). This means the admin's filter presets (e.g.
+        // "licenses in province X issued in the last 30 days") actually
+        // drive the sync, instead of the cycle fetching the latest
+        // unfiltered page every time. The per-filter results are
+        // aggregated into the $upstreamSummary returned by this method
+        // (the existing downstream code only reads reached/fetched/total/
+        // degraded/error — all of which we sum + OR together).
+        //
+        // If there are NO saved filters (clean install, or the admin
+        // hasn't created any yet), the cycle falls back to the old
+        // empty-filter page-1 fetch — same behaviour as v2.2.5 — so the
+        // first sync run on a fresh install still pulls something.
+        //
+        // Each filter's last_run_at + last_result_count are updated
+        // after the search (via NationalFilterRepository::markRun) so
+        // the admin's saved-filter list shows when each filter last ran
+        // and how many licenses it returned.
+        $upstreamSummary = $this->fetchUpstreamWithSavedFilters();
 
         // §9.5 step 2 (cont.): find unmatched licenses with golden-link anchors.
         $licenses = $this->licenseRepo->findUnmatched($licenseBatchSize);
@@ -609,5 +635,160 @@ final class NationalSyncOrchestrator
                 'reason' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Pull fresh pages from upstream using the admin's saved filters.
+     *
+     * Phase 60 (v2.2.6) — replaces the single empty Filter(page:1,
+     * pageSize:20) fetch with one fetch per active saved filter in
+     * national_filters. Aggregates the per-filter summaries into a
+     * single summary with the same shape as the old return value
+     * (reached / fetched / total / degraded / error), so the rest of
+     * runCycle() doesn't need to change.
+     *
+     * Aggregation rules:
+     *   - reached  = true if AT LEAST ONE filter's fetch reached upstream
+     *     (i.e. the cycle did contact the gateway at least once).
+     *   - fetched   = SUM of per-filter fetched (the total number of
+     *     licenses the cycle pulled across all filters this run).
+     *   - total     = SUM of per-filter total (the cumulative upstream
+     *     result count across all filters; for the same filter, total
+     *     is the upstream-reported total — the matcher dedupes against
+     *     national_licenses so duplicate licenses across filters don't
+     *     double-count there).
+     *   - degraded = true if AT LEAST ONE filter was degraded (circuit
+     *     breaker open or upstream error). The cycle continues against
+     *     the local cache regardless.
+     *   - error    = the FIRST non-null per-filter error (for logging
+     *     / audit visibility — the cycle's degraded flag is the
+     *     actionable signal, not the specific error string).
+     *
+     * Each filter's last_run_at + last_result_count are bumped via
+     * NationalFilterRepository::markRun() after its fetch (best-effort:
+     * the markRun UPDATE never aborts the cycle if it fails).
+     *
+     * If there are NO active saved filters, falls back to the legacy
+     * empty-filter page-1 fetch (Filter(page:1, pageSize:20)) so the
+     * cycle isn't a no-op on a fresh install. Same behaviour as v2.2.5.
+     *
+     * If the NationalFilterRepositoryInterface dependency wasn't
+     * injected (e.g. the NationalSyncOrchestratorDedupTest still
+     * constructs the orchestrator with the old signature), we also
+     * fall back to the empty-filter fetch — preserves backwards
+     * compatibility with tests written before Phase 60.
+     *
+     * @return array{reached:bool,fetched:int,total:?int,degraded:bool,error:?string}
+     */
+    private function fetchUpstreamWithSavedFilters(): array
+    {
+        // Aggregated summary — same shape as LicenseService::searchUpstream.
+        $agg = [
+            'reached'  => false,
+            'fetched'  => 0,
+            'total'    => 0,
+            'degraded' => false,
+            'error'    => null,
+        ];
+
+        $filters = [];
+        if ($this->filterRepo !== null) {
+            try {
+                $filters = $this->filterRepo->active();
+            } catch (\Throwable $e) {
+                // national_filters might not exist yet (pre-install) or
+                // the DB might be temporarily unreachable — fall back
+                // to the empty-filter fetch so the cycle still runs.
+                $this->logger->warning('fetchUpstreamWithSavedFilters: active() failed, falling back to empty filter', [
+                    'error' => $e->getMessage(),
+                ]);
+                $filters = [];
+            }
+        }
+
+        // No saved filters (clean install, or admin hasn't created any)
+        // — fall back to the legacy empty-filter fetch.
+        if ($filters === []) {
+            $upstreamFilter = new Filter(page: 1, pageSize: 20);
+            $summary = $this->licenseService->searchUpstream($upstreamFilter);
+            $this->logIntegrationFetch($summary);
+            return $summary;
+        }
+
+        // Run one upstream fetch per saved filter. Each filter's
+        // filter_data JSON has the same keys as Filter's constructor
+        // params (license_id, name, issue_start_date, ..., page,
+        // page_size) — Filter::fromArray handles the decoding.
+        foreach ($filters as $saved) {
+            $filterId = (int)($saved['id'] ?? 0);
+            $filterLabel = (string)($saved['label'] ?? "filter-{$filterId}");
+            $rawFilterData = $saved['filter_data'] ?? null;
+            $decoded = is_string($rawFilterData)
+                ? json_decode($rawFilterData, true)
+                : (is_array($rawFilterData) ? $rawFilterData : null);
+            if (!is_array($decoded)) {
+                $this->logger->warning('fetchUpstreamWithSavedFilters: invalid filter_data, skipping', [
+                    'filter_id' => $filterId,
+                    'label'     => $filterLabel,
+                ]);
+                continue;
+            }
+
+            // Always start at page 1 of the saved filter's criteria
+            // (we don't persist the last-fetched page — the cycle is
+            // meant to pull "the latest", not paginate through history).
+            $decoded['page'] = 1;
+            // Default page_size to 20 if the saved filter didn't store
+            // one — same as the legacy fetch.
+            if (!isset($decoded['page_size']) || (int)$decoded['page_size'] <= 0) {
+                $decoded['page_size'] = 20;
+            }
+            $filter = Filter::fromArray($decoded);
+
+            $this->logger->info('fetchUpstreamWithSavedFilters: applying saved filter', [
+                'filter_id'    => $filterId,
+                'label'        => $filterLabel,
+                'description'  => $filter->describe(),
+                'page'         => $filter->page,
+                'page_size'    => $filter->pageSize,
+            ]);
+
+            $summary = $this->licenseService->searchUpstream($filter);
+            // Best-effort per-filter audit row — keeps the integration_log
+            // audit trail complete (one row per filter, per cycle).
+            $this->logIntegrationFetch($summary);
+
+            $agg['reached']  = $agg['reached'] || $summary['reached'];
+            $agg['fetched'] += $summary['fetched'];
+            if (is_int($summary['total'])) {
+                $agg['total'] += $summary['total'];
+            }
+            $agg['degraded'] = $agg['degraded'] || $summary['degraded'];
+            if ($summary['error'] !== null && $agg['error'] === null) {
+                $agg['error'] = $summary['error'];
+            }
+
+            // Update the saved filter's last_run_at + last_result_count
+            // so the admin's saved-filter list reflects when each one
+            // last ran + how many licenses it returned. Best-effort:
+            // never abort the cycle if this UPDATE fails.
+            if ($filterId > 0 && $this->filterRepo !== null) {
+                try {
+                    $this->filterRepo->markRun($filterId, $summary['fetched']);
+                } catch (\Throwable $e) {
+                    $this->logger->warning('fetchUpstreamWithSavedFilters: markRun failed', [
+                        'filter_id' => $filterId,
+                        'error'     => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        // If the aggregate total stayed at 0 because every filter
+        // either failed or returned 0, leave it as 0 (no nullable
+        // total — the legacy single-fetch path returned null only
+        // when searchUpstream couldn't reach upstream at all, which
+        // here is reflected by reached=false + degraded=true).
+        return $agg;
     }
 }

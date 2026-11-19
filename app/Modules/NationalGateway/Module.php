@@ -212,7 +212,17 @@ final class Module implements ModuleInterface
                 $container->logger,
                 $container->make(\App\Shared\Persistence\Connection::class),
                 $container->make(\App\Modules\NationalGateway\Services\OutboundSyncService::class),
-                $container->make(\App\Shared\Support\Hash::class)
+                $container->make(\App\Shared\Support\Hash::class),
+                // Phase 60 (v2.2.6) — saved-filter repository. Injected
+                // so runCycle() can iterate the admin's active filters
+                // in national_filters and apply each one to the upstream
+                // search (instead of the old single empty Filter(page:1,
+                // pageSize:20) fetch). Optional in the constructor —
+                // the orchestrator falls back to the empty-filter fetch
+                // if null (preserves the NationalSyncOrchestratorDedupTest
+                // which still constructs the orchestrator with the old
+                // 8-arg signature).
+                $container->make(\App\Shared\Contracts\NationalFilterRepositoryInterface::class)
             )
         );
     }

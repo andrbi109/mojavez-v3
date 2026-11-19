@@ -323,3 +323,17 @@ app/Views/user/licenses.php:<?= $licenseDocId ?>
 app/Views/user/payments.php:<?= $chId ?>
 app/Views/admin/fee_tariff/index.php:<?= $itemSeq ?>
 app/Views/admin/bulk_result.php:<?= $accBadge ?>
+
+# 19. Phase 60 (v2.2.6) — user/edit_request.php integer + month-name vars.
+#
+# Same patterns as admin/edit_application.php's birth-date dropdown:
+#   $y / $m / $d — int loop counters for the Jalali Y/M/D dropdowns.
+#   $name — Persian month name from the local $months array (not user input).
+#   $sid — int service_type id from the $serviceTypes DB lookup.
+# All provably safe — not user input.
+# -----------------------------------------------------------------------------
+app/Views/user/edit_request.php:<?= $y ?>
+app/Views/user/edit_request.php:<?= $m ?>
+app/Views/user/edit_request.php:<?= $d ?>
+app/Views/user/edit_request.php:<?= $name ?>
+app/Views/user/edit_request.php:<?= $sid ?>
