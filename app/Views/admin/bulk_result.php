@@ -67,6 +67,7 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                             <th>کد ملی</th>
                             <th>موبایل</th>
                             <th>کد رهگیری</th>
+                            <th>حساب کاربری</th>
                             <th>وضعیت</th>
                             <th>پیام</th>
                         </tr>
@@ -87,6 +88,18 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                                     'skipped'  => '<span class="badge text-bg-warning"><i class="bi bi-skip-forward-fill"></i> skip شد</span>',
                                     default    => '<span class="badge text-bg-secondary">' . $esc($status) . '</span>',
                                 };
+
+                                // Phase 59b — user_account outcome per row.
+                                // account_status: 'created' | 'linked' | 'failed' | 'skipped' | ''
+                                $accStatus = (string)($r['account_status'] ?? '');
+                                $accUsername = (string)($r['username'] ?? '');
+                                $accBadge = match ($accStatus) {
+                                    'created' => '<span class="badge text-bg-success"><i class="bi bi-person-plus-fill"></i> ایجاد شد</span>',
+                                    'linked'  => '<span class="badge text-bg-info"><i class="bi bi-link-45deg"></i> پیوند شد</span>',
+                                    'failed'  => '<span class="badge text-bg-danger"><i class="bi bi-exclamation-triangle-fill"></i> خطا</span>',
+                                    'skipped' => '<span class="badge text-bg-secondary"><i class="bi bi-dash-circle"></i> —</span>',
+                                    default   => '<span class="text-muted">—</span>',
+                                };
                             ?>
                             <tr class="<?= $rowClass ?>">
                                 <td><?= (int)$i + 1 ?></td>
@@ -100,12 +113,27 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                                         <span class="text-muted">—</span>
                                     <?php endif; ?>
                                 </td>
+                                <td>
+                                    <?php if ($accStatus === '' || $accStatus === 'skipped'): ?>
+                                        <span class="text-muted">—</span>
+                                    <?php else: ?>
+                                        <div class="d-flex flex-column gap-1">
+                                            <?= $accBadge ?>
+                                            <?php if ($accUsername !== ''): ?>
+                                                <code dir="ltr" class="small text-muted"><?= $esc($accUsername) ?></code>
+                                            <?php endif; ?>
+                                            <?php if (!empty($r['account_message'])): ?>
+                                                <small class="text-muted"><?= $esc($r['account_message']) ?></small>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?= $badge ?></td>
                                 <td class="small text-muted"><?= $esc($r['message']) ?></td>
                             </tr>
                         <?php endforeach; ?>
                         <?php if ($rows === []): ?>
-                            <tr><td colspan="7" class="text-center text-muted py-4">نتیجه‌ای برای نمایش وجود ندارد.</td></tr>
+                            <tr><td colspan="8" class="text-center text-muted py-4">نتیجه‌ای برای نمایش وجود ندارد.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
