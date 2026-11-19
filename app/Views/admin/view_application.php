@@ -294,7 +294,7 @@ $flashKindClass = match ($flashKind) {
                                 <div class="input-group">
                                     <input type="text" id="payment-amount" name="amount"
                                            class="form-control text-end"
-                                           dir="ltr"
+                                          
                                            inputmode="numeric"
                                            pattern="[0-9]+"
                                            required
@@ -392,7 +392,7 @@ $flashKindClass = match ($flashKind) {
                         <?php endif; ?>
                     </a>
                     <div class="small">
-                        <div class="text-muted text-truncate d-block" dir="ltr" style="max-width:280px"
+                        <div class="text-muted text-truncate d-block" style="max-width:280px"
                              title="<?= htmlspecialchars($licenseDoc->originalName, ENT_QUOTES, 'UTF-8') ?>">
                             <?= htmlspecialchars($licenseDoc->originalName, ENT_QUOTES, 'UTF-8') ?>
                         </div>
@@ -467,7 +467,7 @@ $flashKindClass = match ($flashKind) {
             <dt class="col-sm-4 text-muted">اعتبار تا</dt>
             <dd class="col-sm-8">
                 <?php if ($licenseState === LicenseState::Issued && $applicant->licenseValidUntil !== null): ?>
-                    <span class="badge text-bg-success" dir="ltr"><?= htmlspecialchars($fmtDateOnly($applicant->licenseValidUntil), ENT_QUOTES, 'UTF-8') ?></span>
+                    <span class="badge text-bg-success"><?= htmlspecialchars($fmtDateOnly($applicant->licenseValidUntil), ENT_QUOTES, 'UTF-8') ?></span>
                     <?php if ($applicant->hasValidLicense()): ?>
                         <span class="badge text-bg-success ms-2"><i class="bi bi-check-circle"></i> معتبر</span>
                     <?php else: ?>
@@ -497,15 +497,15 @@ $flashKindClass = match ($flashKind) {
                     <dt class="col-sm-4 text-muted">نام</dt>
                     <dd class="col-sm-8"><?= htmlspecialchars($applicant->fullName(), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">کد ملی</dt>
-                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8"><?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">موبایل</dt>
-                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8"><?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">کد پستی</dt>
-                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars((string)($applicant->postalCode ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8"><?= htmlspecialchars((string)($applicant->postalCode ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">نام پدر</dt>
                     <dd class="col-sm-8"><?= htmlspecialchars((string)($row['father_name'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">تاریخ تولد</dt>
-                    <dd class="col-sm-8" dir="ltr"><?= htmlspecialchars($fmtDateOnly($row['birth_date'] ?? null), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-8"><?= htmlspecialchars($fmtDateOnly($row['birth_date'] ?? null), ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-4 text-muted">وضعیت تأهل</dt>
                     <dd class="col-sm-8">
                         <?= htmlspecialchars((string)($row['marital_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
@@ -549,17 +549,17 @@ $flashKindClass = match ($flashKind) {
                         </div>
                         <div class="col-6">
                             <label class="form-label small">کد ملی <small class="text-muted">(غیرقابل ویرایش)</small></label>
-                            <input type="text" class="form-control form-control-sm" name="national_code" dir="ltr"
+                            <input type="text" class="form-control form-control-sm" name="national_code"
                                 value="<?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?>" disabled>
                         </div>
                         <div class="col-6">
                             <label class="form-label small">موبایل</label>
-                            <input type="text" class="form-control form-control-sm" name="mobile" dir="ltr"
+                            <input type="text" class="form-control form-control-sm" name="mobile"
                                 value="<?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?>">
                         </div>
                         <div class="col-6">
                             <label class="form-label small">کد پستی</label>
-                            <input type="text" class="form-control form-control-sm" name="postal_code" dir="ltr"
+                            <input type="text" class="form-control form-control-sm" name="postal_code"
                                 value="<?= htmlspecialchars((string)($applicant->postalCode ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                         </div>
                         <div class="col-6">
@@ -643,7 +643,7 @@ $flashKindClass = match ($flashKind) {
             <div class="card-body">
                 <dl class="row mb-0">
                     <dt class="col-sm-5 text-muted">شماره درخواست ملی</dt>
-                    <dd class="col-sm-7" dir="ltr"><?= htmlspecialchars((string)$applicant->nationalLicenseRequestNumber, ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-7"><?= htmlspecialchars((string)$applicant->nationalLicenseRequestNumber, ENT_QUOTES, 'UTF-8') ?></dd>
                     <dt class="col-sm-5 text-muted">اطمینان تطبیق</dt>
                     <dd class="col-sm-7">
                         <?php $conf = (int)($applicant->matchConfidence ?? 0); ?>
@@ -652,7 +652,7 @@ $flashKindClass = match ($flashKind) {
                         </span>
                     </dd>
                     <dt class="col-sm-5 text-muted">تاریخ تطبیق</dt>
-                    <dd class="col-sm-7" dir="ltr"><?= htmlspecialchars($fmtDate($applicant->matchedAt), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-7"><?= htmlspecialchars($fmtDate($applicant->matchedAt), ENT_QUOTES, 'UTF-8') ?></dd>
                 </dl>
             </div>
         </div>
@@ -690,7 +690,7 @@ $flashKindClass = match ($flashKind) {
                         ])), ENT_QUOTES, 'UTF-8') ?>
                     </dd>
                     <dt class="col-sm-5 text-muted">شناسهٔ قبض برق</dt>
-                    <dd class="col-sm-7" dir="ltr"><?= htmlspecialchars((string)($propertyDetail['electricity_bill_id'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
+                    <dd class="col-sm-7"><?= htmlspecialchars((string)($propertyDetail['electricity_bill_id'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></dd>
                 </dl>
             </div>
         </div>
@@ -811,10 +811,10 @@ $flashKindClass = match ($flashKind) {
                                     <?php endif; ?>
                                 </a>
                                 <span class="badge text-bg-info mb-1" style="font-size:.68rem"><?= htmlspecialchars($docLabel, ENT_QUOTES, 'UTF-8') ?></span>
-                                <small class="text-muted text-truncate d-block" dir="ltr"
+                                <small class="text-muted text-truncate d-block"
                                        title="<?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?>"
                                        style="font-size:.7rem"><?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?></small>
-                                <small class="text-muted" style="font-size:.68rem" dir="ltr"><?= htmlspecialchars($fmtDate($doc->uploadedAt), ENT_QUOTES, 'UTF-8') ?></small>
+                                <small class="text-muted" style="font-size:.68rem"><?= htmlspecialchars($fmtDate($doc->uploadedAt), ENT_QUOTES, 'UTF-8') ?></small>
                                 <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/delete-document"
                                       class="mt-1" onsubmit="return confirm('حذف این مدرک؟')">
                                     <?= $csrfField ?>
@@ -870,7 +870,7 @@ $flashKindClass = match ($flashKind) {
                                         <i class="bi bi-link-45deg text-success ms-1" title="اتصال طلایی"></i>
                                     <?php endif; ?>
                                 </td>
-                                <td class="small text-muted" dir="ltr"><?= htmlspecialchars($fmtDate($eAt), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="small text-muted"><?= htmlspecialchars($fmtDate($eAt), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td class="small"><?= htmlspecialchars((string)$eDesc, ENT_QUOTES, 'UTF-8') ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -1111,7 +1111,7 @@ $flashKindClass = match ($flashKind) {
             body.innerHTML =
                 '<div class="p-5 text-center text-muted">' +
                   '<i class="bi bi-file-earmark-text" style="font-size:4rem"></i>' +
-                  '<p class="mt-3 mb-0" dir="ltr">' + safeName + '</p>' +
+                  '<p class="mt-3 mb-0">' + safeName + '</p>' +
                   '<p class="small mb-0">نمایش پیش‌نمایش برای این نوع فایل پشتیبانی نمی‌شود — ' +
                   'برای دانلود روی دکمهٔ «دانلود» بزنید.</p>' +
                 '</div>';

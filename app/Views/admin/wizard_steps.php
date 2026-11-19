@@ -70,7 +70,7 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                     <label class="form-label">کلید نمایش (view_key) <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="view_key"
                            value="<?= $ev('view_key') ?>" maxlength="64"
-                           pattern="[A-Za-z][A-Za-z0-9_]{0,63}" required dir="ltr">
+                           pattern="[A-Za-z][A-Za-z0-9_]{0,63}" required>
                     <div class="form-text small text-muted">
                         باید یکتا باشد. مراحل سیستمی: step1، step2، step3، step4.
                     </div>
@@ -91,7 +91,7 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                 <div class="col-md-3">
                     <label class="form-label">آیکون</label>
                     <input type="text" class="form-control" name="icon"
-                           value="<?= $ev('icon') ?>" maxlength="50" dir="ltr">
+                           value="<?= $ev('icon') ?>" maxlength="50">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">ترتیب</label>
@@ -148,12 +148,12 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                         <tr>
                             <td><?= $sid ?></td>
                             <td><?= htmlspecialchars((string)$r['title'], ENT_QUOTES, 'UTF-8') ?></td>
-                            <td dir="ltr"><code><?= htmlspecialchars((string)$r['view_key'], ENT_QUOTES, 'UTF-8') ?></code></td>
+                            <td><code><?= htmlspecialchars((string)$r['view_key'], ENT_QUOTES, 'UTF-8') ?></code></td>
                             <td class="text-muted small">
                                 <?= htmlspecialchars((string)($r['service_type_title'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?>
                             </td>
-                            <td class="text-muted small" dir="ltr"><?= htmlspecialchars((string)($r['icon'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
-                            <td dir="ltr"><?= (int)$r['sort_order'] ?></td>
+                            <td class="text-muted small"><?= htmlspecialchars((string)($r['icon'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= (int)$r['sort_order'] ?></td>
                             <td>
                                 <?php if ($isSystem): ?>
                                     <span class="badge text-bg-info">سیستمی</span>

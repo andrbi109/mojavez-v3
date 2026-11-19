@@ -91,8 +91,8 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                             <tr class="<?= $rowClass ?>">
                                 <td><?= (int)$i + 1 ?></td>
                                 <td><?= $esc($r['name']) ?></td>
-                                <td dir="ltr"><code><?= $esc($r['national_code']) ?></code></td>
-                                <td dir="ltr"><code><?= $esc($r['mobile']) ?></code></td>
+                                <td><code><?= $esc($r['national_code']) ?></code></td>
+                                <td><code><?= $esc($r['mobile']) ?></code></td>
                                 <td>
                                     <?php if (!empty($r['tracking_code'])): ?>
                                         <code><?= $esc($r['tracking_code']) ?></code>

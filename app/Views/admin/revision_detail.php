@@ -46,7 +46,7 @@ $fields = [
         <div class="row g-3 mb-4">
             <div class="col-md-4">
                 <div class="text-muted small">کد رهگیری</div>
-                <code class="user-select-all" dir="ltr">
+                <code class="user-select-all">
                     <?= htmlspecialchars((string)($row['tracking_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </code>
             </div>
@@ -58,7 +58,7 @@ $fields = [
             </div>
             <div class="col-md-4">
                 <div class="text-muted small">تاریخ درخواست</div>
-                <span dir="ltr"><?= htmlspecialchars((string)($row['created_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
+                <span><?= htmlspecialchars((string)($row['created_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
             </div>
         </div>
 

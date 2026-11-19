@@ -152,7 +152,7 @@ $ev = static function (string $key, ?string $default = '') use ($editing): strin
                             <td><?= $sid ?></td>
                             <td><?= htmlspecialchars((string)$r['title'], ENT_QUOTES, 'UTF-8') ?></td>
                             <td class="text-muted small"><?= htmlspecialchars((string)($r['authority'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
-                            <td dir="ltr"><?= (int)$r['sort_order'] ?></td>
+                            <td><?= (int)$r['sort_order'] ?></td>
                             <td>
                                 <?php if ($isActive): ?>
                                     <span class="badge text-bg-success">فعال</span>

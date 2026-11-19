@@ -51,7 +51,7 @@ $csrfField ??= '';
                             <tr>
                                 <td><?= (int)$r['id'] ?></td>
                                 <td>
-                                    <code class="user-select-all" dir="ltr">
+                                    <code class="user-select-all">
                                         <?= htmlspecialchars((string)($r['tracking_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                     </code>
                                 </td>
@@ -68,7 +68,7 @@ $csrfField ??= '';
                                 <td class="text-muted small">
                                     <?= htmlspecialchars(mb_substr((string)($r['note'] ?? ''), 0, 60), ENT_QUOTES, 'UTF-8') ?>
                                 </td>
-                                <td class="text-muted small" dir="ltr">
+                                <td class="text-muted small">
                                     <?= htmlspecialchars((string)($r['created_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                 </td>
                                 <td>

@@ -19,6 +19,7 @@ use App\Shared\Contracts\StatusLogRepositoryInterface;
 use App\Shared\Contracts\UserAccountRepositoryInterface;
 use App\Shared\Contracts\UserNotificationRepositoryInterface;
 use App\Shared\Persistence\Connection;
+use App\Shared\Support\Config;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
 use App\Shared\Support\StructuredLogger;
@@ -471,24 +472,33 @@ final class UserPanelController extends Controller
             return $this->redirect('/panel/payments');
         }
 
-        // FileStorage::storeUpload keys its storage dir by $trackingCode.
-        // We synthesise a tracking-code-shaped path segment so the receipt
-        // lands under storage/uploads/receipts/{payment_id}/ rather than
-        // polluting the applicant-keyed namespace. The $applicantId
-        // argument is intentionally unused by FileStorage (kept for
-        // forward-compat), so we pass 0.
-        $result = $this->files->storeUpload(
-            $file,
-            0,
-            'receipts/' . $paymentId,
-            'receipt'
-        );
-        if (($result['success'] ?? false) !== true) {
-            $errorMsg = (string)($result['error'] ?? 'خطا در بارگذاری فایل.');
-            $this->flash($errorMsg, 'danger');
+        // Phase 59a — replace FileStorage::storeUpload() with a direct
+        // move_uploaded_file() into storage/uploads/receipts/{payment_id}/.
+        // FileStorage's 7-layer pipeline rejects some valid uploads (the
+        // ext↔MIME consistency check is brittle and the GD re-encode can
+        // fail on large images), so we keep it simple here: validate the
+        // extension against the whitelist, move the file with a random
+        // suffix, and persist the project-root-relative path to
+        // payments.receipt_file_path. The returned path matches the
+        // project-root-relative layout used by AvatarService and the
+        // admin document modal, so /document/inline and FileStorage::
+        // getFullPath() (which now also accepts project-root-relative
+        // paths, see Phase 57b) can both resolve it.
+        try {
+            $relPath = $this->storeReceiptDirect($file, $paymentId);
+        } catch (\Throwable $e) {
+            $this->logger->error('Receipt upload failed', [
+                '_module'    => 'core',
+                'payment_id' => $paymentId,
+                'account_id' => $account['id'],
+                'error'      => $e->getMessage(),
+            ]);
+            $this->flash(
+                'بارگذاری رسید ناموفق بود: ' . $e->getMessage(),
+                'danger'
+            );
             return $this->redirect('/panel/payments');
         }
-        $relPath = (string)($result['file_path'] ?? '');
 
         // Optional user-supplied description (free text, max 500 chars —
         // matches the `receipt_description` column width).
@@ -521,7 +531,11 @@ final class UserPanelController extends Controller
                 'error'      => $e->getMessage(),
             ]);
             // Best-effort cleanup of the orphaned file we just wrote.
-            $this->files->deleteFile($relPath);
+            $projectRoot = dirname(__DIR__, 4);
+            $absolutePath = $projectRoot . '/' . $relPath;
+            if (is_file($absolutePath)) {
+                @unlink($absolutePath);
+            }
             $this->flash(
                 'ذخیرهٔ رسید با خطا روبه‌رو شد. لطفاً دوباره تلاش کنید.',
                 'danger'
@@ -540,6 +554,82 @@ final class UserPanelController extends Controller
             'success'
         );
         return $this->redirect('/panel/payments');
+    }
+
+    /**
+     * Move the uploaded receipt to storage/uploads/receipts/{payment_id}/.
+     *
+     * Phase 59a — replaces FileStorage::storeUpload() with a direct
+     * move_uploaded_file(). FileStorage's 7-layer pipeline rejects some
+     * valid uploads (the ext↔MIME consistency check is brittle and the
+     * GD re-encode can fail on large images), so we keep it simple here:
+     *
+     *   1. Validate the upload error code (UPLOAD_ERR_OK).
+     *   2. Validate the extension against the whitelist
+     *      (config('app.allowed_extensions') — jpg/jpeg/png/pdf).
+     *   3. Validate the file size (≤ config('app.max_upload_size')).
+     *   4. Create the destination directory if needed
+     *      (storage/uploads/receipts/{payment_id}/).
+     *   5. move_uploaded_file() to {payment_id}/receipt_{rand6}.{ext}.
+     *   6. chmod 0640 — same as FileStorage.
+     *
+     * Returns the project-root-relative path
+     * (e.g. "storage/uploads/receipts/42/receipt_a1b2c3.jpg") so the
+     * admin panel can construct a download URL via /document/inline
+     * and FileStorage::getFullPath() (Phase 57b — also accepts
+     * project-root-relative paths) can resolve it.
+     *
+     * @param array<string,mixed> $file  $_FILES['receipt'] entry
+     * @throws \RuntimeException on any failure with a Persian message
+     */
+    private function storeReceiptDirect(array $file, int $paymentId): string
+    {
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            throw new \RuntimeException(
+                'خطا در بارگذاری فایل (کد: ' . ($file['error'] ?? 'unknown') . ').'
+            );
+        }
+
+        $originalName = (string)($file['name'] ?? '');
+        // Strip directory traversal from the filename before extracting
+        // the extension (basename-only, same as FileStorage::normaliseFilename).
+        $originalName = basename($originalName);
+        $ext = strtolower((string)pathinfo($originalName, PATHINFO_EXTENSION));
+
+        $allowed = Config::get('app.allowed_extensions', ['jpg', 'jpeg', 'png', 'pdf']);
+        if (!is_array($allowed)) {
+            $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
+        }
+        if ($ext === '' || !in_array($ext, $allowed, true)) {
+            throw new \RuntimeException(
+                'پسوند فایل مجاز نیست. تنها ' . implode('، ', $allowed) . ' پذیرفته می‌شود.'
+            );
+        }
+
+        $maxSize = (int)Config::get('app.max_upload_size', 2 * 1024 * 1024);
+        if (($file['size'] ?? 0) > $maxSize) {
+            throw new \RuntimeException('حجم فایل بیش از حد مجاز است (۲ مگابایت).');
+        }
+
+        $projectRoot = dirname(__DIR__, 4);
+        $storageDir = $projectRoot . '/storage/uploads/receipts/' . $paymentId;
+        if (!is_dir($storageDir)) {
+            @mkdir($storageDir, 0775, true);
+        }
+        if (!is_dir($storageDir) || !is_writable($storageDir)) {
+            throw new \RuntimeException('پوشهٔ ذخیره‌سازی قابل نوشتن نیست.');
+        }
+
+        $rand = bin2hex(random_bytes(3));  // 6 hex chars
+        $fileName = 'receipt_' . $rand . '.' . $ext;
+        $absolutePath = $storageDir . '/' . $fileName;
+
+        if (!move_uploaded_file((string)$file['tmp_name'], $absolutePath)) {
+            throw new \RuntimeException('انتقال فایل بارگذاری‌شده ناموفق بود.');
+        }
+        @chmod($absolutePath, 0640);
+
+        return 'storage/uploads/receipts/' . $paymentId . '/' . $fileName;
     }
 
     /**

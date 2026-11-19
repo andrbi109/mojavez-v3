@@ -1,12 +1,20 @@
 <?php
 /**
- * admin/gateway_saved.php — saved/cached national licenses.
+ * admin/gateway_saved.php — cached national licenses.
  *
- * Table of saved licenses (is_saved = 1) with a status filter dropdown
- * (all / active / expired / unknown) and a CSV export button (links to
- * the existing /api/v1/licenses/export endpoint — the export logic is
- * already there). Each row's "view" button opens the license detail
- * modal (same shape as gateway_search.php).
+ * Phase 59a — this page lists every row in national_licenses
+ * (the local cache populated by the sync cycle), not just the
+ * rows the admin has explicitly marked is_saved = 1. Each row's
+ * "view" button opens the license detail modal (same shape as
+ * gateway_search.php). Optional status filter dropdown (all /
+ * active / expired / unknown) and a CSV export button (links to
+ * the existing /api/v1/licenses/export endpoint).
+ *
+ * Phase 59a — license modal: every date field is now formatted as
+ * Jalali via PersianDate::format() (responded_at in the table
+ * column, plus responded_at + expires_at in the modal). The
+ * match_confidence badge is now also shown in the saved modal,
+ * matching the search modal.
  *
  * @var string $statusFilter
  * @var array<int,array<string,mixed>> $rows
@@ -17,12 +25,23 @@
  * @var string $csrfField
  * @var string $baseUrl
  */
+
+use App\Shared\Support\PersianDate;
+
+// Phase 59a — pre-format dates as Jalali for the row buttons' data-*
+// attributes so the modal JS only needs textContent assignment.
+$jDate = static function (?string $greg): string {
+    if ($greg === null || $greg === '') {
+        return '—';
+    }
+    return PersianDate::format($greg);
+};
 ?>
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-    <h2 class="h5 mb-0"><i class="bi bi-bookmark"></i> مجوزهای ذخیره‌شده</h2>
+    <h2 class="h5 mb-0"><i class="bi bi-database"></i> مجوزهای کش‌شده از درگاه ملی</h2>
     <span class="badge text-bg-secondary"><?= htmlspecialchars((string)$total, ENT_QUOTES, 'UTF-8') ?> رکورد</span>
     <div class="ms-auto d-flex gap-2">
-        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/licenses/export?format=csv&saved_only=1" class="btn btn-sm btn-outline-success">
+        <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/licenses/export?format=csv" class="btn btn-sm btn-outline-success">
             <i class="bi bi-filetype-csv"></i> خروجی CSV
         </a>
         <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway" class="btn btn-sm btn-outline-secondary">
@@ -59,10 +78,10 @@
     </div>
 </div>
 
-<!-- Saved licenses table -->
+<!-- Cached licenses table -->
 <div class="card">
     <div class="card-header d-flex align-items-center gap-2">
-        <i class="bi bi-list-ul"></i> فهرست مجوزهای ذخیره‌شده
+        <i class="bi bi-list-ul"></i> فهرست مجوزهای کش‌شده از درگاه ملی
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -89,14 +108,15 @@
                             default => 'text-bg-secondary',
                         };
                         $stLabel = htmlspecialchars((string)($r['status_title'] ?? $st), ENT_QUOTES, 'UTF-8');
+                        $conf = (int)($r['match_confidence'] ?? 0);
                     ?>
                     <tr>
-                        <td class="small" dir="ltr"><?= htmlspecialchars((string)$r['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small"><?= htmlspecialchars((string)$r['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)$r['applicant_name'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small"><?= htmlspecialchars((string)($r['license_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small"><?= htmlspecialchars((string)($r['organization_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="small"><?= htmlspecialchars((string)($r['province_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td class="small text-muted" dir="ltr"><?= htmlspecialchars((string)($r['responded_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small text-muted"><?= htmlspecialchars($jDate((string)($r['responded_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
                         <td><span class="badge <?= $stBadge ?>"><?= $stLabel !== '' ? $stLabel : '—' ?></span></td>
                         <td class="text-end">
                             <button type="button"
@@ -108,21 +128,22 @@
                                 data-province="<?= htmlspecialchars((string)($r['province_title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-township="<?= htmlspecialchars((string)($r['township_title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-status="<?= $stLabel ?>"
-                                data-responded="<?= htmlspecialchars((string)($r['responded_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-responded="<?= htmlspecialchars($jDate((string)($r['responded_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?>"
                                 data-father="<?= htmlspecialchars((string)($r['father_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-national="<?= htmlspecialchars((string)($r['masked_national_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-address="<?= htmlspecialchars((string)($r['business_address'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-isic="<?= htmlspecialchars((string)($r['isic_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-isic-title="<?= htmlspecialchars((string)($r['isic_title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                data-expires="<?= htmlspecialchars((string)($r['expires_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                data-supervisors="<?= htmlspecialchars((string)($r['supervisory_authorities'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                data-expires="<?= htmlspecialchars($jDate((string)($r['expires_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?>"
+                                data-supervisors="<?= htmlspecialchars((string)($r['supervisory_authorities'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-conf="<?= htmlspecialchars((string)$conf, ENT_QUOTES, 'UTF-8') ?>">
                                 <i class="bi bi-eye"></i> مشاهده
                             </button>
                         </td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="8" class="text-center text-muted py-4">هیچ مجوز ذخیره‌شده‌ای موجود نیست. از صفحهٔ جستجو، مجوز مورد نظر را «ذخیره» کنید.</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">هیچ مجوزی در کش محلی وجود ندارد. برای پر کردن کش، یک دور همگام‌سازی اجرا کنید (صفحهٔ «وضعیت همگام‌سازی»).</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -175,6 +196,7 @@
             <dt class="col-sm-3">عنوان آیسیک</dt><dd class="col-sm-9" id="glm-isic-title">—</dd>
             <dt class="col-sm-3">تاریخ انقضا</dt><dd class="col-sm-9" id="glm-expires">—</dd>
             <dt class="col-sm-3">مراجع نظارتی</dt><dd class="col-sm-9" id="glm-supervisors">—</dd>
+            <dt class="col-sm-3">اطمینان تطبیق</dt><dd class="col-sm-9" id="glm-conf">—</dd>
         </dl>
       </div>
       <div class="modal-footer">
@@ -208,6 +230,8 @@
             set('glm-isic-title', btn.getAttribute('data-isic-title'));
             set('glm-expires',   btn.getAttribute('data-expires'));
             set('glm-supervisors', btn.getAttribute('data-supervisors'));
+            var conf = btn.getAttribute('data-conf');
+            set('glm-conf',      conf && conf !== '0' ? (conf + '٪') : '—');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('gatewayLicenseModal')).show();
         });
     });

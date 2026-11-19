@@ -38,7 +38,7 @@ $csrfField   ??= '';
                     اعمال می‌شود.
                 </p>
                 <p class="small">
-                    کد رهگیری: <code class="user-select-all" dir="ltr"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code>
+                    کد رهگیری: <code class="user-select-all"><?= htmlspecialchars($trackingCode, ENT_QUOTES, 'UTF-8') ?></code>
                 </p>
 
                 <form method="post"
@@ -64,7 +64,7 @@ $csrfField   ??= '';
                             <input type="text" class="form-control" id="national_code" name="national_code"
                                    pattern="[0-9]{10}" maxlength="10"
                                    value="<?= htmlspecialchars($applicant->nationalCode, ENT_QUOTES, 'UTF-8') ?>"
-                                   dir="ltr" style="text-align: right;">
+                                   style="text-align: right;">
                         </div>
                         <div class="col-md-6">
                             <label for="father_name" class="form-label">نام پدر</label>
@@ -77,7 +77,7 @@ $csrfField   ??= '';
                             <input type="tel" class="form-control" id="mobile" name="mobile"
                                    pattern="09\d{9}" maxlength="11"
                                    value="<?= htmlspecialchars($applicant->mobile, ENT_QUOTES, 'UTF-8') ?>"
-                                   dir="ltr" style="text-align: right;">
+                                   style="text-align: right;">
                         </div>
                         <div class="col-12">
                             <label for="note" class="form-label">توضیح (یادداشت برای مدیر)</label>

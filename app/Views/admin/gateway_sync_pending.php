@@ -75,11 +75,11 @@ $limit ??= 50;
                                         <?= $applicant ?>
                                     </a>
                                 </td>
-                                <td dir="ltr"><?= htmlspecialchars($rn, ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars($rn, ENT_QUOTES, 'UTF-8') ?></td>
                                 <td>
                                     <span class="badge <?= htmlspecialchars($confBadge, ENT_QUOTES) ?>"><?= $conf ?>٪</span>
                                 </td>
-                                <td dir="ltr" class="small"><?= htmlspecialchars($createdAt, ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="small"><?= htmlspecialchars($createdAt, ENT_QUOTES, 'UTF-8') ?></td>
                                 <td class="text-center">
                                     <form method="post"
                                         action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/resolve"

@@ -62,7 +62,7 @@ $isImage = $document->isImage();
 $isPdf = $document->isPdf();
 ?>
 <div class="text-center">
-    <p class="text-muted small mb-2" dir="ltr"><?= $e($document->originalName) ?></p>
+    <p class="text-muted small mb-2"><?= $e($document->originalName) ?></p>
 
     <?php if (!$fileExists): ?>
         <div class="alert alert-warning mb-3">
@@ -92,7 +92,7 @@ $isPdf = $document->isPdf();
 
     <div class="small text-muted mb-3">
         <span class="badge text-bg-secondary"><?= $e($document->docType) ?></span>
-        حجم: <span dir="ltr"><?= $e($sizeLabel) ?></span>
+        حجم: <span><?= $e($sizeLabel) ?></span>
     </div>
 
     <div class="d-flex justify-content-center gap-2">

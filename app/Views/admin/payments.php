@@ -186,7 +186,7 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                          as a clickable suggestion. -->
                     <div class="col-6 col-md-3">
                         <label class="form-label small mb-1">از تاریخ (جلالی)</label>
-                        <input type="text" class="form-control form-control-sm" name="from" dir="ltr"
+                        <input type="text" class="form-control form-control-sm" name="from"
                                pattern="\d{4}/\d{1,2}/\d{1,2}"
                                placeholder="YYYY/MM/DD"
                                title="تاریخ جلالی به فرمت YYYY/MM/DD — مثال: 1405/08/21"
@@ -194,7 +194,7 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                     </div>
                     <div class="col-6 col-md-3">
                         <label class="form-label small mb-1">تا تاریخ (جلالی)</label>
-                        <input type="text" class="form-control form-control-sm" name="to" dir="ltr"
+                        <input type="text" class="form-control form-control-sm" name="to"
                                pattern="\d{4}/\d{1,2}/\d{1,2}"
                                placeholder="YYYY/MM/DD"
                                title="تاریخ جلالی به فرمت YYYY/MM/DD — مثال: 1405/08/21"
@@ -205,7 +205,7 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                         <a class="btn btn-outline-secondary btn-sm" href="/admin/payments">پاک کردن فیلتر</a>
                         <small class="text-muted ms-auto">
                             امروز جلالی:
-                            <code dir="ltr"><?= htmlspecialchars(PersianDate::format(date('Y-m-d')), ENT_QUOTES, 'UTF-8') ?></code>
+                            <code><?= htmlspecialchars(PersianDate::format(date('Y-m-d')), ENT_QUOTES, 'UTF-8') ?></code>
                         </small>
                     </div>
                 </form>
@@ -267,7 +267,7 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                                     <?php endif; ?>
                                 </td>
                                 <!-- Phase 50 — Jalali-formatted created_at -->
-                                <td class="d-none d-lg-table-cell small text-muted" dir="ltr"><?= htmlspecialchars(PersianDate::format((string)($p['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="d-none d-lg-table-cell small text-muted"><?= htmlspecialchars(PersianDate::format((string)($p['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></td>
                                 <!-- Phase 50 — admin-entered description -->
                                 <td class="d-none d-xl-table-cell small">
                                     <?php if ($description !== ''): ?>
@@ -309,13 +309,13 @@ $csvQs = $qs();  // CSV export preserves the full filter state (status/purpose/q
                                                             متقاضی:
                                                             <strong><?= htmlspecialchars((string)$p['first_name'] . ' ' . (string)$p['last_name'], ENT_QUOTES, 'UTF-8') ?></strong>
                                                             · کد رهگیری:
-                                                            <code dir="ltr"><?= htmlspecialchars((string)$p['tracking_code'], ENT_QUOTES, 'UTF-8') ?></code>
+                                                            <code><?= htmlspecialchars((string)$p['tracking_code'], ENT_QUOTES, 'UTF-8') ?></code>
                                                         </div>
                                                         <div class="small text-muted mb-3">
                                                             مبلغ: <strong><?= number_format((int)$p['amount']) ?></strong> تومان
                                                             · هدف: <?= htmlspecialchars((string)$p['purpose'], ENT_QUOTES, 'UTF-8') ?>
                                                             <?php if (!empty($p['reference_code'])): ?>
-                                                                · کد پیگیری: <code dir="ltr"><?= htmlspecialchars((string)$p['reference_code'], ENT_QUOTES, 'UTF-8') ?></code>
+                                                                · کد پیگیری: <code><?= htmlspecialchars((string)$p['reference_code'], ENT_QUOTES, 'UTF-8') ?></code>
                                                             <?php endif; ?>
                                                         </div>
                                                         <label class="form-label">یادداشت بررسی (اختیاری برای تأیید، الزامی برای رد)</label>

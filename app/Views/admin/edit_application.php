@@ -213,17 +213,17 @@ $docLabels = [
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد ملی <span class="text-muted small">(غیرقابل ویرایش)</span></label>
-                    <input type="text" class="form-control" value="<?= $val('national_code') ?>" disabled dir="ltr">
+                    <input type="text" class="form-control" value="<?= $val('national_code') ?>" disabled>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">موبایل <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="mobile"
-                           value="<?= $val('mobile') ?>" maxlength="11" pattern="09\d{9}" required dir="ltr">
+                           value="<?= $val('mobile') ?>" maxlength="11" pattern="09\d{9}" required>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد پستی <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="postal_code"
-                           value="<?= $val('postal_code') ?>" maxlength="10" pattern="\d{10}" required dir="ltr">
+                           value="<?= $val('postal_code') ?>" maxlength="10" pattern="\d{10}" required>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">نام پدر</label>
@@ -409,7 +409,7 @@ $docLabels = [
                 <div class="col-md-4">
                     <label class="form-label">شناسه قبض برق</label>
                     <input type="text" class="form-control" name="electricity_bill_id"
-                           value="<?= $val('electricity_bill_id') ?>" maxlength="20" dir="ltr">
+                           value="<?= $val('electricity_bill_id') ?>" maxlength="20">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">خیابان</label>
@@ -510,7 +510,7 @@ $docLabels = [
                                 <?php endif; ?>
                             </a>
                             <span class="badge text-bg-info mb-1" style="font-size:.65rem"><?= htmlspecialchars($docLabel, ENT_QUOTES, 'UTF-8') ?></span>
-                            <small class="text-muted text-truncate d-block" dir="ltr"
+                            <small class="text-muted text-truncate d-block"
                                    title="<?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?>"
                                    style="font-size:.7rem"><?= htmlspecialchars($doc->originalName, ENT_QUOTES, 'UTF-8') ?></small>
                             <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/delete-document"

@@ -166,11 +166,11 @@ if (is_array($lastRun)) {
     <div class="card-body">
         <dl class="row mb-0 small">
             <dt class="col-sm-4 text-muted">شروع دور</dt>
-            <dd class="col-sm-8" dir="ltr">
+            <dd class="col-sm-8">
                 <?= $cycleStart !== null ? htmlspecialchars((string)$cycleStart, ENT_QUOTES, 'UTF-8') : '—' ?>
             </dd>
             <dt class="col-sm-4 text-muted">پایان دور</dt>
-            <dd class="col-sm-8" dir="ltr">
+            <dd class="col-sm-8">
                 <?= $cycleEnd !== null ? htmlspecialchars((string)$cycleEnd, ENT_QUOTES, 'UTF-8') : '—' ?>
             </dd>
             <dt class="col-sm-4 text-muted">مجموع تطبیق‌های این دور</dt>

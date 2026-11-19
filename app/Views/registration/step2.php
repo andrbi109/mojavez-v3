@@ -90,7 +90,7 @@ require __DIR__ . '/_progress.php';
                             <input type="text" class="form-control" id="postal_code" name="postal_code"
                                 value="<?= htmlspecialchars($values['postal_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                 pattern="[0-9]{10}" maxlength="10"
-                                dir="ltr" style="text-align:right;" required>
+                                style="text-align:right;" required>
                         </div>
                     </div>
 

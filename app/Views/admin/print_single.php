@@ -902,7 +902,7 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
                 مدیریت: <?= $e($ownerName) ?> —
             <?php endif; ?>
             تاریخ چاپ: <?= $e($printStamp) ?> —
-            کد رهگیری: <span dir="ltr"><?= $e($applicant->trackingCode) ?></span>
+            کد رهگیری: <span><?= $e($applicant->trackingCode) ?></span>
         </div>
     </div>
 

@@ -204,7 +204,7 @@ $badgeFor = static function (string $status): string {
                                                     'UTF-8'
                                                 ) ?>
                                             </a>
-                                            <div class="text-muted small" dir="ltr">
+                                            <div class="text-muted small">
                                                 <?= htmlspecialchars((string)$e['tracking_code'], ENT_QUOTES, 'UTF-8') ?>
                                             </div>
                                         </td>
@@ -216,7 +216,7 @@ $badgeFor = static function (string $status): string {
                                                 </div>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="small" dir="ltr">
+                                        <td class="small">
                                             <?= htmlspecialchars((string)($e['sms_code'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?>
                                         </td>
                                         <td>
@@ -224,7 +224,7 @@ $badgeFor = static function (string $status): string {
                                                 <?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>
                                             </span>
                                         </td>
-                                        <td class="text-muted small" dir="ltr">
+                                        <td class="text-muted small">
                                             <?= htmlspecialchars((string)$e['created_at'], ENT_QUOTES, 'UTF-8') ?>
                                         </td>
                                         <td class="text-end">

@@ -37,7 +37,7 @@
                         <td><?= htmlspecialchars((string)$r['title'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)($r['category'] ?? '—') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string)($r['service_type_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr"><?= (int)$r['sort_order'] ?></td>
+                        <td><?= (int)$r['sort_order'] ?></td>
                         <td>
                             <?php if ($isActive): ?><span class="badge text-bg-success">فعال</span><?php else: ?><span class="badge text-bg-secondary">غیرفعال</span><?php endif; ?>
                         </td>

@@ -99,7 +99,7 @@
                                 <td class="cell-processed"><?= (int)($b['processed_rows'] ?? 0) ?></td>
                                 <td class="cell-matched"><?= (int)($b['matched_rows'] ?? 0) ?></td>
                                 <td class="cell-status"><span class="badge <?= $badge ?>"><?= htmlspecialchars($st !== '' ? $st : '—', ENT_QUOTES, 'UTF-8') ?></span></td>
-                                <td class="small text-muted" dir="ltr"><?= htmlspecialchars((string)($b['created_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="small text-muted"><?= htmlspecialchars((string)($b['created_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td class="text-end">
                                     <button type="button" class="btn btn-sm btn-outline-info btn-watch" data-id="<?= (int)$b['id'] ?>">
                                         <i class="bi bi-eye"></i>

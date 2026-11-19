@@ -103,13 +103,13 @@ $currentPersianYear = 1404; // fallback; JS adjusts to today on the client.
                         <label class="form-label">کد ملی <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" name="national_code"
                                value="<?= $formValue('national_code') ?>"
-                               maxlength="10" pattern="\d{10}" required dir="ltr">
+                               maxlength="10" pattern="\d{10}" required>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">شماره تلفن همراه <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" name="mobile"
                                value="<?= $formValue('mobile') ?>"
-                               maxlength="11" pattern="09\d{9}" placeholder="09XXXXXXXXX" required dir="ltr">
+                               maxlength="11" pattern="09\d{9}" placeholder="09XXXXXXXXX" required>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">نام پدر</label>
@@ -289,7 +289,7 @@ $currentPersianYear = 1404; // fallback; JS adjusts to today on the client.
                         <label class="form-label">کد پستی <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" name="postal_code"
                                value="<?= $formValue('postal_code') ?>"
-                               maxlength="10" pattern="\d{10}" required dir="ltr">
+                               maxlength="10" pattern="\d{10}" required>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">وضعیت مالکیت</label>
@@ -335,7 +335,7 @@ $currentPersianYear = 1404; // fallback; JS adjusts to today on the client.
                     <div class="col-md-6">
                         <label class="form-label">شناسه قبض برق</label>
                         <input type="text" class="form-control" name="electricity_bill_id"
-                               value="<?= $formValue('electricity_bill_id') ?>" maxlength="20" dir="ltr">
+                               value="<?= $formValue('electricity_bill_id') ?>" maxlength="20">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">خیابان</label>

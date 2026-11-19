@@ -95,7 +95,7 @@ $csrfToken  = $this->csrf->token();
                                minlength="3" maxlength="50"
                                pattern="[a-zA-Z0-9_.]+"
                                placeholder="مثال: ali.reza"
-                               dir="ltr" style="text-align:right;">
+                               style="text-align:right;">
                         <div class="form-text">۳ تا ۵۰ نویسه: حروف کوچک انگلیسی، عدد، زیرخط و نقطه.</div>
                     </div>
 
@@ -105,7 +105,7 @@ $csrfToken  = $this->csrf->token();
                                value="<?= htmlspecialchars($mobile, ENT_QUOTES, 'UTF-8') ?>"
                                pattern="09\d{9}" maxlength="11"
                                placeholder="09123456789"
-                               dir="ltr" style="text-align:right;" required>
+                               style="text-align:right;" required>
                         <div class="form-text">شماره موبایل به‌عنوان شناسهٔ ورود استفاده می‌شود.</div>
                     </div>
 
@@ -117,7 +117,7 @@ $csrfToken  = $this->csrf->token();
                                value=""
                                maxlength="254"
                                placeholder="example@domain.com"
-                               dir="ltr" style="text-align:right;">
+                               style="text-align:right;">
                     </div>
 
                     <div class="mb-3">

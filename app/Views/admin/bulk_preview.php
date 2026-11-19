@@ -83,12 +83,12 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                                         <?php endif; ?>
                                     </td>
                                     <td><?= (int)$r['idx'] + 1 ?></td>
-                                    <td dir="ltr"><code><?= $esc($r['national_code']) ?></code></td>
+                                    <td><code><?= $esc($r['national_code']) ?></code></td>
                                     <td><?= $esc($r['first_name']) ?></td>
                                     <td><?= $esc($r['last_name']) ?></td>
-                                    <td dir="ltr"><code><?= $esc($r['mobile']) ?></code></td>
+                                    <td><code><?= $esc($r['mobile']) ?></code></td>
                                     <td><?= $esc($r['service_type_id']) ?></td>
-                                    <td dir="ltr"><code><?= $esc($r['postal_code']) ?></code></td>
+                                    <td><code><?= $esc($r['postal_code']) ?></code></td>
                                     <td>
                                         <?php if ($r['valid']): ?>
                                             <span class="badge text-bg-success">

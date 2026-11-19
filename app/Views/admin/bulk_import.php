@@ -39,13 +39,13 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                     </div>
                     <div class="mb-2">
                         <strong>نمونهٔ هدر:</strong>
-                        <code class="d-block bg-light px-2 py-1 rounded mt-1" dir="ltr">
+                        <code class="d-block bg-light px-2 py-1 rounded mt-1">
                             <?= $esc(implode(',', $columns)) ?>
                         </code>
                     </div>
                     <div>
                         <strong>نمونهٔ ردیف:</strong>
-                        <code class="d-block bg-light px-2 py-1 rounded mt-1" dir="ltr">
+                        <code class="d-block bg-light px-2 py-1 rounded mt-1">
                             1234567890,علی,احمدی,09123456789,1,1234567890
                         </code>
                     </div>
@@ -56,7 +56,7 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                     <strong>نکات:</strong>
                     <ul class="mb-0 mt-1 ps-3">
                         <li>کد ملی باید ۱۰ رقم باشد، در غیر این صورت ردیف skip می‌شود.</li>
-                        <li>موبایل باید با <code dir="ltr">09</code> شروع شود و ۱۱ رقم باشد.</li>
+                        <li>موبایل باید با <code>09</code> شروع شود و ۱۱ رقم باشد.</li>
                         <li>کد پستی باید ۱۰ رقم باشد.</li>
                         <li>ردیف‌هایی که کد ملی‌شان قبلاً در دیتابیس موجود است skip می‌شوند.</li>
                     </ul>
