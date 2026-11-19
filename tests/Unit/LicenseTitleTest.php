@@ -52,11 +52,19 @@ final class LicenseTitleTest extends TestCase
 
     public function run(): void
     {
+        // Phase 27 (v1.9.9): testByService runs BEFORE testToggle. The
+        // byService query filters by is_active = 1 (per the
+        // LicenseTitleController::byService action), so it must run while
+        // the fixture row is still active. testToggle then flips
+        // is_active to 0 (and finally testDelete removes the row).
+        // Previously testByService ran after testToggle, which left
+        // is_active = 0, so the query returned no rows and the
+        // assertion `in_array($this->title, $titles, true)` failed.
         $this->testCreate();
         $this->testRead();
         $this->testUpdate();
-        $this->testToggle();
         $this->testByService();
+        $this->testToggle();
         $this->testDelete();
     }
 

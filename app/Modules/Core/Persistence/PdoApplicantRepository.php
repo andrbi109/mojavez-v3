@@ -108,6 +108,19 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
             'has_overdue_installments', 'priority', 'payment_required', 'payment_requested_at',
             'license_state', 'license_valid_until', 'registration_started_at',
             'registration_completed_at',
+            // Phase 35 (v2.0.1): persist on create so the admin manual
+            // registration form's consent checkbox is actually saved. The
+            // column has DEFAULT 0, so older create() callers that omit it
+            // still get the same value as before.
+            'consent_external_share',
+            // Phase 60 (v2.2.6) — bulk-imported applicants start unlocked
+            // (imported_edit_locked=0) so they can edit their application
+            // exactly ONCE from the user panel. The create() default is
+            // 0 too (the migration's DEFAULT 0), so callers that omit it
+            // (the wizard, the manual-register form) behave exactly as
+            // before — only BulkImportController::executeRow sets it
+            // explicitly to 0 to make the intent visible at the call site.
+            'imported_edit_locked',
         ];
         $cols = [];
         $placeholders = [];
@@ -129,13 +142,21 @@ final class PdoApplicantRepository extends PdoRepository implements ApplicantRep
     public function update(int $id, array $data): void
     {
         $updatable = [
-            'first_name', 'last_name', 'postal_code', 'mobile', 'birth_date',
-            'father_name', 'marital_status', 'children_count', 'physical_condition',
-            'disability_details', 'income_decile', 'has_court_case', 'has_active_loan',
-            'has_overdue_installments', 'priority', 'service_type_id',
+            'first_name', 'last_name', 'national_code', 'postal_code', 'mobile', 'birth_date',
+            'father_name', 'applicant_type', 'marital_status', 'children_count',
+            'physical_condition', 'disability_details', 'income_decile', 'has_court_case',
+            'has_active_loan', 'has_overdue_installments', 'priority', 'service_type_id',
             'parent_application_id', 'user_account_id', 'consent_external_share',
             'payment_required', 'payment_requested_at', 'registration_started_at',
-            'registration_completed_at',
+            'registration_completed_at', 'tracking_code', 'current_status',
+            'license_state', 'license_valid_until',
+            // Phase 60 (v2.2.6) — flipped to 1 by the POST handler of
+            // /panel/requests/{id}/edit after the user's one-time edit. The
+            // admin /admin/update handler doesn't touch this column (admin
+            // edits are always allowed and don't lock the user out — the
+            // user's edit window is already closed by the time the admin
+            // intervenes).
+            'imported_edit_locked',
         ];
         $sets = [];
         $params = [];

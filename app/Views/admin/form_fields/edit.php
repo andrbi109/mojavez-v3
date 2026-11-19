@@ -31,7 +31,7 @@ $isEdit = !empty($field['id']);
     <div class="row g-3">
         <div class="col-md-6">
             <label class="form-label">کلید فیلد <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" name="field_key" dir="ltr"
+            <input type="text" class="form-control" name="field_key"
                    value="<?= htmlspecialchars((string)($field['field_key'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                    required maxlength="64" pattern="[a-zA-Z][a-zA-Z0-9_]{0,63}">
             <div class="form-text">با حرف انگلیسی شروع شود؛ فقط حرف، عدد و زیرخط. باید یکتا باشد.</div>
@@ -76,19 +76,19 @@ $isEdit = !empty($field['id']);
         </div>
         <div class="col-md-6">
             <label class="form-label">گزینه‌ها (JSON)</label>
-            <textarea class="form-control" name="field_options" dir="ltr" rows="3"
+            <textarea class="form-control" name="field_options" rows="3"
                       placeholder='{"items":["گزینهٔ ۱","گزینهٔ ۲"]}'><?= htmlspecialchars((string)($field['field_options'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
             <div class="form-text">برای select/radio/checkbox — یک آرایهٔ JSON.</div>
         </div>
         <div class="col-md-6">
             <label class="form-label">قواعد اعتبارسنجی (JSON)</label>
-            <textarea class="form-control" name="validation_rules" dir="ltr" rows="3"
+            <textarea class="form-control" name="validation_rules" rows="3"
                       placeholder='{"max_length":100}'><?= htmlspecialchars((string)($field['validation_rules'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
-            <div class="form-text">مانند <code dir="ltr">{"max_length":100,"min_length":3,"pattern":"^[0-9]+$"}</code>.</div>
+            <div class="form-text">مانند <code>{"max_length":100,"min_length":3,"pattern":"^[0-9]+$"}</code>.</div>
         </div>
         <div class="col-md-4">
             <label class="form-label">ترتیب</label>
-            <input type="number" class="form-control" name="sort_order" dir="ltr"
+            <input type="number" class="form-control" name="sort_order"
                    value="<?= (int)($field['sort_order'] ?? 0) ?>">
         </div>
         <div class="col-md-8 d-flex align-items-end gap-4 pt-1">

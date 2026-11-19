@@ -189,7 +189,7 @@ final class AvatarService
         }
 
         $resized = $this->resizeSquare($image, self::AVATAR_SIZE);
-        imagedestroy($image);
+        @imagedestroy($image);
         if ($resized === false) {
             throw new InvalidArgumentException('تغییر اندازهٔ تصویر ناموفق بود.');
         }
@@ -198,10 +198,10 @@ final class AvatarService
         // PNG/WEBP transparency is lost when converting to JPEG — we fill
         // the canvas with white before resampling (in resizeSquare()).
         if (!imagejpeg($resized, $absPath, self::JPEG_QUALITY)) {
-            imagedestroy($resized);
+            @imagedestroy($resized);
             throw new InvalidArgumentException('ذخیرهٔ تصویر ناموفق بود.');
         }
-        imagedestroy($resized);
+        @imagedestroy($resized);
         @chmod($absPath, 0640);
 
         // ----- DB write -----

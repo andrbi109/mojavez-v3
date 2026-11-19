@@ -9,6 +9,7 @@
  *   $siteName        string
  *   $siteDescription string
  *   $baseUrl         string
+ *   $supportEmail    string  (Phase 20 — empty if no setting)
  *
  * The view is intentionally a content-only fragment (no <html>/<head>/<body>)
  * because layout.php supplies those. This is the same convention used by
@@ -21,10 +22,13 @@
 /** @var string $siteName */
 /** @var string $siteDescription */
 /** @var string $baseUrl */
+/** @var string $supportEmail */
 
 $siteName        = $siteName        ?? 'سامانهٔ مجوز';
 $siteDescription = $siteDescription ?? '';
 $baseUrl         = $baseUrl         ?? '/';
+$supportEmail    = $supportEmail    ?? '';
+$supportEmailHref = $supportEmail !== '' ? 'mailto:' . rawurlencode($supportEmail) : '';
 ?>
 
 <div class="row justify-content-center">
@@ -47,6 +51,20 @@ $baseUrl         = $baseUrl         ?? '/';
                     <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>guide" class="btn btn-outline-secondary">
                         <i class="bi bi-question-circle"></i> راهنما
                     </a>
+                </div>
+                <hr class="my-4">
+                <div class="small text-muted">
+                    <i class="bi bi-life-preserver"></i>
+                    اگر به‌طور مداوم به این خطا می‌رسید،
+                    <?php if ($supportEmail !== '' && $supportEmailHref !== ''): ?>
+                        با
+                        <a href="<?= htmlspecialchars($supportEmailHref, ENT_QUOTES) ?>">
+                            پشتیبانی تماس بگیرید
+                        </a>
+                        <span>(<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>)</span>.
+                    <?php else: ?>
+                        با مدیر سامانه تماس بگیرید.
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

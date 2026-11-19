@@ -164,28 +164,15 @@ enum ApplicantStatus: string
 
     /**
      * The bootstrap CSS colour class for the status badge.
+     *
+     * Phase 52 (v2.1.8): delegates to {@see \App\Shared\Support\StatusBadge::color()}
+     * so the colour is read from `config/statuses.php` (the single source
+     * of truth for the 18-status cycle). The previous `match` statement
+     * duplicated the config values and went out of sync whenever the
+     * config was edited.
      */
     public function badgeColor(): string
     {
-        return match ($this) {
-            self::Draft                       => 'secondary',
-            self::InfoComplete                => 'info',
-            self::AddressVerification,
-            self::FieldExpertReview,
-            self::AddressSabtAhvalMatch        => 'primary',
-            self::IssueRequest                => 'primary',
-            self::DocUploadToOrg,
-            self::DocCorrectionRequest         => 'warning',
-            self::InitialApproval,
-            self::FinalApproval,
-            self::LicenseIssuance,
-            self::LicenseDelivery,
-            self::LicenseImageReceipt,
-            self::InitialApprovalSMKH,
-            self::FinalApprovalTrackingCode    => 'success',
-            self::ViewAndPrint                => 'dark',
-            self::Rejected,
-            self::Cancelled                    => 'danger',
-        };
+        return \App\Shared\Support\StatusBadge::color($this->value);
     }
 }

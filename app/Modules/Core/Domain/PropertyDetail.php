@@ -7,8 +7,15 @@ namespace App\Modules\Core\Domain;
  * PropertyDetail — property info for an applicant (1:1 with applicants).
  *
  * Inherited from v2's `property_details` table. The golden-link orchestrator
- * (Phase 4) reads `province` + `county` to build a search Filter for the
- * upstream national gateway.
+ * (Phase 4) reads `province` + `county`/`township` to build a search Filter
+ * for the upstream national gateway.
+ *
+ * Phase 24 (v1.9.6 / D-5-5): adds a separate `township` column (the resolved
+ * township title from the wizard's `township_id` select). The matcher
+ * (ApplicantSyncAdapter) prefers `township` if set and falls back to
+ * `county` for backward compat with rows written by older code. The
+ * `county` column stays as the v2 value (the city/district label that
+ * pre-Phase-24 code wrote there).
  *
  * Storage: `property_details` table.
  */
@@ -28,6 +35,10 @@ final readonly class PropertyDetail
         public ?string $addressStreet = null,
         public ?string $addressAlley = null,
         public ?string $addressPlaque = null,
+        // Phase 24 (v1.9.6 / D-5-5): resolved township title (preferred
+        // by the matcher over `county`). NULL on rows written before
+        // migration 013 — the matcher falls back to `county` for those.
+        public ?string $township = null,
     ) {}
 
     /**
@@ -49,6 +60,7 @@ final readonly class PropertyDetail
             addressStreet: isset($row['address_street']) ? (string)$row['address_street'] : null,
             addressAlley: isset($row['address_alley']) ? (string)$row['address_alley'] : null,
             addressPlaque: isset($row['address_plaque']) ? (string)$row['address_plaque'] : null,
+            township: isset($row['township']) ? (string)$row['township'] : null,
         );
     }
 

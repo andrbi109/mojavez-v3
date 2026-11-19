@@ -24,19 +24,18 @@ use App\Shared\Support\StructuredLogger;
  * without a real cron job.
  *
  * Per docs/00-MASTER.md §10 — endpoints:
- *   GET  /admin/sync/status         — latest cycle summary + poor man's cron tick.
- *   GET  /admin/sync/pending        — operator-flagged matches pending review.
- *   POST /admin/sync/run            — manually trigger a full cycle (admin only).
+ *   GET  /admin/sync/status         — HTML: latest cycle summary + poor man's cron tick.
+ *   GET  /admin/sync/pending        — HTML: operator-flagged matches pending review.
+ *   POST /admin/sync/run            — manually trigger a full cycle (admin only). JSON.
+ *   POST /admin/sync/resolve        — confirm or reject a pending flagged match.
+ *
+ * Phase 41 (v2.0.7) — /admin/sync/status and /admin/sync/pending were
+ * converted from JSON responses to HTML views (gateway_sync_status.php +
+ * gateway_sync_pending.php). The /admin/sync/readiness route was removed
+ * (route + method + view + sidebar link). A new /admin/sync/resolve POST
+ * endpoint was added so the pending page's approve/reject buttons work.
  *
  * Auth: requireRole(['admin', 'sync_operator']) — both realms accepted.
- *
- * Phase 10 fix: this controller previously did NOT extend the base Controller
- * class and therefore bypassed requireLogin()/requireRole() entirely — meaning
- * /admin/sync/* was reachable by unauthenticated users (the docblock claimed
- * the base class enforced auth, but the class didn't extend it). Now extends
- * Controller and calls requireRole() at the top of every action. This is both
- * a security fix and a 404-adjacent fix (unauthenticated users now get a 302
- * to /admin/login instead of raw JSON, which is the expected admin-area UX).
  */
 final class SyncAdminController extends Controller
 {
@@ -54,7 +53,7 @@ final class SyncAdminController extends Controller
     }
 
     /**
-     * GET /admin/sync/status — latest cycle summary.
+     * GET /admin/sync/status — latest cycle summary as HTML.
      * Also drains one job from the queue (poor man's cron).
      */
     public function status(Request $request, array $params = []): Response
@@ -66,50 +65,95 @@ final class SyncAdminController extends Controller
 
         $status = $this->orchestrator->status();
         $status['jobs_drained'] = $jobsRun;
+        $syncInfo = $this->orchestrator->syncInfo();
 
-        return Response::json($status);
+        // Phase 42 (v2.0.8): if a /admin/sync/run just finished, pull its
+        // summary out of the session flash and pass it to the view so the
+        // admin can see the result inline (rather than as a raw JSON blob).
+        // The flash is consumed once — a page refresh won't keep showing it.
+        $lastRun = null;
+        if ($this->session->has('sync_run_flash')) {
+            $lastRun = $this->session->get('sync_run_flash');
+            $this->session->remove('sync_run_flash');
+        }
+
+        return $this->render('admin/gateway_sync_status', [
+            'title'     => 'وضعیت همگام‌سازی درگاه ملی',
+            'status'    => $status,
+            'syncInfo'  => $syncInfo,
+            'jobsRun'   => $jobsRun,
+            'lastRun'   => $lastRun,
+        ]);
     }
 
     /**
-     * GET /admin/sync/pending — operator-flagged matches pending review.
+     * GET /admin/sync/pending — operator-flagged matches pending review (HTML table).
      */
     public function pending(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin', 'sync_operator']);
         $limit = (int)($request->queryParam('limit', 50) ?? 50);
-        $pending = $this->orchestrator->status();
-        return Response::json($pending);
+        $pending = $this->orchestrator->pending($limit);
+        return $this->render('admin/gateway_sync_pending', [
+            'title'   => 'تطبیق‌های در انتظار بررسی',
+            'pending' => $pending,
+            'limit'   => $limit,
+        ]);
     }
 
     /**
      * POST /admin/sync/run — manually trigger a full sync cycle.
+     *
+     * Phase 42 (v2.0.8): the cycle now actually reaches the upstream
+     * (qr.mojavez.ir) and caches whatever it gets. The summary is stored
+     * in the session as a flash message and the user is redirected back
+     * to /admin/sync/status, where the result is rendered in an alert
+     * above the status cards (so the admin sees whether the upstream was
+     * reached, how many licenses were fetched, and how many applicants
+     * were matched).
+     *
+     * For AJAX callers (Accept: application/json or X-Requested-With),
+     * the JSON summary is returned directly — this preserves the API
+     * contract used by external monitors that POST to /admin/sync/run.
      */
     public function run(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
         $batchSize = (int)($request->queryParam('batch_size', 50) ?? 50);
         $summary = $this->orchestrator->runCycle($batchSize);
-        return Response::json($summary);
+
+        // AJAX callers get JSON (preserves the original API contract).
+        if ($request->isAjax()) {
+            return Response::json($summary);
+        }
+
+        // Form-submission callers get a flash + redirect so the result is
+        // visible in the status page rather than as a raw JSON blob.
+        $this->session->set('sync_run_flash', $summary);
+        $this->redirect($this->environment->baseUrl . 'admin/sync/status');
     }
 
     /**
-     * GET /admin/sync/readiness — Stage2ReadinessChecker report (HTML view).
+     * POST /admin/sync/resolve — confirm or reject a pending flagged match.
      *
-     * Renders the 4 §29.2 readiness conditions as Bootstrap cards with
-     * pass/fail badges + the overall `ready` flag + a hint about how to
-     * enable Stage 2 via SettingsController.
-     *
-     * Phase 11 (v1.2.0): pays D-8-4 (DEBT_REVIEW).
+     * Form fields: log_id (int), decision ('confirmed'|'rejected'), note (?string).
+     * After resolving, redirects back to /admin/sync/pending.
      */
-    public function readiness(Request $request, array $params = []): Response
+    public function resolve(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin', 'sync_operator']);
-        /** @var \App\Modules\NationalGateway\Services\Stage2ReadinessChecker $checker */
-        $checker = $this->container->make(\App\Modules\NationalGateway\Services\Stage2ReadinessChecker::class);
-        $report = $checker->check();
-        return $this->render('admin/sync_readiness', [
-            'title'  => 'آمادگی مرحلهٔ ۲',
-            'report' => $report,
-        ]);
+        $logId    = (int)($request->input('log_id', 0) ?? 0);
+        $decision = (string)($request->input('decision', '') ?? '');
+        $note     = $request->input('note');
+        $note     = is_string($note) && $note !== '' ? $note : null;
+
+        if ($logId <= 0 || !in_array($decision, ['confirmed', 'rejected'], true)) {
+            $this->jsonError(422, 'invalid_input', 'log_id یا decision نامعتبر است.');
+        }
+
+        $reviewerId = (int)($this->session->get('admin_user_id', 0) ?? 0);
+        $this->orchestrator->resolve($logId, $reviewerId, $decision, $note);
+
+        $this->redirect($this->environment->baseUrl . 'admin/sync/pending');
     }
 }

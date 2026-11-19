@@ -47,7 +47,7 @@ require __DIR__ . '/_progress.php';
                             <select class="form-select" id="province_id" name="province_id" required>
                                 <option value="">— انتخاب کنید —</option>
                                 <?php foreach ($provinces as $p): ?>
-                                    <option value="<?= (int)$p['id'] ?>"
+                                    <option value="<?= htmlspecialchars((string)$p['id'], ENT_QUOTES) ?>"
                                         <?= ($values['province_id'] ?? '') === (string)$p['id'] ? 'selected' : '' ?>>
                                         <?= htmlspecialchars((string)($p['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                     </option>
@@ -59,8 +59,8 @@ require __DIR__ . '/_progress.php';
                             <select class="form-select" id="township_id" name="township_id" required>
                                 <option value="">— انتخاب کنید —</option>
                                 <?php foreach ($townships as $t): ?>
-                                    <option value="<?= (int)$t['id'] ?>"
-                                        data-province-id="<?= (int)($t['province_id'] ?? 0) ?>"
+                                    <option value="<?= htmlspecialchars((string)$t['id'], ENT_QUOTES) ?>"
+                                        data-province-id="<?= htmlspecialchars((string)($t['province_id'] ?? ''), ENT_QUOTES) ?>"
                                         <?= ($values['township_id'] ?? '') === (string)$t['id'] ? 'selected' : '' ?>>
                                         <?= htmlspecialchars((string)($t['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                     </option>
@@ -90,7 +90,7 @@ require __DIR__ . '/_progress.php';
                             <input type="text" class="form-control" id="postal_code" name="postal_code"
                                 value="<?= htmlspecialchars($values['postal_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                 pattern="[0-9]{10}" maxlength="10"
-                                dir="ltr" style="text-align:right;" required>
+                                style="text-align:right;" required>
                         </div>
                     </div>
 

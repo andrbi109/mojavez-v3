@@ -23,7 +23,13 @@ final class PatternMatcherTest extends TestCase
 
     public function setUp(): void
     {
-        $this->matcher = new \App\Modules\NationalGateway\Services\PatternMatcher();
+        // Phase 24 (v1.9.6 / D-5-4): default config wires
+        // business_address → 'contains' mode. Construct the matcher
+        // with that mode + the default 0.7 confidence multiplier.
+        $this->matcher = new \App\Modules\NationalGateway\Services\PatternMatcher(
+            ['business_address' => 'contains'],
+            0.7
+        );
     }
 
     public function run(): void
@@ -105,6 +111,82 @@ final class PatternMatcherTest extends TestCase
         // 4c. Empty pattern.
         $r = $this->matcher->matchText($full, '');
         $this->assertFalse($r->matched, 'empty pattern → inconclusive');
+
+        // ========================================
+        // 4d. matchAddress — fuzzy contains mode (Phase 24 / D-5-4)
+        // ========================================
+
+        // 4d-1. Strict suffix still works (matchAddress tries matchText first).
+        $r = $this->matcher->matchAddress($full, '*****، خیابان مطهری 11');
+        $this->assertTrue($r->matched, 'address strict suffix MATCH (full conf)');
+        $this->assertSame(1.0, $r->scoreMultiplier, 'strict suffix = full confidence');
+
+        // 4d-2. Fuzzy contains — local address doesn't END with the suffix
+        //       but CONTAINS it. This is the case the strict matcher fails
+        //       on (and the reason matchAddress exists).
+        $localAddress = 'خیابان مطهری 11، کوچه علی‌آباد، پلاک 25';
+        $maskedAddress = '*****، خیابان مطهری 11';
+        $r = $this->matcher->matchAddress($localAddress, $maskedAddress);
+        $this->assertTrue($r->matched, 'address fuzzy contains MATCH');
+        $this->assertSame(0.7, $r->scoreMultiplier, 'fuzzy contains = 0.7 confidence');
+
+        // 4d-3. No match — completely different addresses.
+        $r = $this->matcher->matchAddress('خیابان ولیعصر 50، پلاک 12', $maskedAddress);
+        $this->assertFalse($r->matched, 'address no-contains → mismatch');
+
+        // 4d-4. Empty pattern is inconclusive.
+        $r = $this->matcher->matchAddress($localAddress, '');
+        $this->assertFalse($r->matched, 'address empty pattern → inconclusive');
+
+        // 4d-5. Pattern with only `*****` (no visible suffix) is inconclusive.
+        $r = $this->matcher->matchAddress($localAddress, '*****');
+        $this->assertFalse($r->matched, 'address all-wildcard → inconclusive');
+
+        // 4d-6. Persian digits in the local address normalize before
+        //       contains check (۱۱ == 11).
+        $r = $this->matcher->matchAddress('خیابان مطهری ۱۱، کوچه علی‌آباد', '*****، خیابان مطهری 11');
+        $this->assertTrue($r->matched, 'address Persian-digit normalization before contains');
+
+        // ========================================
+        // 4e. Quorum uses fuzzy contains for business_address
+        // ========================================
+
+        // 4e-1. AutoConfirmed via national code + province + fuzzy
+        //       business_address (contains mode). The fuzzy match
+        //       counts as a real field for the quorum count (national
+        //       + 2 others → AutoConfirmed) even though its score
+        //       contribution is reduced (4 × 0.7 = 2.8 → 2 after floor).
+        $licenseAddr = $this->buildTestLicense(
+            maskedNationalCode: '072****107',
+            applicantName: 'عبدالکریم محمدی',
+            fatherName: 'محمد',
+            provinceTitle: 'خراسان رضوی',
+            townshipTitle: 'تربت جام',
+            businessAddress: '*****، خیابان مطهری 11',
+        );
+        $personAddr = $this->buildTestPerson(
+            nationalCode: '0720593107',
+            firstName: 'عبدالکریم',
+            lastName: 'محمدی',
+            fatherName: 'محمد',
+        );
+        $propertyAddr = [
+            'province' => 'خراسان رضوی',
+            'township' => 'تربت جام',
+            // Local address is the local concatenation order — does NOT
+            // end with the upstream's suffix, but CONTAINS it after
+            // normalization.
+            'business_address' => 'خیابان مطهری 11، کوچه علی‌آباد، پلاک 25',
+        ];
+        $r = $this->matcher->matchQuorum($licenseAddr, $personAddr, $propertyAddr);
+        $this->assertTrue($r->matched, 'quorum with fuzzy address → matched');
+        $this->assertTrue($r->nationalCodeMatched, 'national code matched');
+        $this->assertStringContainsString('business_address', implode(',', $r->fieldsMatched), 'business_address counted as matched field');
+        $this->assertSame(
+            \App\Modules\NationalGateway\Domain\Enums\MatchConfidence::AutoConfirmed,
+            $r->confidence,
+            'AutoConfirmed even with fuzzy address (national + name + father + province + township + address)'
+        );
 
         // ========================================
         // 5. matchExactText — name, father name
@@ -212,12 +294,13 @@ final class PatternMatcherTest extends TestCase
      * Build a test License with golden-link anchor fields.
      */
     private function buildTestLicense(
-        string $maskedNationalCode = null,
+        ?string $maskedNationalCode = null,
         string $applicantName = '',
-        string $fatherName = null,
+        ?string $fatherName = null,
         string $provinceTitle = '',
         string $townshipTitle = '',
         string $licenseTitle = 'کسب و کار خانگی',
+        ?string $businessAddress = null,
     ): \App\Modules\NationalGateway\Domain\License {
         return new \App\Modules\NationalGateway\Domain\License(
             requestNumber: 'TEST-' . random_int(1000, 9999),
@@ -231,6 +314,7 @@ final class PatternMatcherTest extends TestCase
             status: \App\Modules\NationalGateway\Domain\Enums\LicenseStatus::Active,
             maskedNationalCode: $maskedNationalCode,
             fatherName: $fatherName,
+            businessAddress: $businessAddress,
         );
     }
 
@@ -241,7 +325,7 @@ final class PatternMatcherTest extends TestCase
         string $nationalCode = '0720593107',
         string $firstName = 'تست',
         string $lastName = 'تست',
-        string $fatherName = null,
+        ?string $fatherName = null,
     ): \App\Modules\Core\Domain\Person {
         return new \App\Modules\Core\Domain\Person(
             id: 0,

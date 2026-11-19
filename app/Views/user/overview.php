@@ -16,12 +16,15 @@
 /** @var int $unreadCount */
 /** @var string $baseUrl */
 
+use App\Shared\Support\PersianDate;
+use App\Shared\Support\StatusBadge;
+
 $serviceTitle = function (int $id) use ($serviceTypes): string {
     return $serviceTypes[$id] ?? '—';
 };
 ?>
 <div class="row g-3 mb-4">
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-sm-6 col-lg-3">
         <div class="card text-center h-100">
             <div class="card-body">
                 <i class="bi bi-folder2-open display-6 text-brand"></i>
@@ -30,7 +33,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-sm-6 col-lg-3">
         <div class="card text-center h-100">
             <div class="card-body">
                 <i class="bi bi-hourglass-split display-6 text-warning"></i>
@@ -39,7 +42,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-sm-6 col-lg-3">
         <div class="card text-center h-100">
             <div class="card-body">
                 <i class="bi bi-patch-check display-6 text-success"></i>
@@ -48,6 +51,40 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             </div>
         </div>
     </div>
+    <?php
+    // Phase 57b — fourth widget: رد شده (rejected). Previously rejected
+    // applications were lumped into the "در حال بررسی" count because
+    // the controller's pending bucket only excluded
+    // ['لغو','صدور مجوز','تحویل مجوز']. The controller was fixed in
+    // this same phase to exclude rejected + cancelled and surface
+    // them as a separate count. ?>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-x-octagon display-6 text-danger"></i>
+                <div class="h2 mt-2 mb-0"><?= (int)($stats['rejected_apps'] ?? 0) ?></div>
+                <div class="text-muted small">رد شده</div>
+            </div>
+        </div>
+    </div>
+    <?php
+    // Phase 57b — fifth widget: بسته شده (closed). Terminal statuses
+    // other than rejected and تحویل مجوز (which is already counted
+    // under "صادرشده"). For typical users this is just 'لغو' (cancelled)
+    // — household-business applicants also pick up 'تأیید نهایی دریافت
+    // کد رهگیری'. Hidden entirely when the count is zero so the panel
+    // doesn't show an empty 5th card on a fresh account. ?>
+    <?php if ((int)($stats['closed_apps'] ?? 0) > 0): ?>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-archive display-6 text-secondary"></i>
+                <div class="h2 mt-2 mb-0"><?= (int)($stats['closed_apps'] ?? 0) ?></div>
+                <div class="text-muted small">بسته شده</div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <div class="row g-3">
@@ -60,7 +97,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
             <div class="card-body">
                 <?php if ($latestApp === null): ?>
                     <p class="text-muted mb-0">هنوز درخواستی ثبت نکرده‌اید.</p>
-                    <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>" class="btn btn-primary mt-3">
+                    <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>register" class="btn btn-primary mt-3">
                         <i class="bi bi-plus-lg"></i> شروع ثبت‌نام
                     </a>
                 <?php else: ?>
@@ -70,15 +107,20 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                         <code class="user-select-all"><?= htmlspecialchars((string)($latestApp['tracking_code'] ?? '—'), ENT_QUOTES) ?></code>
                         <span class="mx-2">•</span>
                         وضعیت:
-                        <span class="badge bg-info"><?= htmlspecialchars((string)($latestApp['current_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></span>
+                        <span class="badge bg-<?= htmlspecialchars(StatusBadge::color((string)($latestApp['current_status'] ?? '')), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string)($latestApp['current_status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></span>
                     </div>
                     <?php if (!empty($timeline)): ?>
                         <h6 class="small text-uppercase text-muted">خط زمانی وضعیت</h6>
                         <ul class="list-unstyled ms-3 border-s-2 border-info border-opacity-50">
                             <?php foreach (array_slice($timeline, 0, 6) as $t): ?>
+                                <?php
+                                // Support both array (legacy) and StatusLogEntry (object) forms.
+                                $tStatus = is_array($t) ? (string)($t['status'] ?? $t['to_status'] ?? '—') : (string)($t->statusName ?? '—');
+                                $tCreated = is_array($t) ? (string)($t['created_at'] ?? '') : (string)($t->createdAt ?? '');
+                                ?>
                                 <li class="mb-2">
-                                    <div class="fw-semibold"><?= htmlspecialchars((string)($t['status'] ?? ($t['to_status'] ?? '—')), ENT_QUOTES, 'UTF-8') ?></div>
-                                    <div class="small text-muted"><?= htmlspecialchars((string)($t['created_at'] ?? ''), ENT_QUOTES) ?></div>
+                                    <div class="fw-semibold"><?= htmlspecialchars($tStatus, ENT_QUOTES, 'UTF-8') ?></div>
+                                    <div class="small text-muted"><?= htmlspecialchars(PersianDate::format($tCreated), ENT_QUOTES, 'UTF-8') ?></div>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -100,7 +142,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                            class="list-group-item list-group-item-action <?= empty($n['is_read']) ? 'fw-semibold' : '' ?>">
                             <div class="d-flex w-100 justify-content-between">
                                 <span class="small"><?= htmlspecialchars((string)($n['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
-                                <small class="text-muted"><?= htmlspecialchars((string)($n['created_at'] ?? ''), ENT_QUOTES) ?></small>
+                                <small class="text-muted"><?= htmlspecialchars(PersianDate::format((string)($n['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></small>
                             </div>
                             <div class="small text-muted text-truncate"><?= htmlspecialchars((string)($n['body'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
                         </a>
@@ -119,7 +161,7 @@ $serviceTitle = function (int $id) use ($serviceTypes): string {
                         <div class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="small fw-semibold"><?= htmlspecialchars((string)($p['purpose'] ?? ($p['description'] ?? 'پرداخت')), ENT_QUOTES, 'UTF-8') ?></div>
-                                <small class="text-muted"><?= htmlspecialchars((string)($p['created_at'] ?? ''), ENT_QUOTES) ?></small>
+                                <small class="text-muted"><?= htmlspecialchars(PersianDate::format((string)($p['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></small>
                             </div>
                             <span class="badge bg-<?= ($p['status'] ?? '') === 'approved' ? 'success' : 'secondary' ?>">
                                 <?= htmlspecialchars((string)($p['status'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>

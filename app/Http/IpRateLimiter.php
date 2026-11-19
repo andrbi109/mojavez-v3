@@ -150,8 +150,22 @@ final class IpRateLimiter
         }
 
         // Lazy prune: drop buckets older than 2× window (housekeeping).
+        // Phase 27 (v1.9.9): the previous call was `pruneStale($cutoff * 2)`
+        // where `$cutoff = $now - $window`. That multiplication produced a
+        // huge integer (e.g. `2 * (1731800000 - 60) = 3463599880` → year
+        // 2079) so the prune predicate `updated_at < FROM_UNIXTIME(?)`
+        // matched EVERY row in the table (every bucket's updated_at is
+        // before 2079). The lazy prune then deleted all buckets,
+        // including the one just created by this same hit() call,
+        // causing the IpRateLimiterTest to flake ~20% of the time
+        // (probability ≈ 1 - (49/50)^12 of at least one prune firing
+        // during the 12 hit() calls in the test). The docstring says
+        // "drops stale buckets (created_at older than window × 2)" —
+        // the intended threshold is `now - window × 2`, which equals
+        // `$cutoff - $window` (since $cutoff = $now - $window). Fixed
+        // to pass that value.
         if (random_int(1, 50) === 1) {
-            $this->pruneStale($cutoff * 2);
+            $this->pruneStale($cutoff - $window);
         }
         return true;
     }

@@ -185,7 +185,10 @@ final class SmsService
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
-        curl_close($ch);
+        // Phase 58 (v2.2.4): @-suppress PHP 8.5 deprecation notice for
+        // curl_close() (no-op since 8.0, cURL handles are GC'd). Same
+        // pattern as the imagedestroy() fix in phase 56.
+        @curl_close($ch);
 
         if ($response === false) {
             $this->logger->error('Kavenegar curl failed', [

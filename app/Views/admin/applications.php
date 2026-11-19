@@ -3,6 +3,9 @@
 /** @var int $total */
 /** @var int $page */
 /** @var int $pageSize */
+
+use App\Shared\Support\PersianDate;
+use App\Shared\Support\StatusBadge;
 ?>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -30,10 +33,10 @@
                     <tr>
                         <td><span class="moj-tracking-code"><?= htmlspecialchars((string)$row['tracking_code'], ENT_QUOTES, 'UTF-8') ?></span></td>
                         <td><?= htmlspecialchars((string)$row['first_name'] . ' ' . (string)$row['last_name'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td dir="ltr"><?= htmlspecialchars((string)$row['national_code'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td><span class="badge text-bg-secondary"><?= htmlspecialchars((string)$row['current_status'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                        <td><?= htmlspecialchars((string)$row['national_code'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td><span class="badge text-bg-<?= htmlspecialchars(StatusBadge::color((string)$row['current_status']), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string)$row['current_status'], ENT_QUOTES, 'UTF-8') ?></span></td>
                         <td><?= htmlspecialchars((string)$row['license_state'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td class="text-muted small" dir="ltr"><?= htmlspecialchars((string)$row['created_at'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="text-muted small"><?= htmlspecialchars(PersianDate::format((string)$row['created_at']), ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="text-end">
                             <a href="/admin/view/<?= (int)$row['id'] ?>" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-eye"></i> مشاهده

@@ -20,7 +20,7 @@ $csrfField ??= $GLOBALS['csrfField'] ?? '';
                             <span class="input-group-text"><i class="bi bi-hash"></i></span>
                             <input type="text" class="form-control" id="tracking_code" name="tracking_code"
                                    pattern="HG-[A-Z0-9]{8}" placeholder="HG-XXXXXXXX" required
-                                   dir="ltr" style="text-align: right;">
+                                   style="text-align: right;">
                         </div>
                         <div class="form-text">قالب کد: HG به دنبال ۸ نویسهٔ حرف/رقم</div>
                     </div>
@@ -30,7 +30,7 @@ $csrfField ??= $GLOBALS['csrfField'] ?? '';
                         <div class="input-group">
                             <span class="input-group-text"><i class="bi bi-phone"></i></span>
                             <input type="tel" class="form-control" id="mobile" name="mobile"
-                                   pattern="09\d{9}" placeholder="09123456789" required dir="ltr" style="text-align: right;">
+                                   pattern="09\d{9}" placeholder="09123456789" required style="text-align: right;">
                         </div>
                     </div>
                     <?php endif; ?>

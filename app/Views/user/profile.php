@@ -8,7 +8,7 @@
  *
  * توجه: فقط `username` و `mobile` ذخیره می‌شوند. فیلدهای `email` و
  * `display_name` معتبر می‌شوند ولی به‌دلیل نبود ستون در `user_accounts`
- * ذخیره نمی‌شوند (D-12-1).
+ * ذخیره نمی‌شوند.
  */
 /** @var array $account */
 /** @var int $unreadCount */
@@ -95,7 +95,7 @@ $csrfToken  = $this->csrf->token();
                                minlength="3" maxlength="50"
                                pattern="[a-zA-Z0-9_.]+"
                                placeholder="مثال: ali.reza"
-                               dir="ltr" style="text-align:right;">
+                               style="text-align:right;">
                         <div class="form-text">۳ تا ۵۰ نویسه: حروف کوچک انگلیسی، عدد، زیرخط و نقطه.</div>
                     </div>
 
@@ -105,39 +105,29 @@ $csrfToken  = $this->csrf->token();
                                value="<?= htmlspecialchars($mobile, ENT_QUOTES, 'UTF-8') ?>"
                                pattern="09\d{9}" maxlength="11"
                                placeholder="09123456789"
-                               dir="ltr" style="text-align:right;" required>
+                               style="text-align:right;" required>
                         <div class="form-text">شماره موبایل به‌عنوان شناسهٔ ورود استفاده می‌شود.</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="email" class="form-label">
                             ایمیل
-                            <span class="text-muted small">(به‌زودی)</span>
                         </label>
                         <input type="email" class="form-control" id="email" name="email"
                                value=""
                                maxlength="254"
                                placeholder="example@domain.com"
-                               dir="ltr" style="text-align:right;">
-                        <div class="form-text text-muted">
-                            این فیلد در نسخهٔ ۱.۳ ذخیره نمی‌شود (D-12-1) ولی برای
-                            نسخه‌های آینده اعتبارسنجی می‌شود.
-                        </div>
+                               style="text-align:right;">
                     </div>
 
                     <div class="mb-3">
                         <label for="display_name" class="form-label">
                             نام نمایشی
-                            <span class="text-muted small">(به‌زودی)</span>
                         </label>
                         <input type="text" class="form-control" id="display_name" name="display_name"
                                value=""
                                maxlength="100"
                                placeholder="نام کامل شما">
-                        <div class="form-text text-muted">
-                            این فیلد در نسخهٔ ۱.۳ ذخیره نمی‌شود (D-12-1) ولی برای
-                            نسخه‌های آینده اعتبارسنجی می‌شود.
-                        </div>
                     </div>
 
                     <button type="submit" class="btn btn-primary" id="profile-submit">

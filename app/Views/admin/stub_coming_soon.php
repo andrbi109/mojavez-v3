@@ -3,7 +3,7 @@
  * admin/stub_coming_soon.php — placeholder view for deferred admin sections.
  *
  * Phase 10: this view is shared by the three admin sidebar links whose
- * controllers are deferred to v1.2 (DEBT_REVIEW D-7-1):
+ * controllers are deferred to a later release:
  *   - /admin/form-fields    → AdminController::formFields
  *   - /admin/fee-tariff     → AdminController::feeTariff
  *   - /admin/license-titles → AdminController::licenseTitles
@@ -25,7 +25,7 @@
 
 $title       = $title       ?? 'بخش';
 $icon        = $icon        ?? 'bi-info-circle';
-$description = $description ?? 'این بخش در نسخهٔ آینده فعال خواهد شد.';
+$description = $description ?? 'این بخش در حال حاضر فعال نیست.';
 ?>
 
 <div class="row justify-content-center">
@@ -42,11 +42,7 @@ $description = $description ?? 'این بخش در نسخهٔ آینده فعا�
 
                 <div class="alert alert-info d-inline-block" role="alert">
                     <i class="bi bi-info-circle"></i>
-                    این بخش در نسخهٔ ۱.۲ فعال خواهد شد
-                    (<a href="https://github.com/andrbi109/mojavez-v3/blob/main/docs/DEBT_REVIEW.md"
-                        class="alert-link text-decoration-none" target="_blank" rel="noopener">
-                        DEBT_REVIEW D-7-1
-                    </a>).
+                    این بخش در حال حاضر فعال نیست.
                 </div>
 
                 <div class="mt-4">

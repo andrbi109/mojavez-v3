@@ -11,6 +11,7 @@ use App\Http\Session;
 use App\Modules\Core\Services\AutoCancelService;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\JobAndPropertyRepositoryInterface;
+use App\Shared\Contracts\SettingRepositoryInterface;
 use App\Shared\Contracts\StatusLogRepositoryInterface;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
@@ -47,6 +48,10 @@ final class TrackingController extends Controller
         private readonly JobAndPropertyRepositoryInterface $jobAndProperty,
         private readonly StatusLogRepositoryInterface $statusLog,
         private readonly AutoCancelService $autoCancel,
+        // Phase 43 (v2.0.9) — used to inject site_name + owner_name into
+        // the printable A4 view (print.php) instead of hardcoding the
+        // fallback. Autowired by the Container (singleton).
+        private readonly SettingRepositoryInterface $settings,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -136,7 +141,16 @@ final class TrackingController extends Controller
             return Response::html('<!doctype html><meta charset="utf-8"><h1>۴۰۴</h1><p>پرونده یافت نشد.</p>', 404);
         }
         $statusLog = $this->statusLog->findByApplicantId($applicant->id);
-        return $this->render('print', ['applicant' => $applicant, 'statusLog' => $statusLog], 'none');
+        // Phase 43 (v2.0.9) — pull site_name + owner_name from settings
+        // so the printable A4 footer carries the actual owner's name.
+        $siteName  = $this->settings->get('site_name',  'سامانهٔ مجوزهای صنایع دستی');
+        $ownerName = $this->settings->get('owner_name', '');
+        return $this->render('print', [
+            'applicant'  => $applicant,
+            'statusLog'  => $statusLog,
+            'siteName'   => $siteName,
+            'ownerName'  => $ownerName,
+        ], 'none');
     }
 
     /**
@@ -159,6 +173,105 @@ final class TrackingController extends Controller
             [$applicant->id, $applicant->postalCode, $newPostalCode]
         );
         return $this->jsonSuccess(['requested' => true]);
+    }
+
+    /**
+     * POST /tracking/payments/submit — user uploads a payment receipt.
+     *
+     * Phase 15 (v1.6.0): stores a `payments` row with the user-supplied
+     * amount + reference code + a flag for the admin reviewer. Status
+     * is 'در انتظار' until admin review.
+     */
+    public function submitPayment(Request $request, array $params = []): Response
+    {
+        $this->requireAnyLogin();
+        $trackingCode = Validator::trackingCode($request->input('tracking_code'));
+        $amount = (int)$request->input('amount', 0);
+        $reference = Validator::sanitizeText($request->input('reference_code', ''), 50);
+        $purpose = Validator::sanitizeText($request->input('purpose', 'هزینهٔ ثبت‌نام'), 64);
+        if ($trackingCode === null || $amount <= 0) {
+            return $this->jsonError(422, 'invalid_input', 'کد رهگیری یا مبلغ نامعتبر.');
+        }
+        $applicant = $this->applicants->findByTrackingCode($trackingCode);
+        if ($applicant === null) {
+            return $this->jsonError(404, 'not_found', 'پرونده یافت نشد.');
+        }
+        $userAccountId = (int)$this->session->get('user_id');
+        $this->connection()->execute(
+            'INSERT INTO payments
+                (applicant_id, user_account_id, purpose, amount,
+                 reference_code, status)
+             VALUES (?, ?, ?, ?, ?, ?)',
+            [
+                $applicant->id,
+                $userAccountId > 0 ? $userAccountId : null,
+                $purpose !== '' ? $purpose : 'هزینهٔ ثبت‌نام',
+                $amount,
+                $reference !== '' ? $reference : null,
+                'در انتظار',
+            ]
+        );
+        $paymentId = (int)$this->connection()->pdo()->lastInsertId();
+        $this->logger->info('Payment receipt submitted', [
+            '_module'      => 'core',
+            'applicant_id' => $applicant->id,
+            'payment_id'   => $paymentId,
+            'amount'       => $amount,
+        ]);
+        return $this->jsonSuccess(['payment_id' => $paymentId]);
+    }
+
+    /**
+     * POST /tracking/sms/submit — user submits an SMS status check
+     * (for the household-business flow where the upstream sends an SMS
+     * confirmation code that the user copies into the tracking page).
+     *
+     * Phase 15 (v1.6.0): stores a `user_sms_entries` row referencing the
+     * applicant + the SMS template id (if provided) + the user's pasted
+     * text. Status='در انتظار' until admin review.
+     */
+    public function submitSms(Request $request, array $params = []): Response
+    {
+        $this->requireAnyLogin();
+        $trackingCode = Validator::trackingCode($request->input('tracking_code'));
+        $smsCode = Validator::sanitizeText($request->input('sms_code', ''), 50);
+        $smsText = Validator::sanitizeText($request->input('sms_text', ''), 1000);
+        $templateId = (int)$request->input('sms_template_id', 0);
+        if ($trackingCode === null || ($smsCode === '' && $smsText === '')) {
+            return $this->jsonError(422, 'invalid_input', 'کد رهگیری یا متن پیامک نامعتبر.');
+        }
+        $applicant = $this->applicants->findByTrackingCode($trackingCode);
+        if ($applicant === null) {
+            return $this->jsonError(404, 'not_found', 'پرونده یافت نشد.');
+        }
+        // If sms_template_id is 0, fall back to the first active template.
+        if ($templateId <= 0) {
+            $templateId = (int)$this->connection()->scalar(
+                'SELECT id FROM sms_templates WHERE is_active = 1 ORDER BY id LIMIT 1'
+            );
+        }
+        if ($templateId <= 0) {
+            return $this->jsonError(422, 'no_template', 'هیچ الگو پیامکی فعالی موجود نیست.');
+        }
+        $this->connection()->execute(
+            'INSERT INTO user_sms_entries
+                (applicant_id, sms_template_id, sms_code, sms_text, received_at, status)
+             VALUES (?, ?, ?, ?, CURDATE(), ?)',
+            [
+                $applicant->id,
+                $templateId,
+                $smsCode !== '' ? $smsCode : null,
+                $smsText !== '' ? $smsText : null,
+                'در انتظار',
+            ]
+        );
+        $entryId = (int)$this->connection()->pdo()->lastInsertId();
+        $this->logger->info('SMS status entry submitted', [
+            '_module'      => 'core',
+            'applicant_id' => $applicant->id,
+            'entry_id'     => $entryId,
+        ]);
+        return $this->jsonSuccess(['entry_id' => $entryId]);
     }
 
     /**

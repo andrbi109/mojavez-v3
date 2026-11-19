@@ -151,9 +151,16 @@ final class Container
 
     private function registerHttp(): void
     {
-        // Session depends on environment (production → secure cookies).
+        // Session — Phase 22 (v1.9.4) fix: pass `secure: null` so the
+        // cookie `secure` flag auto-detects from $_SERVER['HTTPS'] at
+        // runtime, instead of being tied to APP_ENV. Browsers refuse to
+        // persist `secure` cookies over HTTP — binding `secure` to
+        // `isProduction()` broke the dev session on HTTP. With null,
+        // prod-on-HTTPS → secure=true, prod-on-HTTP (TLS-terminating
+        // proxy) → secure=false, dev-on-HTTP → secure=false. See
+        // Session::resolveSecure() for the heuristic.
         $this->factories[Session::class] = fn(): Session => new Session(
-            secure: $this->environment->isProduction(),
+            secure: null,  // auto-detect from $_SERVER['HTTPS'] at runtime
             lifetime: $this->environment->sessionLifetime,
             name: 'MOJAVEZSESSID',
         );

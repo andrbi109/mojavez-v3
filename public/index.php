@@ -59,12 +59,21 @@ $environment = Environment::load(ROOT_PATH . '/.env');
 
 // ============================================================
 // 2. Error reporting.
+//
+// PHP 8.4 deprecated the E_STRICT constant (it now emits a deprecation
+// notice when referenced). We suppress the deprecation notice with the
+// `@` operator while reading the constant value, then build the
+// bitfield without it on PHP 8.4+ to avoid breaking non-debug responses
+// (the deprecation notice would otherwise be emitted before any headers
+// can be sent). On PHP 9.0+ where the constant may be removed, the
+// `@`-suppressed read returns 0 (no notice), which is harmless.
 // ============================================================
+$strictBit = @E_STRICT;
 if ($environment->debug) {
     error_reporting(E_ALL);
     ini_set('display_errors', '1');
 } else {
-    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
+    error_reporting(E_ALL & ~E_DEPRECATED & ~$strictBit);
     ini_set('display_errors', '0');
     if ($environment->errorLogPath !== '') {
         @ini_set('error_log', $environment->errorLogPath);
@@ -327,6 +336,18 @@ try {
     $title = 'صفحه یافت نشد';
     $baseUrl = $environment->baseUrl;
     $csrfField = '';  // skip the csrf-token meta tag (no Controller $this available)
+    // Phase 20 (v1.9.2) — read support_email from settings so the 404
+    // page can show a "تماس با پشتیبانی" mailto link. Looked up here
+    // (in the front controller) because the 404 path runs BEFORE any
+    // controller is dispatched. Failure-tolerant: any DB error → ''.
+    $supportEmail = '';
+    try {
+        $supportEmail = (string)$dbConnection->scalar(
+            "SELECT setting_value FROM settings WHERE setting_key = 'support_email'"
+        );
+    } catch (\Throwable $dbErr) {
+        // ignore — the 404 page must never 500.
+    }
     $content = '<!doctype html><meta charset="utf-8"><h1>۴۰۴</h1><p>صفحه یافت نشد.</p>';
     if (is_file($viewPath) && is_file($layoutPath)) {
         try {

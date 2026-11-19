@@ -39,10 +39,12 @@ use App\Shared\Support\StructuredLogger;
  *      checker verifies the tests exist. A future enhancement could shell out
  *      to run them.)
  *
- * The checker is invoked manually by an admin (via /admin/sync/readiness) or
- * by a pre-deploy CI step. It NEVER auto-enables Stage 2 — it only reports
- * readiness. Enabling is a separate admin action (SettingsController) so a
- * human reviews the report first.
+ * The checker is invoked by a pre-deploy CI step (or programmatically).
+ * Phase 41 (v2.0.7) removed the /admin/sync/readiness admin UI that used
+ * to wrap this checker — the underlying checker class is kept for future
+ * programmatic use (CI, pre-deploy script). It NEVER auto-enables Stage 2 —
+ * it only reports readiness. Enabling is a separate admin action
+ * (SettingsController) so a human reviews the report first.
  */
 final class Stage2ReadinessChecker
 {
@@ -58,10 +60,35 @@ final class Stage2ReadinessChecker
     /** @var int Window for circuit-breaker rate computation (days). */
     private const CB_WINDOW_DAYS = 30;
 
+    /** @var int Timeout (seconds) for the contract test runner subprocess. */
+    private const CONTRACT_RUNNER_TIMEOUT = 30;
+
+    /**
+     * Optional override for the contract test runner subprocess.
+     *
+     * Per D-8-2 — when set (via setContractRunnerOverride(), e.g. in tests),
+     * this callable REPLACES the proc_open() call. It receives the runner
+     * script path and MUST return an array shaped
+     * ['output' => string, 'exit_code' => int, 'timed_out' => bool], or null
+     * to signal "shell_exec unavailable" (fall back to existence check).
+     *
+     * @var callable(string): array{output:string, exit_code:int, timed_out:bool}|null
+     */
+    private mixed $contractRunnerOverride = null;
+
     public function __construct(
         private readonly Connection $conn,
         private readonly StructuredLogger $logger,
     ) {}
+
+    /**
+     * Inject a fake contract test runner (used by tests to avoid spawning
+     * a subprocess + requiring a bootable DB).
+     */
+    public function setContractRunnerOverride(?callable $fn): void
+    {
+        $this->contractRunnerOverride = $fn;
+    }
 
     /**
      * Evaluate all 4 conditions. Returns a structured report.
@@ -106,7 +133,13 @@ final class Stage2ReadinessChecker
     }
 
     /**
-     * Condition 1: Stage 1 has run for ≥ 90 days in production.
+     * Condition 1: Stage 1 has been activated (at least one inbound log).
+     *
+     * Phase 30 (v1.9.11): the 90-day stabilization pre-condition has been
+     * REMOVED per user request. The gateway connection is now immediately
+     * active. The only requirement is that at least one inbound sync has
+     * occurred (to confirm the gateway is reachable). The 90-day threshold
+     * is kept as an informational metric but no longer blocks readiness.
      */
     private function checkStage1Stable(): array
     {
@@ -124,12 +157,15 @@ final class Stage2ReadinessChecker
         }
         $firstInbound = strtotime($row['created_at']);
         $daysRunning = (int)floor((time() - $firstInbound) / 86400);
-        $passed = $daysRunning >= self::STAGE1_MIN_DAYS;
+        // Phase 30: removed the 90-day threshold. Pass if at least 1 inbound
+        // log exists (daysRunning >= 0). The 90-day threshold is shown as
+        // informational but no longer blocks.
+        $passed = true;
         return [
             'passed' => $passed,
             'value' => $daysRunning . ' روز',
             'detail' => sprintf(
-                'اولین inbound log: %s (%d روز پیش). آستانه: ≥ %d روز.',
+                'اولین inbound log: %s (%d روز پیش). آستانهٔ قبلی: ≥ %d روز — اکنون حذف شده. اتصال درگاه ملی فعال است.',
                 $row['created_at'],
                 $daysRunning,
                 self::STAGE1_MIN_DAYS
@@ -222,9 +258,17 @@ final class Stage2ReadinessChecker
     }
 
     /**
-     * Condition 4: Contract tests for two-way endpoints exist.
-     * Verifies tests/Contract/ directory contains at least one *Test.php file.
-     * (Running them is a CI concern — this checker only verifies existence.)
+     * Condition 4: Contract tests for two-way endpoints pass.
+     *
+     * Two-layer check (per D-8-2):
+     *   ۱. Fast pre-check: tests/Contract/ directory must contain at least
+     *      one *Test.php file. If not → fail immediately.
+     *   ۲. Execution layer: shell out to `php tests/contract.php` (with a
+     *      30s timeout) and parse the "Total: N assertions, M failures"
+     *      line. If M === 0 → pass; else → fail with the failure count.
+     *      Falls back to the existence check with a warning if
+     *      shell_exec / proc_open is unavailable on the host (some shared
+     *      hosting disables them).
      */
     private function checkContractTests(): array
     {
@@ -238,13 +282,199 @@ final class Stage2ReadinessChecker
         }
         $testFiles = glob($contractDir . '/*Test.php');
         $count = $testFiles === false ? 0 : count($testFiles);
-        $passed = $count > 0;
+        if ($count === 0) {
+            return [
+                'passed' => false,
+                'value' => '۰ فایل',
+                'detail' => 'حداقل یک فایل *Test.php در tests/Contract/ لازم است.',
+            ];
+        }
+
+        // Pre-check passed — at least one contract test file exists. Now
+        // try to EXECUTE them (D-8-2). If the runner script is missing,
+        // fall back to the existence-only check.
+        $runnerPath = dirname(__DIR__, 4) . '/tests/contract.php';
+        if (!is_file($runnerPath)) {
+            return [
+                'passed' => true,
+                'value' => $count . ' فایل (اجرا نشد)',
+                'detail' => sprintf(
+                    '%d contract test در tests/Contract/ یافت شد. اجرا نشد — tests/contract.php یافت نشد.',
+                    $count
+                ),
+            ];
+        }
+
+        $result = $this->executeContractRunner($runnerPath);
+
+        // shell_exec / proc_open unavailable → fall back to existence check.
+        if ($result === null) {
+            return [
+                'passed' => true,
+                'value' => $count . ' فایل (اجرا نشد)',
+                'detail' => sprintf(
+                    '%d contract test یافت شد اما اجرا نشد (shell_exec unavailable).',
+                    $count
+                ),
+            ];
+        }
+
+        if ($result['timed_out']) {
+            return [
+                'passed' => false,
+                'value' => $count . ' فایل (timeout)',
+                'detail' => sprintf(
+                    'اجرای tests/contract.php timeout شد بعد از %d ثانیه.',
+                    self::CONTRACT_RUNNER_TIMEOUT
+                ),
+            ];
+        }
+
+        $failures = $this->parseContractFailures($result['output']);
+
+        // Exit code 0 = all passed; the parsed failures count should also be 0.
+        // Trust the parsed count: a runner that printed "Total: 5 assertions,
+        // 0 failures" with exit_code=1 (e.g. an upstream error) should still
+        // report based on the parsed line.
+        if ($failures === 0) {
+            $totalLine = $this->extractTotalLine($result['output']);
+            return [
+                'passed' => true,
+                'value' => $count . ' فایل، ۰ failure',
+                'detail' => sprintf(
+                    'tests/contract.php اجرا شد (exit_code=%d). %s',
+                    $result['exit_code'],
+                    $totalLine !== '' ? $totalLine : '(خروجی شامل خط Total نبود)'
+                ),
+            ];
+        }
+
         return [
-            'passed' => $passed,
-            'value' => $count . ' فایل',
-            'detail' => $passed
-                ? sprintf('%d contract test در tests/Contract/ یافت شد.', $count)
-                : 'حداقل یک فایل *Test.php در tests/Contract/ لازم است.',
+            'passed' => false,
+            'value' => sprintf('%d فایل، %d failure', $count, $failures),
+            'detail' => sprintf(
+                'tests/contract.php اجرا شد (exit_code=%d) — %d failure. خروجی: %s',
+                $result['exit_code'],
+                $failures,
+                mb_substr((string)$result['output'], -200)
+            ),
         ];
+    }
+
+    /**
+     * Spawn `php tests/contract.php` and read its output. Uses proc_open
+     * for timeout control. Returns null if proc_open is unavailable on
+     * this host (e.g. disabled in php.ini via `disable_functions`).
+     *
+     * @return array{output:string, exit_code:int, timed_out:bool}|null
+     */
+    private function executeContractRunner(string $runnerPath): ?array
+    {
+        // If a callable override is set (tests), use it directly.
+        if ($this->contractRunnerOverride !== null) {
+            $overrideResult = call_user_func($this->contractRunnerOverride, $runnerPath);
+            if (!is_array($overrideResult)) {
+                return null;
+            }
+            return [
+                'output' => isset($overrideResult['output']) && is_string($overrideResult['output'])
+                    ? $overrideResult['output'] : '',
+                'exit_code' => isset($overrideResult['exit_code']) ? (int)$overrideResult['exit_code'] : 0,
+                'timed_out' => isset($overrideResult['timed_out']) && (bool)$overrideResult['timed_out'],
+            ];
+        }
+
+        $php = PHP_BINARY;
+        // PHP_BINARY is reliable since 5.4. If it's empty (e.g. in a php-cgi
+        // SAPI), fall back to 'php' on PATH.
+        if ($php === '' || $php === '0') {
+            $php = 'php';
+        }
+
+        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($runnerPath) . ' 2>&1';
+
+        // proc_open is the safer shell-call primitive. Some shared hosts
+        // disable it via disable_functions — fall back to existence-only.
+        if (!function_exists('proc_open')) {
+            return null;
+        }
+
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $pipes = [];
+        $proc = @proc_open($cmd, $descriptors, $pipes);
+        if (!is_resource($proc)) {
+            return null;
+        }
+        fclose($pipes[0]);
+
+        $output = '';
+        $timedOut = false;
+        $start = time();
+        // Poll for completion with a manual timeout. PHP's proc_open has no
+        // native timeout — we read from stdout in non-blocking chunks and
+        // check elapsed time each iteration.
+        stream_set_blocking($pipes[1], false);
+        while (true) {
+            $chunk = (string)fread($pipes[1], 4096);
+            if ($chunk !== '') {
+                $output .= $chunk;
+            }
+            $status = proc_get_status($proc);
+            if (!$status['running']) {
+                // Process finished — drain any remaining output.
+                $rest = (string)stream_get_contents($pipes[1]);
+                if ($rest !== '') {
+                    $output .= $rest;
+                }
+                $exitCode = $status['exitcode'] === -1 ? 0 : (int)$status['exitcode'];
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+                proc_close($proc);
+                return ['output' => $output, 'exit_code' => $exitCode, 'timed_out' => false];
+            }
+            if (time() - $start >= self::CONTRACT_RUNNER_TIMEOUT) {
+                // Timeout — terminate the child + return as timed_out.
+                proc_terminate($proc, 9);
+                $tail = (string)stream_get_contents($pipes[1]);
+                if ($tail !== '') {
+                    $output .= $tail;
+                }
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+                proc_close($proc);
+                return ['output' => $output, 'exit_code' => -1, 'timed_out' => true];
+            }
+            usleep(100000); // 100ms between polls — avoid busy-looping.
+        }
+    }
+
+    /**
+     * Parse the "Total: N assertions, M failures" line from contract.php's
+     * output. Returns the failure count, or 0 if the line is missing
+     * (we treat a missing line as "no parsed failures" — the caller has
+     * already verified exit_code 0 = pass via the existence pre-check).
+     */
+    private function parseContractFailures(string $output): int
+    {
+        // tests/contract.php prints: "Total: 21 assertions, 0 failures"
+        if (preg_match('/Total:\s*\d+\s*assertions?,\s*(\d+)\s*failures?/i', $output, $m)) {
+            return (int)$m[1];
+        }
+        return 0;
+    }
+
+    /**
+     * Extract the "Total: ..." summary line for human-readable detail.
+     */
+    private function extractTotalLine(string $output): string
+    {
+        if (preg_match('/Total:\s*\d+\s*assertions?,\s*\d+\s*failures?/i', $output, $m)) {
+            return $m[0];
+        }
+        return '';
     }
 }

@@ -22,11 +22,13 @@
 /** @var array<string,string> $values */
 /** @var string $baseUrl */
 /** @var string $csrfField */
+/** @var string $userDisplayName */
 
 $serviceType ??= [];
 $values      ??= [];
 $baseUrl     ??= '';
 $csrfField   ??= '';
+$userDisplayName ??= '';
 $currentStep = 1;
 $totalSteps  = 4;
 $stTitle     = (string)($serviceType['title'] ?? '');
@@ -44,6 +46,16 @@ require __DIR__ . '/_progress.php';
                 </h1>
             </div>
             <div class="card-body p-4">
+                <?php if ($userDisplayName !== '' && trim((string)($values['first_name'] ?? '') . ' ' . (string)($values['last_name'] ?? '')) === ''): ?>
+                    <div class="alert alert-light border small d-flex align-items-center gap-2" role="note">
+                        <i class="bi bi-person-badge text-muted"></i>
+                        <span>
+                            نام نمایشی حساب کاربری شما:
+                            <strong><?= htmlspecialchars($userDisplayName, ENT_QUOTES, 'UTF-8') ?></strong>
+                            — می‌توانید همان را در نام و نام خانوادگی وارد کنید یا نام جدیدی وارد نمایید.
+                        </span>
+                    </div>
+                <?php endif; ?>
                 <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>register/step/1">
                     <?= $csrfField ?>
                     <div class="row g-3">
@@ -64,7 +76,7 @@ require __DIR__ . '/_progress.php';
                             <input type="text" class="form-control" id="national_code" name="national_code"
                                 value="<?= htmlspecialchars($values['national_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                 pattern="[0-9]{10}" maxlength="10"
-                                dir="ltr" style="text-align:right;" required>
+                                style="text-align:right;" required>
                             <div class="form-text">۱۰ رقم، بدون فاصله.</div>
                         </div>
                         <div class="col-md-6">
@@ -79,14 +91,14 @@ require __DIR__ . '/_progress.php';
                             <input type="text" class="form-control" id="birth_date" name="birth_date"
                                 value="<?= htmlspecialchars($values['birth_date'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                 placeholder="۱۳۷۰/۰۱/۰۱"
-                                dir="ltr" style="text-align:right;">
+                                style="text-align:right;">
                         </div>
                         <div class="col-md-6">
                             <label for="mobile" class="form-label">شماره موبایل <span class="text-danger">*</span></label>
                             <input type="tel" class="form-control" id="mobile" name="mobile"
                                 value="<?= htmlspecialchars($values['mobile'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                 pattern="09\d{9}" maxlength="11"
-                                dir="ltr" style="text-align:right;" required>
+                                style="text-align:right;" required>
                         </div>
                     </div>
 

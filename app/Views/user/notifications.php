@@ -6,6 +6,8 @@
 /** @var int $unreadCount */
 /** @var string $baseUrl */
 /** @var string $csrfField */
+
+use App\Shared\Support\PersianDate;
 ?>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -32,7 +34,7 @@
                         <span class="fw-<?= empty($n['is_read']) ? 'bold' : 'normal' ?>">
                             <?= htmlspecialchars((string)($n['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                         </span>
-                        <small class="text-muted"><?= htmlspecialchars((string)($n['created_at'] ?? ''), ENT_QUOTES) ?></small>
+                        <small class="text-muted"><?= htmlspecialchars(PersianDate::format((string)($n['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></small>
                     </div>
                     <?php if (!empty($n['body'])): ?>
                         <div class="small text-muted mt-1"><?= htmlspecialchars((string)$n['body'], ENT_QUOTES, 'UTF-8') ?></div>

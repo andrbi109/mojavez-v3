@@ -18,7 +18,7 @@
 -- ============================================================================
 
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
-SET time_zone = '+00:00';
+SET time_zone = '+03:30';
 SET sql_mode = 'STRICT_ALL_TABLES,NO_ENGINE_SUBSTITUTION';
 
 CREATE TABLE IF NOT EXISTS `applicant_field_values` (
@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS `applicants` (
   `consent_external_share` tinyint(1) NOT NULL DEFAULT 0,
   `registration_started_at` datetime DEFAULT NULL,
   `registration_completed_at` datetime DEFAULT NULL,
+  `closed_at` datetime DEFAULT NULL,
   `created_at` datetime DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
@@ -118,6 +119,7 @@ CREATE TABLE IF NOT EXISTS `document_types` (
   `label` varchar(100) NOT NULL,
   `category` enum('user_upload','admin_add') NOT NULL DEFAULT 'user_upload',
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `is_required` tinyint(1) NOT NULL DEFAULT 0,
   `sort_order` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `doc_type_key` (`doc_type_key`)
@@ -467,6 +469,7 @@ CREATE TABLE IF NOT EXISTS `payment_channels` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `title` varchar(100) NOT NULL,
   `channel_type` varchar(50) NOT NULL,
+  `account_info` text DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `sort_order` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)
@@ -504,6 +507,7 @@ CREATE TABLE IF NOT EXISTS `payments` (
   `fallback_used` tinyint(1) NOT NULL DEFAULT 0,
   `suspicion_flags` varchar(255) DEFAULT NULL,
   `reference_code` varchar(50) DEFAULT NULL,
+  `description` varchar(500) DEFAULT NULL,
   `paid_at` date DEFAULT NULL,
   `receipt_document_id` int(11) DEFAULT NULL,
   `linked_request_id` int(11) DEFAULT NULL,
@@ -591,6 +595,7 @@ CREATE TABLE IF NOT EXISTS `property_details` (
   `ownership_status` enum('شخص','مستأجر','سرپرست') NOT NULL,
   `province` varchar(50) NOT NULL,
   `county` varchar(50) NOT NULL,
+  `township` varchar(50) DEFAULT NULL,
   `city` varchar(50) NOT NULL,
   `district` varchar(50) DEFAULT NULL,
   `rural_district` varchar(50) DEFAULT NULL,
@@ -720,7 +725,7 @@ CREATE TABLE IF NOT EXISTS `user_accounts` (
 
 CREATE TABLE IF NOT EXISTS `user_notifications` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_account_id` int(11) NOT NULL,
+  `user_account_id` int(11) DEFAULT NULL,
   `applicant_id` int(11) DEFAULT NULL,
   `type` varchar(50) NOT NULL,
   `title` varchar(200) NOT NULL,

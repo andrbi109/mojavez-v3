@@ -122,7 +122,8 @@ final class Module implements ModuleInterface
             fn () => new \App\Modules\Core\Services\AutoCancelService(
                 $container->make(\App\Shared\Contracts\ApplicantRepositoryInterface::class),
                 $container->make(\App\Shared\Contracts\StatusLogRepositoryInterface::class),
-                $container->logger
+                $container->logger,
+                $container->make(\App\Shared\Persistence\Connection::class)
             )
         );
         $container->bind(
@@ -233,6 +234,47 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/panel/notifications/read',   'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'markAllRead'],
             ['method' => 'GET',  'path' => '/panel/tracking',             'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'tracking'],
 
+            // ----- Phase 46 (v2.1.2) user panel: delete application + postal-code change -----
+            // The {id} placeholder matches [^/]+ — there are no sibling
+            // /panel/requests/* routes, so order doesn't matter relative
+            // to /panel/requests (registered above as a GET). The POST
+            // method distinguishes them anyway.
+            ['method' => 'POST', 'path' => '/panel/requests/{id}/delete', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'deleteApplication'],
+            // /panel/change-postal-code is a single-segment POST path —
+            // no conflict with any existing /panel/* route.
+            ['method' => 'POST', 'path' => '/panel/change-postal-code',  'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'changePostalCode'],
+
+            // ----- Phase 60 (v2.2.6) user panel: one-time edit for imported applicants -----
+            // Bulk-imported applicants (those with imported_edit_locked=0
+            // AND registration_completed_at IS NULL — only the bulk-import
+            // flow leaves registration_completed_at NOT NULL but it ALSO
+            // sets imported_edit_locked=0, so the GET handler accepts
+            // them) can edit their application exactly ONCE via this
+            // form. After the POST saves, imported_edit_locked flips to 1
+            // and the user only sees a "تکمیل شده" badge in /panel/requests.
+            // The {id} placeholder is unconstrained (matches [^/]+); it
+            // cannot collide with /panel/requests (a GET registered above)
+            // or /panel/requests/{id}/delete (a POST registered above)
+            // because the methods + the trailing /edit segment differ.
+            ['method' => 'GET',  'path' => '/panel/requests/{id}/edit', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'editRequest'],
+            ['method' => 'POST', 'path' => '/panel/requests/{id}/edit', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'updateRequest'],
+
+            // ----- Phase 58 (v2.2.4) user panel: upload payment receipt -----
+            // After the user selects a payment channel in the per-row
+            // "پرداخت" modal (user/payments.php) and clicks "تأیید", a
+            // file upload form is shown for non-online channels. The
+            // form POSTs (multipart) to this route. The handler saves
+            // the uploaded file under storage/uploads/receipts/{payment_id}/
+            // and updates the payments row: status='در انتظار رسید',
+            // receipt_file_path=$path, receipt_description=$userNote.
+            // Online-gateway channels skip the upload (the receipt is
+            // expected to come back from the gateway callback) and
+            // only show a placeholder "انتقال به درگاه" button in the
+            // modal — no POST to this route is made for those.
+            // The {id:\d+} placeholder is constrained to numeric ids
+            // so it cannot collide with any sibling /panel/* route.
+            ['method' => 'POST', 'path' => '/panel/payments/{id:\d+}/receipt', 'handler' => \App\Modules\Core\Controllers\UserPanelController::class, 'action' => 'uploadReceipt'],
+
             // ----- Phase 2 admin auth routes -----
             ['method' => 'GET', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLoginForm'],
             ['method' => 'POST', 'path' => '/admin/login', 'handler' => \App\Modules\Core\Controllers\AuthController::class, 'action' => 'adminLogin'],
@@ -241,6 +283,56 @@ final class Module implements ModuleInterface
             // ----- Phase 2 admin panel routes -----
             ['method' => 'GET', 'path' => '/admin/dashboard', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'dashboard'],
             ['method' => 'GET', 'path' => '/admin/applications', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'applications'],
+
+            // ----- Phase 17 admin: AdminController extensions (12 routes) -----
+            // Order: specific routes (/register, /edit/{id}, /postal-requests,
+            // /my-tasks, /add-document, /delete-document, /request-payment,
+            // /license-state, /postal-requests/approve, /postal-requests/reject,
+            // /update) are registered BEFORE the catch-all /admin/view/{id}
+            // (first-match router — the {id} placeholder matches [^/]+, so
+            // a generic /admin/{id} would catch /admin/register etc.).
+            ['method' => 'GET',  'path' => '/admin/register',                  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'registerForm'],
+            ['method' => 'POST', 'path' => '/admin/register',                  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'registerProcess'],
+            ['method' => 'GET',  'path' => '/admin/edit/{id}',                 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'editApplication'],
+            ['method' => 'POST', 'path' => '/admin/update',                    'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'updateApplication'],
+            ['method' => 'POST', 'path' => '/admin/add-document',              'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'addDocument'],
+            ['method' => 'POST', 'path' => '/admin/delete-document',          'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'deleteDocument'],
+            ['method' => 'POST', 'path' => '/admin/request-payment',          'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'requestPayment'],
+            ['method' => 'POST', 'path' => '/admin/license-state',            'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'updateLicenseState'],
+            ['method' => 'GET',  'path' => '/admin/postal-requests',          'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'postalRequests'],
+            ['method' => 'POST', 'path' => '/admin/postal-requests/approve',  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'approvePostalRequest'],
+            ['method' => 'POST', 'path' => '/admin/postal-requests/reject',   'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'rejectPostalRequest'],
+            ['method' => 'GET',  'path' => '/admin/my-tasks',                  'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'myTasks'],
+
+            // ----- Phase 17 admin: ServiceType CRUD (3 routes) -----
+            ['method' => 'GET',  'path' => '/admin/service-types',         'handler' => \App\Modules\Core\Controllers\ServiceTypeController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/service-types/save',    'handler' => \App\Modules\Core\Controllers\ServiceTypeController::class, 'action' => 'save'],
+            ['method' => 'POST', 'path' => '/admin/service-types/delete', 'handler' => \App\Modules\Core\Controllers\ServiceTypeController::class, 'action' => 'delete'],
+
+            // ----- Phase 17 admin: WizardStep CRUD (5 routes) -----
+            // toggle/{id} uses a path param; save/delete/move use body fields.
+            // /move must be registered before /save (no conflict — different
+            // paths) and before any catch-all on /admin/wizard-steps.
+            ['method' => 'GET',  'path' => '/admin/wizard-steps',            'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/save',       'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'save'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/toggle/{id}', 'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'toggle'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/delete',     'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'delete'],
+            ['method' => 'POST', 'path' => '/admin/wizard-steps/move',       'handler' => \App\Modules\Core\Controllers\WizardStepController::class, 'action' => 'move'],
+
+            // ----- Phase 17 admin: Sms CRUD + entry review (4 routes) -----
+            ['method' => 'GET',  'path' => '/admin/sms',                     'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/sms/save-template',       'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'saveTemplate'],
+            ['method' => 'POST', 'path' => '/admin/sms/delete-template',     'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'deleteTemplate'],
+            ['method' => 'POST', 'path' => '/admin/sms/review-entry',       'handler' => \App\Modules\Core\Controllers\SmsController::class, 'action' => 'reviewEntry'],
+
+            // ----- Phase 22 (v1.9.4): 18-status workflow diagram -----
+            // Documentation-only view (requireRole(['admin'])) showing all
+            // 18 statuses (14 shared + 4 household-only) as cards with
+            // order, color, manual/auto flag, pre_issue flag.
+            ['method' => 'GET',  'path' => '/admin/status-cycle',            'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'statusCycle'],
+
+            // Catch-all: view a single applicant (must come AFTER the new
+            // /admin/{action} routes so they don't get swallowed by {id}).
             ['method' => 'GET', 'path' => '/admin/view/{id}', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'viewApplication'],
             ['method' => 'POST', 'path' => '/admin/change-status', 'handler' => \App\Modules\Core\Controllers\AdminController::class, 'action' => 'changeStatus'],
 
@@ -258,12 +350,42 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/form-fields/{id}/delete',   'handler' => \App\Modules\Core\Controllers\FormFieldController::class, 'action' => 'destroy'],
 
             // ----- Phase 11 admin: fee_tariffs CRUD (replaces Phase-10 stub) -----
+            // Note: the more specific /admin/fee-tariff/settings route
+            // (Phase 20) MUST be registered BEFORE the /admin/fee-tariff/{id}
+            // catch-all — otherwise `settings` would be captured by the {id}
+            // regex ([^/]+) and dispatched to `update()` instead of
+            // `saveSettings()`. The other 4 Phase-20 routes have a different
+            // path structure (more than 3 segments or different prefix) and
+            // don't conflict with the {id} catch-all, but they're grouped
+            // here for readability.
             ['method' => 'GET',  'path' => '/admin/fee-tariff',               'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'index'],
             ['method' => 'GET',  'path' => '/admin/fee-tariff/new',            'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'create'],
             ['method' => 'POST', 'path' => '/admin/fee-tariff',                'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'store'],
             ['method' => 'GET',  'path' => '/admin/fee-tariff/{id}/edit',     'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'edit'],
-            ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}',           'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'update'],
             ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}/delete',  'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'destroy'],
+            // Phase 20 (v1.9.2) — FeeTariff extensions (5 routes) ported from v2.
+            // /settings is registered BEFORE the {id} catch-all so the
+            // `update()` action doesn't capture it.
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/settings',          'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'saveSettings'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/group/save',        'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'groupSave'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/group/{id}/delete', 'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'groupDelete'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/items/save',        'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'itemsSave'],
+            // Phase 54 (v2.2.0) — per-service × per-group matrix (4 decile
+            // groups A/B/C/D + checkboxes per service). All three routes
+            // MUST be registered BEFORE the {id} catch-all below — otherwise
+            // `update()` would steal /services/matrix-save (3 path segments
+            // after /admin/fee-tariff, same as /admin/fee-tariff/{id}).
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/services/matrix-save', 'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'servicesMatrixSave'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/services/add',          'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'serviceAddAll'],
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/services/delete',       'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'serviceDeleteAll'],
+            // The {id} catch-all MUST come after the /settings, /group/save,
+            // /items/save, /group/{id}/delete routes above (otherwise
+            // `update()` would steal /settings). The {id} segment matches
+            // [^/]+ so a 4-segment path like /group/save never collides
+            // with the 3-segment {id} pattern — but a 3-segment path like
+            // /settings DOES collide, hence the ordering above.
+            ['method' => 'POST', 'path' => '/admin/fee-tariff/{id}',           'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'update'],
+            ['method' => 'POST', 'path' => '/admin/payment/tick',                  'handler' => \App\Modules\Core\Controllers\FeeTariffController::class, 'action' => 'toggleTick'],
 
             // ----- Phase 11 admin: license_titles CRUD (replaces Phase-10 stub) -----
             // /by-service/{id} must be registered before any catch-all GET
@@ -287,8 +409,28 @@ final class Module implements ModuleInterface
             ['method' => 'POST', 'path' => '/admin/users/{id}',          'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'update'],
             ['method' => 'POST', 'path' => '/admin/users/{id}/delete',    'handler' => \App\Modules\Core\Controllers\UsersController::class, 'action' => 'destroy'],
 
+            // ----- Phase 42 (v2.0.8) admin: applicant account management -----
+            // These are the `user_accounts` rows (the accounts applicants use
+            // to log in to /panel/*), NOT the admin `users` table managed by
+            // UsersController above. The 4 routes give an admin:
+            //   - list with search (mobile / username LIKE)
+            //   - detail view (account fields + linked applicants)
+            //   - toggle is_active (disable / re-enable login)
+            //   - reset password (generate a new random password, hash + show
+            //     the raw value once via session flash so the admin can pass it
+            //     to the applicant out-of-band).
+            // All routes are admin-only (requireRole(['admin'])).
+            ['method' => 'GET',  'path' => '/admin/applicant-accounts',                        'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/applicant-accounts/{id}',                   'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'view'],
+            ['method' => 'POST', 'path' => '/admin/applicant-accounts/{id}/toggle',             'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'toggle'],
+            ['method' => 'POST', 'path' => '/admin/applicant-accounts/{id}/reset-password',     'handler' => \App\Modules\Core\Controllers\ApplicantAccountController::class, 'action' => 'resetPassword'],
+
             ['method' => 'GET',  'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'index'],
             ['method' => 'POST', 'path' => '/admin/settings',             'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'update'],
+            // Phase 20 (v1.9.2): image upload for site_logo + header banners.
+            ['method' => 'POST', 'path' => '/admin/settings/upload-image', 'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'uploadImage'],
+            // Phase 49 (v2.1.5): delete a custom (non-known) setting.
+            ['method' => 'POST', 'path' => '/admin/settings/delete',       'handler' => \App\Modules\Core\Controllers\SettingsController::class, 'action' => 'delete'],
 
             // ----- Phase 2 public tracking routes -----
             ['method' => 'GET', 'path' => '/tracking', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'search'],
@@ -296,6 +438,105 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/tracking/status/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'status'],
             ['method' => 'POST', 'path' => '/tracking/change-postal-code', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'changePostalCode'],
             ['method' => 'GET', 'path' => '/tracking/print/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'printView'],
+
+            // ----- Phase 15 — Tracking: payment + SMS submit (user-facing) -----
+            ['method' => 'POST', 'path' => '/tracking/payments/submit', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'submitPayment'],
+            ['method' => 'POST', 'path' => '/tracking/sms/submit', 'handler' => \App\Modules\Core\Controllers\TrackingController::class, 'action' => 'submitSms'],
+
+            // ----- Phase 15 — Registration wizard -----
+            // The 4-step applicant registration wizard. Auth: requireUserLogin()
+            // at the top of every action (the session-keyed wizard.applicant_id
+            // is tied to user_account_id).
+            //
+            // Route order: specific routes (/service/{id}, /step/{n},
+            // /success/{trackingCode}) are registered before any catch-all.
+            ['method' => 'GET',  'path' => '/register',                       'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/register/service/{id}',          'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'selectService'],
+            ['method' => 'GET',  'path' => '/register/step/{n}',              'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'stepByPosition'],
+            ['method' => 'POST', 'path' => '/register/step/{n}',              'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processByPosition'],
+            ['method' => 'GET',  'path' => '/register/step1',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step1'],
+            ['method' => 'POST', 'path' => '/register/step1',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep1'],
+            ['method' => 'GET',  'path' => '/register/step2',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step2'],
+            ['method' => 'POST', 'path' => '/register/step2',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep2'],
+            ['method' => 'GET',  'path' => '/register/step3',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step3'],
+            ['method' => 'POST', 'path' => '/register/step3',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep3'],
+            ['method' => 'GET',  'path' => '/register/step4',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'step4'],
+            ['method' => 'POST', 'path' => '/register/step4',                  'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'processStep4'],
+            ['method' => 'GET',  'path' => '/register/success/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\RegistrationController::class, 'action' => 'success'],
+
+            // ----- Phase 15 — Services (public list + purchase → wizard) -----
+            ['method' => 'GET',  'path' => '/services',              'handler' => \App\Modules\Core\Controllers\ServiceController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/services/{id}/purchase', 'handler' => \App\Modules\Core\Controllers\ServiceController::class, 'action' => 'purchase'],
+
+            // ----- Phase 15 — Records (user's own applications) -----
+            ['method' => 'GET',  'path' => '/my-records',         'handler' => \App\Modules\Core\Controllers\RecordsController::class, 'action' => 'form'],
+            ['method' => 'POST', 'path' => '/my-records/verify',  'handler' => \App\Modules\Core\Controllers\RecordsController::class, 'action' => 'verify'],
+
+            // ----- Phase 15 — Document serving -----
+            // /view is POST (AJAX modal). /avatar is GET (file stream).
+            // /thumb/{id}, /inline/{id}, /raw/{id} are GET (file streams).
+            // /pdf-viewer is GET (HTML wrapper, layout='none').
+            ['method' => 'POST', 'path' => '/document/view',       'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'view'],
+            ['method' => 'GET',  'path' => '/document/avatar',     'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'avatar'],
+            ['method' => 'GET',  'path' => '/document/thumb/{id}', 'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'thumb'],
+            ['method' => 'GET',  'path' => '/document/inline/{id}','handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'inline'],
+            ['method' => 'GET',  'path' => '/document/pdf-viewer', 'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'pdfViewer'],
+            ['method' => 'GET',  'path' => '/document/raw/{id}',   'handler' => \App\Modules\Core\Controllers\DocumentController::class, 'action' => 'raw'],
+
+            // ----- Phase 15 — Revision requests (user form + admin review) -----
+            ['method' => 'GET',  'path' => '/tracking/revision/{trackingCode}', 'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'form'],
+            ['method' => 'POST', 'path' => '/tracking/revision/submit',          'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'submit'],
+            ['method' => 'GET',  'path' => '/admin/revisions',                    'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/revisions/view/{id}',         'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'detail'],
+            ['method' => 'POST', 'path' => '/admin/revisions/approve/{id}',     'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'approve'],
+            ['method' => 'POST', 'path' => '/admin/revisions/reject/{id}',      'handler' => \App\Modules\Core\Controllers\RevisionController::class, 'action' => 'reject'],
+
+            // ----- Phase 15 — License image access + admin license mgmt -----
+            ['method' => 'GET',  'path' => '/license/view/{token}',              'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'viewByToken'],
+            ['method' => 'POST', 'path' => '/tracking/license/first-access',     'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'firstAccess'],
+            ['method' => 'POST', 'path' => '/tracking/license/request-access',   'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'requestAccess'],
+            ['method' => 'POST', 'path' => '/tracking/license/pay',              'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'submitReissuePayment'],
+            ['method' => 'POST', 'path' => '/admin/license/upload',              'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'upload'],
+            ['method' => 'GET',  'path' => '/admin/license-requests',             'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'requests'],
+            ['method' => 'POST', 'path' => '/admin/license-requests/review',     'handler' => \App\Modules\Core\Controllers\LicenseController::class, 'action' => 'reviewRequest'],
+
+            // ----- Phase 18 — Payment management (5 routes) -----
+            // Auth: requireRole(['admin']) on every action. The catch-all
+            // /admin/view/{id} above doesn't conflict (different path prefix).
+            ['method' => 'GET',  'path' => '/admin/payments',                  'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'index'],
+            ['method' => 'POST', 'path' => '/admin/payments/review',           'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'review'],
+            ['method' => 'GET',  'path' => '/admin/payments/csv',               'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'csv'],
+            ['method' => 'POST', 'path' => '/admin/payment-channels/save',     'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'saveChannel'],
+            ['method' => 'POST', 'path' => '/admin/payment-channels/delete',   'handler' => \App\Modules\Core\Controllers\PaymentController::class, 'action' => 'deleteChannel'],
+
+            // ----- Phase 18 — Bulk import (8 routes) + Phase 37 template (1) -----
+            // Specific routes (upload, preview, execute, result, missing-docs,
+            // documents/{code}, template) come in path-disjoint prefixes — no
+            // first-match ordering issue with any catch-all.
+            ['method' => 'GET',  'path' => '/admin/bulk-import',                          'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'index'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/template',                  'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'template'],
+            ['method' => 'POST', 'path' => '/admin/bulk-import/upload',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'upload'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/preview',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'preview'],
+            ['method' => 'POST', 'path' => '/admin/bulk-import/execute',                  'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'execute'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/result',                   'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'result'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/missing-docs',             'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'missingDocs'],
+            ['method' => 'GET',  'path' => '/admin/bulk-import/documents/{code}',         'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'uploadDocs'],
+            ['method' => 'POST', 'path' => '/admin/bulk-import/documents/{code}/save',    'handler' => \App\Modules\Core\Controllers\BulkImportController::class, 'action' => 'saveDocs'],
+
+            // ----- Phase 18 — Reports + exports (11 routes) -----
+            // All admin-only. csv/pdf are GET (download). grouped is GET (form)
+            // + POST (result). single/{trackingCode} uses a path param.
+            ['method' => 'GET',  'path' => '/admin/reports/by-province',              'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byProvince'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-city',                  'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byCity'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-village',               'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byVillage'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-license',               'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byLicense'],
+            ['method' => 'GET',  'path' => '/admin/reports/by-date',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'byDate'],
+            ['method' => 'GET',  'path' => '/admin/output/general',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'generalReport'],
+            ['method' => 'GET',  'path' => '/admin/output/single/{trackingCode}',     'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'singleApplicantReport'],
+            ['method' => 'GET',  'path' => '/admin/output/grouped',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'groupedReportForm'],
+            ['method' => 'POST', 'path' => '/admin/output/grouped',                   'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'groupedReportResult'],
+            ['method' => 'GET',  'path' => '/admin/report/csv',                        'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'csvReport'],
+            ['method' => 'GET',  'path' => '/admin/report/pdf',                       'handler' => \App\Modules\Core\Controllers\ReportController::class, 'action' => 'pdfReport'],
         ];
     }
 
@@ -316,6 +557,81 @@ final class Module implements ModuleInterface
             // (INSERT ... ON DUPLICATE KEY UPDATE on the UNIQUE
             // constraints).
             '20261117_009_seed_default_service_types.sql',
+            // Phase 16 (v1.7.0) — pays part of D-7-3. Seeds the 6 default
+            // document_types (national_id, personal_photo, ownership_deed,
+            // skill_cert, business_license, avatar) so the wizard's step 4
+            // has real document-type definitions to render against, and
+            // the controller can require national_id + personal_photo
+            // dynamically. Idempotent (INSERT ... ON DUPLICATE KEY UPDATE
+            // on UNIQUE doc_type_key).
+            '20261117_010_seed_document_types_default.sql',
+            // Phase 16 (v1.7.0) — seeds the default admin user
+            // (username=admin, password=admin123 — change on first
+            // login!) so a fresh install is immediately usable.
+            // Idempotent (INSERT ... WHERE NOT EXISTS — skips if any
+            // admin row exists, so password rotation is preserved).
+            '20261117_011_seed_admin_default.sql',
+            // Phase 22 (v1.9.4) — pays D-16-1. Adds a real `is_required`
+            // TINYINT(1) column to the document_types lookup table so
+            // RegistrationController::requiredDocs() can read
+            // requiredness from the row instead of computing it from
+            // the doc_type_key string. Marks national_id + personal_photo
+            // as required (idempotent UPDATE). Idempotent ALTER
+            // (information_schema guard) so re-running is safe.
+            '20261117_012_document_types_is_required_column.sql',
+            // Phase 24 (v1.9.6) — pays D-5-5. Adds a real `township`
+            // VARCHAR(50) NULL column to property_details so the
+            // registration wizard can store the resolved township
+            // title separately from `county`. The matcher
+            // (ApplicantSyncAdapter) prefers `township` if set and
+            // falls back to `county` for backward compat with rows
+            // written by older code. Idempotent ALTER
+            // (information_schema guard) so re-running is safe.
+            '20261117_013_property_details_township_column.sql',
+            // Phase 27 (v1.9.9) — pays D-14-2 (the structural follow-up
+            // to D-14-1 from Phase 22). Makes
+            // `user_notifications.user_account_id` nullable so the
+            // NotificationService::notifyAdmins() can insert a
+            // notification row even when an admin has no matching
+            // user_account (the bridge by username came up empty).
+            // Idempotent ALTER (information_schema guard on
+            // IS_NULLABLE) so re-running is safe. The existing FK to
+            // user_accounts(id) ON DELETE CASCADE is preserved (FKs
+            // allow NULL — InnoDB skips the FK check when the column
+            // is NULL).
+            '20261117_014_user_notifications_nullable_user_account.sql',
+            // Phase 32 (v1.9.12) — comprehensive seed data from andrbi108/mojavez-v3.
+            // Seeds: settings (15), service_types (5 full), wizard_steps (8),
+            // form_fields (~28 system fields), license_titles (~190 across 4
+            // service types), sms_templates (6), fee_groups (4), payment_channels (3).
+            // Idempotent (INSERT ... ON DUPLICATE KEY UPDATE).
+            '20261117_015_comprehensive_seed_data.sql',
+            // Phase 50 (v2.1.6) — adds a `description` VARCHAR(500) NULL
+            // column to the `payments` table so an admin raising a payment
+            // request can attach a free-form note that the user then sees
+            // in their payments list. Idempotent ALTER
+            // (information_schema guard) so re-running is safe.
+            '20261118_001_payments_description_column.sql',
+            // Phase 53 (v2.1.9) — adds a `closed_at` DATETIME NULL column
+            // to `applicants` so AdminController::changeStatus() can
+            // stamp the moment a case is closed (terminal status). Used
+            // together with ApplicantStatus::isTerminal() to block
+            // further status changes after the case is closed.
+            // Idempotent ALTER (information_schema guard).
+            '20261119_001_applicants_closed_at_column.sql',
+            // Phase 54 (v2.2.0) — updates the four fee_groups rows to the
+            // new non-overlapping decile buckets: A=1-2, B=3-4, C=5-6,
+            // D=7-10. The previous seed (A=1-3, B=4-6, C=7-9, D=روستایی
+            // 1-10) left decile 10 in no group and the D bucket overlapped
+            // all the others. Idempotent UPDATEs by `code` (UNIQUE) so
+            // existing fee_group_items FK rows are preserved.
+            '20261120_001_fee_groups_new_decile_buckets.sql',
+            // Phase 57b — adds an `account_info` TEXT NULL column to
+            // `payment_channels` so the admin can store the card number /
+            // IBAN / gateway URL for each channel and the user can see
+            // those details in the payment modal before paying.
+            // Idempotent ALTER (information_schema guard).
+            '20261120_002_payment_channels_account_info.sql',
         ];
     }
 

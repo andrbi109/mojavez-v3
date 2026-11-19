@@ -37,10 +37,15 @@ return [
     'max_page_size'      => 100,
 
     // Uploads — sizes in bytes.
+    // Phase 52 (v2.1.8): the upload directory is moved from the top-level
+    // `uploads/` to `storage/uploads/` so it shares the same parent as
+    // the AvatarService's `storage/uploads/avatars/` folder. Documents
+    // are stored under `storage/uploads/{tracking_code}/{doc_type}_{rand6}.ext`
+    // (v2 style — keyed by tracking code, not applicant row id).
     'max_upload_size'  => 2 * 1024 * 1024,     // 2 MiB — documents
     'max_csv_size'     => 5 * 1024 * 1024,     // 5 MiB — CSV imports
     'allowed_extensions' => ['jpg', 'jpeg', 'png', 'pdf'],
-    'upload_dir'        => dirname(__DIR__) . '/uploads',
+    'upload_dir'        => dirname(__DIR__) . '/storage/uploads',
     'max_image_dim'     => 1920,                // re-encode width/height cap
     'jpeg_quality'      => 85,
     'png_compression'   => 9,
@@ -48,6 +53,12 @@ return [
     // Workflow timings
     'auto_cancel_days'  => 14,   // from "ثبت درخواست صدور"
     'priority_days'     => 12,   // priority for registrations older than this
+    // Phase 22 (v1.9.4) — auto-progress threshold (days). AutoCancelService::
+    // autoProgress() advances applicants stuck in a pre-issue status for
+    // longer than this many days. Must be less than auto_cancel_days (14)
+    // so an applicant gets at least one auto-progress nudge before the
+    // 14-day auto-cancel kicks in. Set to 0 to disable auto-progress.
+    'auto_progress_days' => 7,
 
     // License image access token
     'license_access_token_hours' => 72,

@@ -21,10 +21,21 @@ use RuntimeException;
  *   6. Real MIME detection via finfo on tmp_name.
  *   7. ext↔MIME consistency check (defeats `shell.php` → `x.jpg` rename).
  *
- * Storage layout: uploads/{tracking_code}/{doc_type}_{rand6}.ext
+ * Storage layout (Phase 52 / v2.1.8): storage/uploads/{tracking_code}/{doc_type}_{rand6}.ext
  *  - Outside public/ web root.
  *  - chmod 0640.
  *  - Images re-encoded with GD to max 1920px (defeats polyglot payloads).
+ *
+ * The directory is keyed by the applicant's tracking code (v2 style), NOT
+ * the applicant row id. Rationale: the tracking code is the user-visible
+ * handle for the application; grouping uploads under it keeps the
+ * storage layout human-browsable (`ls storage/uploads/HG-AB12CD34/`) and
+ * survives applicant-row id changes (e.g. a migrate-from-v2 import that
+ * preserves tracking codes but allocates new row ids).
+ *
+ * The `$applicantId` parameter on storeUpload() is accepted for
+ * forward-compat (future audit tables may reference it) but is NOT used
+ * for the storage path — only `$trackingCode` is.
  *
  * Path traversal protection (docs/00-MASTER.md §12.5):
  *   - All access goes through getFullPath() which uses realpath() + str_starts_with().
@@ -96,7 +107,11 @@ final class FileStorage
             return $this->fail('عدم تطابق پسوند و نوع واقعی فایل.');
         }
 
-        // Build the storage path: uploads/{tracking_code}/{doc_type}_{rand6}.ext
+        // Build the storage path: storage/uploads/{tracking_code}/{doc_type}_{rand6}.ext
+        // Phase 52 (v2.1.8) — the directory is keyed by the applicant's
+        // tracking code (v2 style), NOT by the applicant row id. The
+        // $applicantId parameter is accepted for forward-compat but is
+        // intentionally unused here.
         $rand = bin2hex(random_bytes(3));  // 6 hex chars
         $fileName = "{$docType}_{$rand}.{$ext}";
         $relativePath = "/{$trackingCode}/{$fileName}";
@@ -170,26 +185,66 @@ final class FileStorage
     /**
      * Resolve a relative path to a full path, with path-traversal protection.
      * Returns null if the path escapes UPLOAD_DIR.
+     *
+     * Phase 57b — now accepts BOTH storage-path conventions used in the
+     * codebase:
+     *   1. upload-dir-relative (e.g., `/{tracking_code}/{$fileName}`) —
+     *      produced by FileStorage::storeUpload (Phase 52 layout).
+     *   2. project-root-relative (e.g.,
+     *      `storage/uploads/avatars/account-1.jpg` or
+     *      `storage/uploads/licenses/{applicant_id}/{rand}.jpg`) —
+     *      produced by AvatarService::upload and
+     *      LicenseController::storeUploadUnder.
+     *
+     * Both interpretations are tried and the result is constrained to the
+     * upload-dir subtree (path-traversal defense: `..` is stripped from
+     * the input and the realpath() result must start with the realpath
+     * of the upload_dir). The fallback (try 2) is what makes the avatar
+     * (`/document/avatar`) and the admin document modal (`/document/
+     * inline/{id}`) work again after the LicenseController + AvatarService
+     * started storing project-root-relative paths.
      */
     public function getFullPath(string $relativePath): ?string
     {
         $uploadDir = $this->getUploadDir();
-        // Strip .. and NUL from the path.
+        // Strip .. and NUL from the path (path-traversal defense).
         $cleanPath = str_replace(['..', "\0"], '', $relativePath);
-        $filePath = realpath($uploadDir . $cleanPath);
         $base = realpath($uploadDir);
-        if ($filePath === false || $base === false || !str_starts_with($filePath, $base)) {
+        if ($base === false) {
             return null;
         }
-        return $filePath;
+
+        // Try 1 — upload-dir-relative (e.g., "/{tracking_code}/{$fileName}").
+        // This is what FileStorage::storeUpload writes.
+        $filePath = realpath($uploadDir . $cleanPath);
+        if ($filePath !== false && str_starts_with($filePath, $base)) {
+            return $filePath;
+        }
+
+        // Try 2 — project-root-relative (e.g.,
+        // "storage/uploads/avatars/account-1.jpg"). This is what
+        // AvatarService::upload and LicenseController::storeUploadUnder
+        // write. We resolve against the project root, then re-check the
+        // resolved path stays within the upload-dir subtree.
+        $projectRoot = dirname(__DIR__, 4);
+        $filePath2 = realpath($projectRoot . '/' . $cleanPath);
+        if ($filePath2 !== false && str_starts_with($filePath2, $base)) {
+            return $filePath2;
+        }
+
+        return null;
     }
 
     /**
      * Get the uploads directory (from config).
+     *
+     * Phase 52 (v2.1.8) — defaults to `storage/uploads/` to match the
+     * AvatarService layout (`storage/uploads/avatars/`). Configured via
+     * `app.upload_dir` in `config/app.php`.
      */
     public function getUploadDir(): string
     {
-        return (string)Config::get('app.upload_dir', dirname(__DIR__, 4) . '/uploads');
+        return (string)Config::get('app.upload_dir', dirname(__DIR__, 4) . '/storage/uploads');
     }
 
     // ---------------- private helpers ----------------
@@ -275,7 +330,7 @@ final class FileStorage
             $newHeight = (int)($height * $ratio);
             $resized = imagecreatetruecolor($newWidth, $newHeight);
             imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-            imagedestroy($image);
+            @imagedestroy($image);
             $image = $resized;
         }
         $result = match ($ext) {
@@ -283,7 +338,7 @@ final class FileStorage
             'png'         => imagepng($image, $destPath, self::PNG_COMPRESSION),
             default       => false,
         };
-        imagedestroy($image);
+        @imagedestroy($image);
         return $result;
     }
 

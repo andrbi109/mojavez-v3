@@ -12,8 +12,10 @@ require_once __DIR__ . '/../TestCase.php';
  *      inserts a user_notifications row (type='operator_flag').
  *   2. notifyAdmins() idempotency — re-calling with the same title
  *      doesn't insert a duplicate.
- *   3. notifyAdmins() with an admin that has NO user_account skips
- *      silently (no notification row created; no crash).
+ *   3. notifyAdmins() with an admin that has NO user_account inserts
+ *      a notification row with user_account_id = NULL (Phase 27 /
+ *      D-14-2 fix — previously the row was skipped entirely; the
+ *      sync_audit_log row was the only admin-facing surface).
  *   4. NotificationSubscriber::handleOperatorFlag builds the expected
  *      Persian title + body and calls notifyAdmins (indirect via
  *      notifyAdmins assertions above).
@@ -129,7 +131,10 @@ final class OperatorFlagNotificationTest extends TestCase
         );
         $this->assertSame(1, $count, 'idempotent: still only 1 notification for the same (user, type, title)');
 
-        // 3. Admin without a user_account is skipped (no crash, no row).
+        // 3. Admin without a user_account — Phase 27 (D-14-2):
+        //    the notification is no longer skipped; a row is created
+        //    with user_account_id = NULL so the notification exists for
+        //    a future admin-notifications view.
         //    Add an admin-only user with no matching user_account.
         $orphanAdminUser = 'opflag_orphan_' . substr(md5((string)uniqid('', true)), 0, 8);
         $orphanId = (int)$this->conn->insert(
@@ -138,15 +143,44 @@ final class OperatorFlagNotificationTest extends TestCase
         );
         try {
             // Different title so it doesn't dedupe with the first.
-            $this->service->notifyAdmins('نیازمند بررسی اپراتور (orphan)', 'orphan body');
+            $orphanTitle = 'نیازمند بررسی اپراتور (orphan)';
+            $this->service->notifyAdmins($orphanTitle, 'orphan body');
 
-            // The orphan admin has no user_account — no row should be
-            // created pointing to a non-existent user_account.
-            $orphanRows = (int)$this->conn->scalar(
-                'SELECT COUNT(*) FROM user_notifications WHERE type = ? AND title = ?',
-                ['operator_flag', 'نیازمند بررسی اپراتور (orphan)']
+            // The orphan admin has no user_account — Phase 27 behavior:
+            // a row IS created with user_account_id = NULL.
+            $orphanRow = $this->conn->one(
+                'SELECT * FROM user_notifications WHERE user_account_id IS NULL AND type = ? AND title = ?',
+                ['operator_flag', $orphanTitle]
             );
-            $this->assertSame(0, $orphanRows, 'orphan admin (no user_account) → no notification row');
+            $this->assertNotNull($orphanRow, 'orphan admin (no user_account) → NULL-account notification row created (Phase 27 D-14-2)');
+            $this->assertNull($orphanRow['user_account_id'], 'orphan notification user_account_id is NULL');
+            $this->assertSame($orphanTitle, (string)$orphanRow['title'], 'orphan notification title');
+            $this->assertSame('orphan body', (string)$orphanRow['body'], 'orphan notification body');
+
+            // The bridged admin (still in the users table) ALSO got a
+            // notification for the same title — via the user_account
+            // bridge, not the NULL path.
+            $bridgedOrphanRow = $this->conn->one(
+                'SELECT * FROM user_notifications WHERE user_account_id = ? AND type = ? AND title = ?',
+                [$this->userAccountId, 'operator_flag', $orphanTitle]
+            );
+            $this->assertNotNull($bridgedOrphanRow, 'bridged admin still gets its own row (separate from the NULL row)');
+
+            // Idempotency: re-call notifyAdmins with the same title —
+            // the NULL row is dedup'd (one shared NULL row per
+            // (type, title) — orphan admins share the surface).
+            $this->service->notifyAdmins($orphanTitle, 'orphan body 2');
+            $nullCount = (int)$this->conn->scalar(
+                'SELECT COUNT(*) FROM user_notifications WHERE user_account_id IS NULL AND type = ? AND title = ?',
+                ['operator_flag', $orphanTitle]
+            );
+            $this->assertSame(1, $nullCount, 'orphan NULL-row idempotency: still only 1 NULL row for the same (type, title)');
+
+            // Cleanup the orphan-title rows so step 5 starts fresh.
+            $this->conn->execute(
+                'DELETE FROM user_notifications WHERE type = ? AND title = ?',
+                ['operator_flag', $orphanTitle]
+            );
         } finally {
             $this->conn->execute('DELETE FROM users WHERE id = ?', [$orphanId]);
         }
@@ -165,8 +199,18 @@ final class OperatorFlagNotificationTest extends TestCase
         //    indirectly — verified by the row created in step 1+2 above
         //    (we tested the service directly; the subscriber delegates to
         //    the service). For completeness, dispatch through the
-        //    subscriber directly with a fresh title:
-        $title2 = 'نیازمند بررسی اپراتور (subscriber-direct)';
+        //    subscriber directly.
+        //
+        //    The subscriber ALWAYS uses the fixed title
+        //    'نیازمند بررسی اپراتور' (NotificationSubscriber line 107)
+        //    — so the dedup check would silently skip if step 1's row
+        //    for the bridged admin is still around. Delete that row
+        //    first so the subscriber's call inserts a fresh row we can
+        //    assert against.
+        $this->conn->execute(
+            'DELETE FROM user_notifications WHERE user_account_id = ? AND type = ?',
+            [$this->userAccountId, 'operator_flag']
+        );
         $event = new \App\Events\Events\OperatorFlag([
             'applicant_id'            => 9001,
             'national_request_number' => 'I-SUB-DIRECT',
@@ -179,7 +223,7 @@ final class OperatorFlagNotificationTest extends TestCase
 
         $notif2 = $this->conn->one(
             'SELECT * FROM user_notifications WHERE user_account_id = ? AND type = ? AND title = ?',
-            [$this->userAccountId, 'operator_flag', $title2]
+            [$this->userAccountId, 'operator_flag', 'نیازمند بررسی اپراتور']
         );
         $this->assertNotNull($notif2, 'subscriber.handle(OperatorFlag) created a notification');
         $this->assertStringContainsString('I-SUB-DIRECT', (string)$notif2['body'], 'subscriber notification body has the RN');

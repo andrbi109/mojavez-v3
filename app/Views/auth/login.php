@@ -20,7 +20,7 @@ $csrfField ??= $GLOBALS['csrfField'] ?? '';
                         <div class="input-group">
                             <span class="input-group-text"><i class="bi bi-phone"></i></span>
                             <input type="tel" class="form-control" id="mobile" name="mobile"
-                                   pattern="09\d{9}" placeholder="09123456789" required dir="ltr" style="text-align: right;">
+                                   pattern="09\d{9}" placeholder="09123456789" required style="text-align: right;">
                         </div>
                     </div>
                     <div class="mb-3">

@@ -228,6 +228,43 @@ final class PersianDate
     }
 
     /**
+     * Static convenience: format a Gregorian datetime (with optional
+     * time component) as a Jalali string "1405/08/26 18:01".
+     *
+     * Phase 45 (v2.1.1) — added so views can format dates without an
+     * injected $persianDate instance (just call the static method
+     * directly with the FQCN). Returns '—' for empty/zero dates so
+     * views don't have to special-case them.
+     *
+     * If the input has no time component (just "2026-11-17"), the
+     * output is "1405/08/26" (no time). If it has a time component
+     * ("2026-11-17 18:01:49"), the output is "1405/08/26 18:01".
+     */
+    public static function format(string $gregorianDateTime): string
+    {
+        if ($gregorianDateTime === '' || $gregorianDateTime === '0000-00-00' || $gregorianDateTime === '0000-00-00 00:00:00') {
+            return '—';
+        }
+        $ts = strtotime($gregorianDateTime);
+        if ($ts === false) {
+            return $gregorianDateTime;
+        }
+        $date = getdate($ts);
+        $instance = new self();
+        [$jy, $jm, $jd] = $instance->gregorianToJalali($date['year'], $date['mon'], $date['mday']);
+        // Detect whether the input has a time component (any non-zero
+        // hour/minute/second). If so, append "HH:MM" to the Jalali date.
+        $hasTime = (int)date('H', $ts) !== 0
+            || (int)date('i', $ts) !== 0
+            || (int)date('s', $ts) !== 0
+            || (bool)preg_match('/\d{1,2}:\d{2}(:\d{2})?\s*$/', $gregorianDateTime);
+        if ($hasTime) {
+            return sprintf('%04d/%02d/%02d %02d:%02d', $jy, $jm, $jd, $date['hours'], $date['minutes']);
+        }
+        return sprintf('%04d/%02d/%02d', $jy, $jm, $jd);
+    }
+
+    /**
      * Convert a Jalali date string "1405/08/21" to Gregorian "2026-11-12".
      * Returns null if the input is malformed or out of the supported range.
      */

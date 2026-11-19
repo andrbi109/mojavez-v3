@@ -145,6 +145,27 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main'
+    # Phase 25 (v1.9.7) — D-6-6: the smoke job now uses the same MariaDB
+    # service container as the `test` job, creates a .env with the right
+    # DB credentials, runs migrations, then starts the PHP built-in
+    # server before invoking smoke-test.sh. Previously the smoke job
+    # only did `cp .env.example .env` (with empty DB credentials) —
+    # smoke-test.sh ran migrations against a non-existent DB and
+    # silently skipped the HTTP checks (CAN_HTTP=0).
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: test
+          MARIADB_DATABASE: mojavez_v3_test
+          MARIADB_USER: mojavez
+          MARIADB_PASSWORD: mojavez_pass
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
 
@@ -160,8 +181,59 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Run full smoke test (with HTTP server)
+      - name: Wait for MariaDB
         run: |
-          cp .env.example .env || true
-          # The smoke-test.sh starts a PHP built-in server and runs HTTP checks.
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -u mojavez -pmojavez_pass --silent 2>/dev/null; then
+              echo "MariaDB is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "MariaDB did not come up"; exit 1
+
+      - name: Create .env for smoke job
+        # The smoke job uses a separate DB (mojavez_v3_test) so it doesn't
+        # clash with the `test` job's DB if they ever run concurrently.
+        run: |
+          cat > .env <<'ENV'
+          APP_ENV=development
+          BASE_URL=/
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_NAME=mojavez_v3_test
+          DB_USER=root
+          DB_PASS=test
+          CRON_SECRET=smoke-cron-secret
+          SYNC_SECRET=smoke-sync-secret
+          GATEWAY_API_KEY=smoke-gateway-key
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=
+          ENV
+
+      - name: Apply migrations
+        run: php scripts/migrate.php --all
+
+      - name: Run full smoke test (with HTTP server)
+        env:
+          BASE_URL: http://127.0.0.1:8000
+        run: |
+          # Start the PHP built-in server in the background so smoke-test.sh
+          # doesn't have to (it normally picks a random port). Pinning 8000
+          # makes the BASE_URL deterministic and lets the test reuse it
+          # instead of probing for a free port.
+          php -S 127.0.0.1:8000 -t public public/router.php > /tmp/mojavez-smoke-server.log 2>&1 &
+          SERVER_PID=$!
+          # Probe the home page (same loop the smoke-test.sh would do).
+          for i in $(seq 1 20); do
+            CODE=$(curl -sS --noproxy '*' -o /dev/null -w "%{http_code}" "$BASE_URL/" 2>/dev/null || echo "")
+            if echo "$CODE" | grep -qE '^[1-5][0-9][0-9]$'; then
+              echo "Server up (HTTP $CODE)"; break
+            fi
+            sleep 0.3
+          done
+          # Run smoke-test.sh — it will detect BASE_URL is set and run
+          # the HTTP checks (and the always-on PHP/static checks too).
           bash tests/smoke-test.sh
+          RC=$?
+          kill "$SERVER_PID" >/dev/null 2>&1 || true
+          exit $RC
