@@ -225,6 +225,23 @@ final class Module implements ModuleInterface
                 $container->make(\App\Shared\Contracts\NationalFilterRepositoryInterface::class)
             )
         );
+
+        // ExportService — Phase 62 (v2.2.8). Bound here so the
+        // admin /api/v1/licenses/export endpoint can autowire it
+        // (the previous version was never bound — the class had
+        // broken imports + a wrong queryCached result key, so even
+        // if it had been bound, every call would have produced an
+        // empty CSV). The rewrite uses
+        // NationalLicenseRepositoryInterface + the correct
+        // `$result['rows']` shape and exports ALL the columns in
+        // national_licenses (request_number through matched_by).
+        $container->bind(
+            \App\Modules\NationalGateway\Services\ExportService::class,
+            fn () => new \App\Modules\NationalGateway\Services\ExportService(
+                $container->make(\App\Shared\Contracts\NationalLicenseRepositoryInterface::class),
+                dirname(__DIR__, 3) . '/storage/exports'
+            )
+        );
     }
 
     public function boot(ModuleLoader $loader): void
@@ -245,6 +262,36 @@ final class Module implements ModuleInterface
             $container->make(\App\Modules\Core\Services\NotificationService::class),
             $logger
         ));
+
+        // Phase 62 (v2.2.8) — register the track_fetch job handler so
+        // queued track_fetch jobs (enqueued by /api/v1/licenses/{id}/track
+        // and by the batch page's "search upstream for unmatched"
+        // button) actually run when the Worker polls the queue. Without
+        // this registration, the Worker's handlerFor($type) returned
+        // null for every job type and every queued track_fetch job
+        // failed with "No handler registered for type 'track_fetch'".
+        //
+        // The handler delegates to LicenseService::fetchAndCacheByTrackNumber
+        // which scrapes the upstream /track/{rn} page and persists the
+        // golden-link anchor fields to national_licenses.
+        try {
+            $jobQueue = $container->make(\App\Queue\JobQueue::class);
+            $jobQueue->registerHandler(
+                new \App\Modules\NationalGateway\Queue\TrackFetchJobHandler(
+                    $container->make(\App\Modules\NationalGateway\Services\LicenseService::class),
+                    $logger
+                )
+            );
+        } catch (\Throwable $e) {
+            // If the JobQueue isn't available (e.g. pre-install when
+            // the queue tables don't exist yet), skip the
+            // registration — the queue subsystem will report the
+            // missing handler at dequeue time, but the rest of the
+            // module still boots.
+            $logger->warning('NationalGateway\Module: TrackFetchJobHandler registration skipped', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function routes(): array
@@ -267,6 +314,17 @@ final class Module implements ModuleInterface
             ['method' => 'GET', 'path' => '/admin/gateway/saved',     'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'saved'],
             ['method' => 'GET', 'path' => '/admin/gateway/filters',   'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'filters'],
             ['method' => 'GET', 'path' => '/admin/gateway/batch',     'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'batch'],
+            // Phase 62 (v2.2.8) — batch CSV upload + local cache search
+            // and queue-upstream-search-for-unmatched endpoints. The
+            // upload form POSTs the CSV to /admin/gateway/batch (not
+            // /api/v1/batch/upload) so the controller can parse it
+            // in-process, do the local cache lookup, and render the
+            // result inline on the same page. The "search upstream
+            // for unmatched" button POSTs to /admin/gateway/batch/queue
+            // which enqueues a track_fetch job per unmatched request
+            // number.
+            ['method' => 'POST', 'path' => '/admin/gateway/batch',        'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'batchUpload'],
+            ['method' => 'POST', 'path' => '/admin/gateway/batch/queue', 'handler' => \App\Modules\NationalGateway\Controllers\GatewayAdminController::class, 'action' => 'batchQueue'],
 
             // Golden-link sync admin panel — poor man's cron pattern.
             // Each /admin/sync/status poll drains one queued job.

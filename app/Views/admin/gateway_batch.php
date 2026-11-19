@@ -2,16 +2,28 @@
 /**
  * admin/gateway_batch.php — batch CSV search.
  *
- * CSV upload form for batch national_code / license_number search (POSTs
- * the file to /api/v1/batch/upload via fetch). Below the form, a "recent
- * batches" table lists the last 20 rows from national_batches. Each row
- * links to its status detail (fetched on click from /api/v1/batch/{id}/status).
+ * Phase 62 (v2.2.8) — the page now does the actual local cache
+ * lookup itself. The form POSTs the CSV to /admin/gateway/batch
+ * (the controller's batchUpload() action parses it in-process +
+ * looks up each row in national_licenses + stores the result in
+ * the session flash). When the page is rendered next, $lastResult
+ * contains the per-row matched/unmatched report and is shown
+ * inline above the recent-batches table.
  *
- * The actual per-row processing is delegated to the existing
- * /api/v1/batch/upload endpoint, which records the batch + enqueues per-row
- * track-fetch jobs. The UI just uploads the file and watches the progress.
+ * The "search upstream for unmatched" button submits the
+ * unmatched request_numbers via POST to /admin/gateway/batch/queue
+ * (the controller's batchQueue() action enqueues a track_fetch
+ * job per request_number). The jobs persist in the queue table;
+ * the Worker (poor man's cron) drains them on subsequent
+ * /admin/sync/status polls. The admin sees the queued count in
+ * the flash message ($queueMsg).
+ *
+ * The recent-batches table (last 20 rows from national_batches)
+ * is unchanged — it shows the historical log of CSV uploads.
  *
  * @var array<int,array<string,mixed>> $batches
+ * @var array<string,mixed>|null $lastResult  Phase 62 — per-row result
+ * @var string|null $queueMsg                   Phase 62 — queue ack
  * @var string $csrfField
  * @var string $baseUrl
  */
@@ -24,6 +36,14 @@
     </a>
 </div>
 
+<?php if (!empty($queueMsg)): ?>
+<div class="alert alert-info alert-dismissible fade show small" role="alert">
+    <i class="bi bi-info-circle-fill"></i>
+    <?= htmlspecialchars((string)$queueMsg, ENT_QUOTES, 'UTF-8') ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+</div>
+<?php endif; ?>
+
 <div class="row g-3">
     <!-- Upload form -->
     <div class="col-12 col-lg-5">
@@ -32,28 +52,29 @@
                 <i class="bi bi-cloud-upload"></i> آپلود فایل CSV
             </div>
             <div class="card-body">
-                <form id="uploadForm">
+                <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/batch"
+                    enctype="multipart/form-data">
+                    <?= $csrfField ?>
                     <div class="mb-3">
                         <label class="form-label small">فایل CSV</label>
-                        <input class="form-control form-control-sm" type="file" id="csvFile" accept=".csv" required>
+                        <input class="form-control form-control-sm" type="file" name="csv" accept=".csv" required>
                     </div>
-                    <button type="submit" class="btn btn-primary btn-sm" id="btnUpload">
-                        <i class="bi bi-cloud-upload"></i> آپلود و شروع
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-cloud-upload"></i> آپلود و جستجو در کش محلی
                     </button>
-                    <span class="small text-muted ms-2" id="uploadMsg"></span>
                 </form>
                 <hr>
                 <div class="small text-muted">
-                    <p class="mb-1"><strong>قالب فایل:</strong> هر خط یک <em>شماره مجوز</em> (request_number).</p>
+                    <p class="mb-1"><strong>قالب فایل:</strong> هر خط یک ردیف با ستون <code>license_number</code> (شماره مجوز) یا <code>national_code</code> (کد ملی).</p>
                     <p class="mb-1">حداکثر حجم: ۵ مگابایت. فقط فایل <code>.csv</code>.</p>
-                    <p class="mb-0">پس از آپلود، هر کد به‌صورت یک کار در صف قرار می‌گیرد و کارگر آن‌ها را از درگاه ملی می‌کشد.</p>
+                    <p class="mb-0">جستجو فقط در کش محلی انجام می‌شود — برای ردیف‌های بدون تطبیق می‌توانید با دکمهٔ «جستجوی بالادستی» یک کار در صف قرار دهید تا کارگر آن‌ها را از درگاه ملی بکشد.</p>
                 </div>
                 <hr>
                 <div class="small text-muted">
                     <i class="bi bi-info-circle"></i>
                     برای اجرای کارگر پس‌زمینه، به داشبورد همگام‌سازی
                     (<a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/sync/status" class="alert-link">/admin/sync/status</a>)
-                    بروید تا کارگر فعال شود.
+                    بروید تا کارگر فعال شود (هر بار باز کردن صفحه یک کار از صف را اجرا می‌کند).
                 </div>
             </div>
         </div>
@@ -74,14 +95,12 @@
                                 <th>#</th>
                                 <th>فایل</th>
                                 <th>کل</th>
-                                <th>پردازش‌شده</th>
                                 <th>تطبیق‌شده</th>
                                 <th>وضعیت</th>
                                 <th>ایجاد</th>
-                                <th class="text-end">عملیات</th>
                             </tr>
                         </thead>
-                        <tbody id="batchRows">
+                        <tbody>
                         <?php foreach ($batches as $b): ?>
                             <?php
                                 $st = (string)($b['status'] ?? '');
@@ -92,23 +111,17 @@
                                     default => 'text-bg-secondary',
                                 };
                             ?>
-                            <tr data-batch="<?= (int)$b['id'] ?>">
+                            <tr>
                                 <td><?= (int)$b['id'] ?></td>
                                 <td class="small"><?= htmlspecialchars((string)($b['original_filename'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="cell-total"><?= (int)($b['total_rows'] ?? 0) ?></td>
-                                <td class="cell-processed"><?= (int)($b['processed_rows'] ?? 0) ?></td>
-                                <td class="cell-matched"><?= (int)($b['matched_rows'] ?? 0) ?></td>
-                                <td class="cell-status"><span class="badge <?= $badge ?>"><?= htmlspecialchars($st !== '' ? $st : '—', ENT_QUOTES, 'UTF-8') ?></span></td>
+                                <td><?= (int)($b['total_rows'] ?? 0) ?></td>
+                                <td><?= (int)($b['matched_rows'] ?? 0) ?></td>
+                                <td><span class="badge <?= $badge ?>"><?= htmlspecialchars($st !== '' ? $st : '—', ENT_QUOTES, 'UTF-8') ?></span></td>
                                 <td class="small text-muted"><?= htmlspecialchars((string)($b['created_at'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="text-end">
-                                    <button type="button" class="btn btn-sm btn-outline-info btn-watch" data-id="<?= (int)$b['id'] ?>">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </td>
                             </tr>
                         <?php endforeach; ?>
                         <?php if (empty($batches)): ?>
-                            <tr><td colspan="8" class="text-center text-muted py-4">هنوز دسته‌ای بارگذاری نشده.</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted py-4">هنوز دسته‌ای بارگذاری نشده.</td></tr>
                         <?php endif; ?>
                         </tbody>
                     </table>
@@ -118,98 +131,91 @@
     </div>
 </div>
 
-<!-- Batch detail modal -->
-<div class="modal fade" id="batchModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-files"></i> جزئیات دسته</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
-      </div>
-      <div class="modal-body">
-        <dl class="row mb-3">
-            <dt class="col-sm-3">شناسهٔ دسته</dt><dd class="col-sm-9" id="bm-id">—</dd>
-            <dt class="col-sm-3">فایل</dt><dd class="col-sm-9" id="bm-file">—</dd>
-            <dt class="col-sm-3">کل ردیف‌ها</dt><dd class="col-sm-9" id="bm-total">—</dd>
-            <dt class="col-sm-3">پردازش‌شده</dt><dd class="col-sm-9" id="bm-processed">—</dd>
-            <dt class="col-sm-3">تطبیق‌شده</dt><dd class="col-sm-9" id="bm-matched">—</dd>
-            <dt class="col-sm-3">وضعیت</dt><dd class="col-sm-9" id="bm-status">—</dd>
-            <dt class="col-sm-3">ایجاد</dt><dd class="col-sm-9" id="bm-created">—</dd>
-            <dt class="col-sm-3">تکمیل</dt><dd class="col-sm-9" id="bm-completed">—</dd>
-            <dt class="col-sm-3">خطا</dt><dd class="col-sm-9" id="bm-error">—</dd>
-        </dl>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">بستن</button>
-      </div>
+<?php if (is_array($lastResult) && isset($lastResult['rows'])):
+    $filename = (string)($lastResult['filename'] ?? '');
+    $total   = (int)($lastResult['total']   ?? 0);
+    $matched = (int)($lastResult['matched'] ?? 0);
+    $unmatched = $total - $matched;
+    $rows    = is_array($lastResult['rows'] ?? null) ? $lastResult['rows'] : [];
+    // Collect unmatched request_numbers (only those that actually
+    // had a license_number column — we can't queue a track fetch
+    // without a request_number to scrape).
+    $unmatchedRns = [];
+    foreach ($rows as $r) {
+        if (!($r['matched'] ?? false) && !empty($r['license_number'])) {
+            $unmatchedRns[] = (string)$r['license_number'];
+        }
+    }
+    $unmatchedRnList = implode("\n", $unmatchedRns);
+?>
+<!-- Inline batch result (Phase 62) -->
+<div class="card mt-3">
+    <div class="card-header d-flex align-items-center gap-2">
+        <i class="bi bi-table"></i> نتیجهٔ جستجوی دسته
+        <span class="text-muted small">«<?= htmlspecialchars($filename, ENT_QUOTES, 'UTF-8') ?>»</span>
+        <span class="badge text-bg-success ms-auto"><?= $matched ?> تطبیق</span>
+        <span class="badge text-bg-warning"><?= $unmatched ?> بدون تطبیق</span>
+        <span class="badge text-bg-secondary"><?= $total ?> کل</span>
     </div>
-  </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 28rem; overflow-y: auto;">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>ردیف</th>
+                        <th>شماره مجوز</th>
+                        <th>کد ملی</th>
+                        <th>وضعیت</th>
+                        <th>متقاضی (در صورت تطبیق)</th>
+                        <th>عنوان مجوز</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($rows as $r):
+                    $ln     = (int)($r['line'] ?? 0);
+                    $rn     = (string)($r['license_number'] ?? '');
+                    $nc     = (string)($r['national_code'] ?? '');
+                    $isHit  = (bool)($r['matched'] ?? false);
+                    $lic    = is_array($r['license'] ?? null) ? $r['license'] : [];
+                ?>
+                    <tr class="<?= $isHit ? 'table-success' : 'table-warning' ?>">
+                        <td class="small text-muted"><?= $ln ?></td>
+                        <td class="small"><?= htmlspecialchars($rn !== '' ? $rn : '—', ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small"><?= htmlspecialchars($nc !== '' ? $nc : '—', ENT_QUOTES, 'UTF-8') ?></td>
+                        <td>
+                            <?php if ($isHit): ?>
+                                <span class="badge text-bg-success"><i class="bi bi-check-lg"></i> تطبیق</span>
+                            <?php else: ?>
+                                <span class="badge text-bg-warning"><i class="bi bi-x-lg"></i> بدون تطبیق</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="small"><?= htmlspecialchars((string)($lic['applicant_name'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="small"><?= htmlspecialchars((string)($lic['license_title'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($rows)): ?>
+                    <tr><td colspan="6" class="text-center text-muted py-4">هیچ ردیفی در فایل نبود.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php if ($unmatchedRns !== []): ?>
+    <div class="card-footer d-flex flex-wrap align-items-center gap-2">
+        <form method="post" action="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/gateway/batch/queue"
+            class="d-flex gap-2 flex-grow-1"
+            onsubmit="return confirm('برای <?= count($unmatchedRns) ?> ردیف بدون تطبیق، کار جستجوی بالادستی در صف قرار گیرد؟ نتایج پس از اجرای کارگر در صفحهٔ «جستجوی پیشرفته» نمایش داده می‌شوند.');">
+            <?= $csrfField ?>
+            <input type="hidden" name="request_numbers" value="<?= htmlspecialchars($unmatchedRnList, ENT_QUOTES, 'UTF-8') ?>">
+            <button type="submit" class="btn btn-warning btn-sm">
+                <i class="bi bi-cloud-arrow-down"></i>
+                جستجوی بالادستی برای <?= count($unmatchedRns) ?> ردیف بدون تطبیق
+            </button>
+            <span class="small text-muted ms-auto align-self-center">
+                یک کار <code>track_fetch</code> به ازای هر شماره مجوز در صف قرار می‌گیرد. کارگر در صفحهٔ «وضعیت همگام‌سازی» کارها را اجرا می‌کند.
+            </span>
+        </form>
+    </div>
+    <?php endif; ?>
 </div>
-
-<script>
-(function () {
-    var CSRF = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
-    var API = '<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/batch';
-
-    function statusCls(s) {
-        s = String(s || '').toLowerCase();
-        if (/done|complet|success|finish/i.test(s)) return 'text-bg-success';
-        if (/run|process/i.test(s)) return 'text-bg-primary';
-        if (/fail|error/i.test(s)) return 'text-bg-danger';
-        if (/pending|queued/i.test(s)) return 'text-bg-info';
-        return 'text-bg-secondary';
-    }
-
-    function showBatch(id, b) {
-        var set = function (el, v) {
-            if (el) el.textContent = v && String(v) !== '' ? v : '—';
-        };
-        set(document.getElementById('bm-id'), b.id);
-        set(document.getElementById('bm-file'), b.original_filename);
-        set(document.getElementById('bm-total'), b.total_rows);
-        set(document.getElementById('bm-processed'), b.processed_rows);
-        set(document.getElementById('bm-matched'), b.matched_rows);
-        set(document.getElementById('bm-status'), b.status);
-        set(document.getElementById('bm-created'), b.created_at);
-        set(document.getElementById('bm-completed'), b.completed_at);
-        set(document.getElementById('bm-error'), b.error);
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('batchModal')).show();
-    }
-
-    document.querySelectorAll('.btn-watch').forEach(function (b) {
-        b.addEventListener('click', function () {
-            var id = b.getAttribute('data-id');
-            fetch(API + '/' + encodeURIComponent(id) + '/status', {
-                headers: { 'Accept': 'application/json', 'X-CSRF-Token': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'same-origin'
-            }).then(function (r) { return r.json(); })
-              .then(function (d) { showBatch(id, d.data || d); })
-              .catch(function (e) { alert('خطا: ' + e.message); });
-        });
-    });
-
-    document.getElementById('uploadForm').addEventListener('submit', function (e) {
-        e.preventDefault();
-        var file = document.getElementById('csvFile').files[0];
-        if (!file) return;
-        var btn = document.getElementById('btnUpload');
-        btn.disabled = true;
-        var msg = document.getElementById('uploadMsg');
-        msg.textContent = 'در حال آپلود…';
-        var fd = new FormData(); fd.append('csv', file);
-        fetch(API + '/upload', {
-            method: 'POST',
-            headers: { 'Accept': 'application/json', 'X-CSRF-Token': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-            body: fd,
-            credentials: 'same-origin'
-        }).then(function (r) { return r.json(); })
-          .then(function (d) {
-              var bid = d.data ? d.data.batch_id : d.batch_id;
-              msg.textContent = 'دستهٔ #' + bid + ' ساخته شد.';
-              document.getElementById('csvFile').value = '';
-              window.location.reload();
-          }).catch(function (e) { msg.textContent = 'خطا: ' + e.message; })
-          .finally(function () { btn.disabled = false; });
-    });
-})();
-</script>
+<?php endif;

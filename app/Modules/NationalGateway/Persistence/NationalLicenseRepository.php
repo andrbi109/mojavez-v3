@@ -8,6 +8,7 @@ use App\Modules\NationalGateway\Domain\LicenseCollection;
 use App\Modules\NationalGateway\Domain\Enums\LicenseStatus;
 use App\Shared\Contracts\NationalLicenseRepositoryInterface;
 use App\Shared\Persistence\Connection;
+use App\Shared\Support\PersianDate;
 use App\Shared\Support\StructuredLogger;
 
 /**
@@ -285,6 +286,21 @@ final class NationalLicenseRepository implements NationalLicenseRepositoryInterf
     }
 
     /**
+     * Build a WHERE clause (sql + bound params) for the given filter.
+     * Public so the GatewayAdminController's saved() action can reuse
+     * the same clause for both the page-rows SELECT and the COUNT(*)
+     * (avoiding the divergence between inline-build SQL in the
+     * controller and the repository's WHERE logic).
+     *
+     * @param array<string,mixed> $filter
+     * @return array{sql:string,params:array<int,mixed>}
+     */
+    public function buildWhereSql(array $filter): array
+    {
+        return $this->buildWhereClause($filter);
+    }
+
+    /**
      * @return array{sql:string,params:array<int,mixed>}
      */
     private function buildWhereClause(array $filter): array
@@ -329,6 +345,39 @@ final class NationalLicenseRepository implements NationalLicenseRepositoryInterf
         if (!empty($filter['status'])) {
             $clauses[] = 'status_slug = ?';
             $params[] = $filter['status'];
+        }
+        // Phase 62 (v2.2.8) — issue date range. The filter form sends
+        // Jalali dates (e.g. "1405/08/21") and the DB stores responded_at
+        // as Gregorian "2026-11-12 ..." datetimes. Convert the bounds to
+        // Gregorian and clamp the column to [start, end] inclusive. We
+        // use a 23:59:59 upper bound so the end date includes the entire
+        // day (otherwise a license issued exactly at midnight on the
+        // end date would be excluded by a strict <).
+        if (!empty($filter['issue_start_date'])) {
+            $greg = (new PersianDate())->jalaliStringToGregorian((string)$filter['issue_start_date']);
+            if ($greg !== null) {
+                $clauses[] = 'responded_at >= ?';
+                $params[] = $greg . ' 00:00:00';
+            }
+        }
+        if (!empty($filter['issue_end_date'])) {
+            $greg = (new PersianDate())->jalaliStringToGregorian((string)$filter['issue_end_date']);
+            if ($greg !== null) {
+                $clauses[] = 'responded_at <= ?';
+                $params[] = $greg . ' 23:59:59';
+            }
+        }
+        // Phase 62 — saved/unsaved filter (used by /admin/gateway/saved
+        // page's all/saved/unsaved dropdown). '1' filters to is_saved=1,
+        // '0' filters to is_saved=0, anything else (or missing) → no
+        // is_saved filter.
+        if (array_key_exists('is_saved', $filter)) {
+            $isSaved = $filter['is_saved'];
+            if ($isSaved === '1' || $isSaved === 1 || $isSaved === true) {
+                $clauses[] = 'is_saved = 1';
+            } elseif ($isSaved === '0' || $isSaved === 0 || $isSaved === false) {
+                $clauses[] = 'is_saved = 0';
+            }
         }
         $sql = $clauses === [] ? '1=1' : implode(' AND ', $clauses);
         return ['sql' => $sql, 'params' => $params];

@@ -73,6 +73,11 @@ final class V1ApiController extends Controller
         private readonly JobQueue $jobQueue,
         private readonly Worker $worker,
         private readonly NationalSyncOrchestrator $orchestrator,
+        // Phase 62 (v2.2.8) — ExportService for /api/v1/licenses/export.
+        // Optional via nullable default so existing tests that
+        // construct the controller with the 15-arg signature still
+        // work (autowire fills it when bound in the Container).
+        private readonly ?\App\Modules\NationalGateway\Services\ExportService $exportService = null,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
     }
@@ -117,6 +122,54 @@ final class V1ApiController extends Controller
     public function licenseExport(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
+
+        // Phase 62 (v2.2.8) — accept ?format=csv|json|html. Default
+        // to CSV for backwards compat with the existing saved-page
+        // link. Use ExportService when available (which exports
+        // ALL national_licenses columns + supports HTML print
+        // view). Fall back to the inline toCsv() helper when the
+        // ExportService wasn't autowired (e.g. during tests).
+        $format = strtolower((string)($request->queryParam('format', 'csv') ?? 'csv'));
+        if (!in_array($format, ['csv', 'json', 'html'], true)) {
+            $format = 'csv';
+        }
+
+        // The legacy behaviour exported only is_saved=1 rows. Keep
+        // that as the default for CSV/JSON (so the saved-page link
+        // still exports the "saved" subset). For HTML, export ALL
+        // cached licenses (the printable report is meant for the
+        // admin to see everything in the cache, not just the
+        // explicitly-marked "saved" subset).
+        $filter = [];
+        if ($format === 'csv' || $format === 'json') {
+            $filter['is_saved'] = '1';
+        }
+
+        // ExportService path (preferred — full columns + html).
+        if ($this->exportService !== null) {
+            if ($format === 'html') {
+                $html = $this->exportService->toHtml($filter, 500, 'گزارش مجوزهای درگاه ملی');
+                return new Response($html, 200, [
+                    'Content-Type' => 'text/html; charset=utf-8',
+                ]);
+            }
+            if ($format === 'json') {
+                $json = $this->exportService->toJson($filter);
+                return new Response($json, 200, [
+                    'Content-Type' => 'application/json; charset=utf-8',
+                    'Content-Disposition' => 'attachment; filename="licenses.json"',
+                ]);
+            }
+            $csv = $this->exportService->toCsv($filter);
+            return new Response($csv, 200, [
+                'Content-Type'        => 'text/csv; charset=utf-8',
+                'Content-Disposition' => 'attachment; filename="licenses.csv"',
+            ]);
+        }
+
+        // Fallback path (pre-Phase 62 behaviour) — inline CSV with
+        // a smaller column set. Kept so the endpoint still works
+        // when ExportService isn't autowired (e.g. in tests).
         $rows = $this->connection()->all(
             'SELECT request_number, applicant_name, license_title, organization_title,
                     province_title, township_title, status_slug, status_title,
@@ -126,10 +179,10 @@ final class V1ApiController extends Controller
                FROM national_licenses WHERE is_saved = 1 ORDER BY saved_at DESC'
         );
         $csv = $this->toCsv($rows);
-        return (new Response($csv, 200, [
+        return new Response($csv, 200, [
             'Content-Type'        => 'text/csv; charset=utf-8',
             'Content-Disposition' => 'attachment; filename="licenses.csv"',
-        ]));
+        ]);
     }
 
     /**
@@ -367,12 +420,48 @@ final class V1ApiController extends Controller
 
     /**
      * POST /api/v1/admin/crawl — manually trigger one full crawl cycle.
+     *
+     * Phase 62 (v2.2.8) — supports two payload shapes:
+     *   - {filter: {...}} — explicit filter dict (legacy shape; the
+     *     search page's "Run in queue" button used to send this).
+     *   - {filter_id: int} — reference to a saved filter in
+     *     national_filters; the controller looks up the filter_data
+     *     JSON, decodes it, and enqueues a search job with that
+     *     filter. This is what the filters page's "Run in queue"
+     *     button sends (it has the filter_id but not the filter
+     *     dict). The lookup is best-effort: if the filter_id is
+     *     unknown, an empty filter is enqueued (the Worker will
+     *     still pull the latest page-1 results from upstream).
      */
     public function adminCrawl(Request $request, array $params = []): Response
     {
         $this->requireRole(['admin']);
         $body = $request->jsonBody();
         $filterArray = is_array($body['filter'] ?? null) ? $body['filter'] : [];
+
+        // If the caller passed a filter_id instead of an inline
+        // filter, look up the saved filter and use its filter_data.
+        if ($filterArray === [] && isset($body['filter_id'])) {
+            $filterId = (int)$body['filter_id'];
+            if ($filterId > 0) {
+                try {
+                    $saved = $this->filterRepo->find($filterId);
+                    if (is_array($saved) && isset($saved['filter_data'])) {
+                        $decoded = is_string($saved['filter_data'])
+                            ? json_decode((string)$saved['filter_data'], true)
+                            : (is_array($saved['filter_data']) ? $saved['filter_data'] : []);
+                        if (is_array($decoded)) {
+                            $filterArray = $decoded;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $this->logger->warning('adminCrawl: filter_id lookup failed', [
+                        'filter_id' => $filterId, 'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         $jobId = $this->jobQueue->enqueueSearch($filterArray);
         return $this->jsonSuccess(['job_id' => $jobId]);
     }

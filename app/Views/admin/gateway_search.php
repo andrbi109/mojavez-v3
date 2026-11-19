@@ -152,6 +152,14 @@ $jDate = static function (?string $greg): string {
                 </select>
             </div>
             <div class="col-md-3">
+                <label class="form-label small">تاریخ صدور (از)</label>
+                <input class="form-control form-control-sm" type="text" name="issue_date_start" value="<?= $q('issue_date_start') ?>" placeholder="1405/08/21" pattern="\d{4}/\d{1,2}/\d{1,2}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">تاریخ صدور (تا)</label>
+                <input class="form-control form-control-sm" type="text" name="issue_date_end" value="<?= $q('issue_date_end') ?>" placeholder="1405/08/29" pattern="\d{4}/\d{1,2}/\d{1,2}">
+            </div>
+            <div class="col-md-3">
                 <label class="form-label small">وضعیت</label>
                 <select class="form-select form-select-sm" name="status">
                     <option value="">— همه —</option>
@@ -193,6 +201,7 @@ $jDate = static function (?string $greg): string {
                         <th>استان</th>
                         <th>وضعیت</th>
                         <th>تطبیق</th>
+                        <th>ذخیره</th>
                         <th class="text-end">عملیات</th>
                     </tr>
                 </thead>
@@ -209,6 +218,8 @@ $jDate = static function (?string $greg): string {
                         $conf = (int)($r['match_confidence'] ?? 0);
                         $cBadge = $conf >= 80 ? 'text-bg-success' : ($conf >= 50 ? 'text-bg-warning' : 'text-bg-secondary');
                         $matched = (int)($r['matched_applicant_id'] ?? 0);
+                        $isSaved = (int)($r['is_saved'] ?? 0) === 1;
+                        $licenseId = (int)($r['id'] ?? 0);
                     ?>
                     <tr>
                         <td class="small"><?= htmlspecialchars((string)$r['request_number'], ENT_QUOTES, 'UTF-8') ?></td>
@@ -222,6 +233,25 @@ $jDate = static function (?string $greg): string {
                                 <span class="badge <?= $cBadge ?>"><?= htmlspecialchars((string)$conf, ENT_QUOTES, 'UTF-8') ?>٪</span>
                             <?php else: ?>
                                 <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($isSaved): ?>
+                                <button type="button"
+                                    class="btn btn-sm btn-success btn-toggle-save"
+                                    data-id="<?= $licenseId ?>"
+                                    data-saved="1"
+                                    title="حذف از ذخیره‌شده‌ها">
+                                    <i class="bi bi-bookmark-star-fill"></i>
+                                </button>
+                            <?php else: ?>
+                                <button type="button"
+                                    class="btn btn-sm btn-outline-secondary btn-toggle-save"
+                                    data-id="<?= $licenseId ?>"
+                                    data-saved="0"
+                                    title="افزودن به ذخیره‌شده‌ها">
+                                    <i class="bi bi-bookmark"></i>
+                                </button>
                             <?php endif; ?>
                         </td>
                         <td class="text-end">
@@ -250,7 +280,7 @@ $jDate = static function (?string $greg): string {
                 <?php endforeach; ?>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">
+                        <td colspan="9" class="text-center text-muted py-4">
                             <div class="d-flex flex-column align-items-center gap-2">
                                 <span>
                                     <i class="bi bi-inbox"></i>
@@ -366,6 +396,54 @@ $jDate = static function (?string $greg): string {
             var conf = btn.getAttribute('data-conf');
             set('glm-conf',      conf && conf !== '0' ? (conf + '٪') : '—');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('gatewayLicenseModal')).show();
+        });
+    });
+
+    // Phase 62 — save / unsave toggle per row. POSTs to
+    // /api/v1/licenses/{id}/save (to mark saved) or DELETEs the same
+    // URL (to unmark). The button's class + icon swap on success so
+    // the admin sees the new state immediately without a page reload.
+    var CSRF = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
+    var API_BASE = '<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>api/v1/licenses';
+    document.querySelectorAll('.btn-toggle-save').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var saved = btn.getAttribute('data-saved') === '1';
+            if (!id || id === '0') return;
+            // Disable while in-flight so the admin can't double-click.
+            btn.disabled = true;
+            var url = API_BASE + '/' + encodeURIComponent(id) + '/save';
+            var method = saved ? 'DELETE' : 'POST';
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': CSRF,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            }).then(function (r) { return r.json(); })
+              .then(function () {
+                  // Swap the button state. The visual swap avoids a full
+                  // page reload but keeps the row's other state intact.
+                  if (saved) {
+                      btn.classList.remove('btn-success');
+                      btn.classList.add('btn-outline-secondary');
+                      btn.querySelector('i').classList.remove('bi-bookmark-star-fill');
+                      btn.querySelector('i').classList.add('bi-bookmark');
+                      btn.setAttribute('data-saved', '0');
+                      btn.setAttribute('title', 'افزودن به ذخیره‌شده‌ها');
+                  } else {
+                      btn.classList.remove('btn-outline-secondary');
+                      btn.classList.add('btn-success');
+                      btn.querySelector('i').classList.remove('bi-bookmark');
+                      btn.querySelector('i').classList.add('bi-bookmark-star-fill');
+                      btn.setAttribute('data-saved', '1');
+                      btn.setAttribute('title', 'حذف از ذخیره‌شده‌ها');
+                  }
+              })
+              .catch(function (e) { alert('خطا در ذخیره‌سازی: ' + e.message); })
+              .finally(function () { btn.disabled = false; });
         });
     });
 })();
