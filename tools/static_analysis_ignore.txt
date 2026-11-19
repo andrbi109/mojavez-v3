@@ -322,3 +322,4 @@ app/Views/admin/fee_tariff/index.php:<?= $gAmount ?>
 app/Views/user/licenses.php:<?= $licenseDocId ?>
 app/Views/user/payments.php:<?= $chId ?>
 app/Views/admin/fee_tariff/index.php:<?= $itemSeq ?>
+app/Views/admin/bulk_result.php:<?= $accBadge ?>

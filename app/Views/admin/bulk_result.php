@@ -120,7 +120,7 @@ $esc = static fn ($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8
                                         <div class="d-flex flex-column gap-1">
                                             <?= $accBadge ?>
                                             <?php if ($accUsername !== ''): ?>
-                                                <code dir="ltr" class="small text-muted"><?= $esc($accUsername) ?></code>
+                                                <code class="small text-muted"><?= $esc($accUsername) ?></code>
                                             <?php endif; ?>
                                             <?php if (!empty($r['account_message'])): ?>
                                                 <small class="text-muted"><?= $esc($r['account_message']) ?></small>
