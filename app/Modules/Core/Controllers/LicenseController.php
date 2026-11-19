@@ -15,6 +15,7 @@ use App\Shared\Contracts\LicenseFileRepositoryInterface;
 use App\Shared\Persistence\Connection;
 use App\Shared\Support\Environment;
 use App\Shared\Support\Hash;
+use App\Shared\Support\PersianDate;
 use App\Shared\Support\StructuredLogger;
 use App\Shared\Support\Validator;
 
@@ -273,6 +274,11 @@ final class LicenseController extends Controller
             'auto_approved' => $token !== null,
             'token'        => $token,
             'expires_at'   => $expiresAt,
+            // Phase 58 (v2.2.4): pre-formatted Jalali string so the
+            // user-side JS can render the expiry without a Gregorian→
+            // Jalali conversion on the client. Null when no token was
+            // generated (manual review path).
+            'expires_at_jalali' => $expiresAt === null ? null : PersianDate::format($expiresAt),
         ]);
     }
 

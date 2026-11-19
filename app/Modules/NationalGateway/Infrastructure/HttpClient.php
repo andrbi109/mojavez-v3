@@ -65,6 +65,11 @@ final class HttpClient implements HttpClientInterface
             CURLOPT_HEADER => false,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 3,
+            // Phase 58 (v2.2.4): hard 10s connect + 30s total timeout
+            // so a dead upstream fails fast instead of pinning the sync
+            // worker for the full 45s default. The anti-detection
+            // middleware provides the same defaults via timeouts() but
+            // we re-assert them here as a safety net (cheap, explicit).
             CURLOPT_CONNECTTIMEOUT => $timeouts['connect'],
             CURLOPT_TIMEOUT => $timeouts['response'],
             CURLOPT_SSL_VERIFYPEER => true,
@@ -97,7 +102,10 @@ final class HttpClient implements HttpClientInterface
         if ($bodyResp === false) {
             $error = curl_error($ch);
             $errno = curl_errno($ch);
-            curl_close($ch);
+            // Phase 58 (v2.2.4): @-suppress the PHP 8.5 deprecation
+            // notice for curl_close() (no-op since 8.0, auto-closed by
+            // GC). Same pattern as the imagedestroy() fix in phase 56.
+            @curl_close($ch);
             $this->logger->error('HTTP request failed', [
                 'url' => $url,
                 'method' => $method,
@@ -105,11 +113,17 @@ final class HttpClient implements HttpClientInterface
                 'errno' => $errno,
                 'elapsed' => round($elapsed, 3),
             ]);
-            return new HttpResponse(0, '', [], $elapsed, $error);
+            // Surface a clear, actionable error string to the caller.
+            // The previous "degraded" sentinel was ambiguous; with the
+            // connect-timeout fix above, curl_error() now carries either
+            // a DNS/connection failure or a "maximum X redirects reached"
+            // message that the sync worker can render verbatim.
+            return new HttpResponse(0, '', [], $elapsed, $error !== '' ? $error : 'curl_exec failed');
         }
 
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
+        // Phase 58 (v2.2.4): same @-suppression for the success path.
+        @curl_close($ch);
 
         $this->logger->debug('HTTP request', [
             'method' => $method,

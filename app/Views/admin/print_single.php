@@ -426,17 +426,6 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
             color: var(--brand-dark);
             text-align: center;
         }
-        .doc-thumb-name {
-            direction: ltr;
-            word-break: break-all;
-            font-size: .62rem;
-            color: var(--muted);
-        }
-        .doc-thumb-date {
-            direction: ltr;
-            font-size: .6rem;
-            color: var(--muted);
-        }
         /* === Golden-link callout === */
         .golden-callout {
             background: var(--gold-light);
@@ -793,9 +782,9 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
                      all thumb images share one CSS rule). PDFs and other
                      non-image files show only the filename inside a
                      same-sized placeholder box so the 4-up grid stays
-                     aligned. Each thumb carries the doc-type label,
-                     original filename and upload date below the image
-                     so the print output stays self-documenting. -->
+                     aligned. Phase 58 (v2.2.4): removed the duplicate name
+                     and date spans below each thumbnail — only the doc-type
+                     label remains so the print output stays clean. -->
                 <div class="doc-thumbs">
                     <?php foreach ($documents as $doc): ?>
                         <?php \assert($doc instanceof Document); ?>
@@ -819,8 +808,6 @@ $printStamp  = $faNum($todayJalali) . ' — ' . $faNum(date('H:i'));
                             <?php endif; ?>
                             <div class="doc-thumb-meta">
                                 <span class="doc-thumb-type"><?= $e($label) ?></span>
-                                <span class="doc-thumb-name"><?= $e($doc->originalName) ?></span>
-                                <span class="doc-thumb-date"><?= $e($fmtDate($doc->uploadedAt)) ?></span>
                             </div>
                         </div>
                     <?php endforeach; ?>

@@ -9,6 +9,7 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\Session;
 use App\Modules\Core\Services\AvatarService;
+use App\Modules\Core\Services\FileStorage;
 use App\Modules\Core\Support\ProfileUpdateValidator;
 use App\Shared\Contracts\ApplicantRepositoryInterface;
 use App\Shared\Contracts\LicenseFileRepositoryInterface;
@@ -74,6 +75,7 @@ final class UserPanelController extends Controller
         private readonly StatusLogRepositoryInterface $statusLog,
         private readonly AvatarService $avatars,
         private readonly ApplicantRepositoryInterface $applicants,
+        private readonly FileStorage $files,
         private readonly Connection $conn,
     ) {
         parent::__construct($container, $session, $csrf, $environment, $hash, $logger);
@@ -380,6 +382,164 @@ final class UserPanelController extends Controller
             'channels'   => $channels,
             'unreadCount' => $this->notifications->unreadCount((int)$account['id']),
         ], 'user_layout');
+    }
+
+    /**
+     * POST /panel/payments/{id}/receipt — user uploads a payment receipt
+     * after selecting a non-online channel in the per-row payment modal.
+     *
+     * Phase 58 (v2.2.4) — replaces the previous "alert('این مرحله در فاز بعد
+     * به‌صورت خودکار متصل خواهد شد')" stub that fired when the user clicked
+     * "تأیید" in the channel chooser. The new flow is:
+     *   - The user picks a payment channel in the modal.
+     *   - If the channel's `channel_type` is `online`, the modal shows a
+     *     placeholder "انتقال به درگاه" link instead of the upload form
+     *     (the receipt will come back from the gateway callback in a
+     *     later phase) — no POST to this route is made.
+     *   - For any other channel_type (transfer / cash / etc.), the modal
+     *     shows a multipart form (file input + description + submit). The
+     *     form POSTs to this route.
+     *
+     * On success the handler:
+     *   1. Saves the uploaded file via FileStorage under the
+     *      `storage/uploads/receipts/{payment_id}/` subdirectory (so
+     *      receipts are visually grouped by payment id, mirroring the
+     *      applicant-tracking-code layout FileStorage uses for regular
+     *      documents). The file is validated by the same 7-layer
+     *      pipeline used for applicant documents (ext+MIME consistency,
+     *      size cap, image re-encode via GD).
+     *   2. Updates the `payments` row: status='در انتظار رسید',
+     *      receipt_file_path=$relativePath, receipt_description=$userNote.
+     *   3. Flashes a success message and redirects to /panel/payments.
+     *
+     * Authorization: the payment's `user_account_id` MUST match the
+     * current user's session user_id. Payments without a `user_account_id`
+     * (legacy rows created by the admin before user accounts existed)
+     * cannot be receipted from the user panel.
+     *
+     * State guard: only payments with `status = 'در انتظار'` (admin
+     * requested, awaiting user payment) accept a receipt upload. Already-
+     * reviewed or already-receipted payments are refused with a flash
+     * error (the user might have hit a stale "بارگذاری رسید" button on
+     * an old page render).
+     *
+     * Route registered in Core/Module.php as
+     * `POST /panel/payments/{id:\d+}/receipt` (the {id:\d+} constraint
+     * prevents collision with the GET /panel/payments route above).
+     */
+    public function uploadReceipt(Request $request, array $params = []): Response
+    {
+        $this->requireUserLogin();
+        $account = $this->currentAccount();
+        $paymentId = (int)($params['id'] ?? 0);
+
+        if ($paymentId <= 0) {
+            $this->flash('درخواست نامعتبر است.', 'danger');
+            return $this->redirect('/panel/payments');
+        }
+
+        // Authorization + state guard — single SELECT covers both.
+        $row = $this->conn->one(
+            'SELECT id, user_account_id, status, amount, purpose
+               FROM payments
+              WHERE id = ? LIMIT 1',
+            [$paymentId]
+        );
+        if ($row === null) {
+            $this->flash('پرداخت مورد نظر یافت نشد.', 'danger');
+            return $this->redirect('/panel/payments');
+        }
+        $ownerId = isset($row['user_account_id']) ? (int)$row['user_account_id'] : 0;
+        if ($ownerId === 0 || $ownerId !== (int)$account['id']) {
+            $this->flash('شما اجازهٔ بارگذاری رسید برای این پرداخت را ندارید.', 'danger');
+            return $this->redirect('/panel/payments');
+        }
+        if ((string)$row['status'] !== 'در انتظار') {
+            $this->flash(
+                'بارگذاری رسید تنها برای پرداخت‌های «در انتظار پرداخت» ممکن است.',
+                'warning'
+            );
+            return $this->redirect('/panel/payments');
+        }
+
+        // Pull + validate the uploaded file. The view's file input is
+        // named `receipt`; accept image/PDF per config/app.php's
+        // allowed_extensions whitelist (jpg/jpeg/png/pdf).
+        $file = $request->file('receipt');
+        if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            $this->flash('هیچ فایلی برای بارگذاری انتخاب نشده است.', 'danger');
+            return $this->redirect('/panel/payments');
+        }
+
+        // FileStorage::storeUpload keys its storage dir by $trackingCode.
+        // We synthesise a tracking-code-shaped path segment so the receipt
+        // lands under storage/uploads/receipts/{payment_id}/ rather than
+        // polluting the applicant-keyed namespace. The $applicantId
+        // argument is intentionally unused by FileStorage (kept for
+        // forward-compat), so we pass 0.
+        $result = $this->files->storeUpload(
+            $file,
+            0,
+            'receipts/' . $paymentId,
+            'receipt'
+        );
+        if (($result['success'] ?? false) !== true) {
+            $errorMsg = (string)($result['error'] ?? 'خطا در بارگذاری فایل.');
+            $this->flash($errorMsg, 'danger');
+            return $this->redirect('/panel/payments');
+        }
+        $relPath = (string)($result['file_path'] ?? '');
+
+        // Optional user-supplied description (free text, max 500 chars —
+        // matches the `receipt_description` column width).
+        $userNote = trim((string)$request->input('description', ''));
+        if (mb_strlen($userNote) > 500) {
+            $userNote = mb_substr($userNote, 0, 500);
+        }
+
+        // Persist the receipt path + status transition in a single
+        // UPDATE. The status change to 'در انتظار رسید' is what makes
+        // the row surface in the admin's pending-review queue (see
+        // PaymentController::STATUS_PENDING = 'در انتظار رسید').
+        try {
+            $this->conn->execute(
+                'UPDATE payments
+                    SET status = ?,
+                        receipt_file_path = ?,
+                        receipt_description = ?,
+                        reviewed_by = NULL,
+                        reviewed_at = NULL,
+                        reject_reason = NULL
+                  WHERE id = ?',
+                ['در انتظار رسید', $relPath, $userNote !== '' ? $userNote : null, $paymentId]
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('Payment receipt update failed', [
+                '_module'    => 'core',
+                'payment_id' => $paymentId,
+                'account_id' => $account['id'],
+                'error'      => $e->getMessage(),
+            ]);
+            // Best-effort cleanup of the orphaned file we just wrote.
+            $this->files->deleteFile($relPath);
+            $this->flash(
+                'ذخیرهٔ رسید با خطا روبه‌رو شد. لطفاً دوباره تلاش کنید.',
+                'danger'
+            );
+            return $this->redirect('/panel/payments');
+        }
+
+        $this->logger->info('Payment receipt uploaded', [
+            '_module'      => 'core',
+            'payment_id'   => $paymentId,
+            'account_id'   => $account['id'],
+            'file_path'    => $relPath,
+        ]);
+        $this->flash(
+            'رسید با موفقیت بارگذاری شد و در انتظار بررسی مدیر قرار گرفت.',
+            'success'
+        );
+        return $this->redirect('/panel/payments');
     }
 
     /**

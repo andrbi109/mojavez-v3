@@ -35,9 +35,6 @@ try {
     // best-effort — empty strings, the sidebar header just shows the
     // admin-display-name as before.
 }
-$ownerImageAbs = $ownerImage !== '' && is_file(ROOT_PATH . '/' . $ownerImage)
-    ? $ownerImage
-    : '';
 
 /** @param array<int,array{href:string,icon:string,label:string}> $items */
 $renderLinks = function (array $items) use ($baseUrl): void {
@@ -91,19 +88,6 @@ $renderLinks = function (array $items) use ($baseUrl): void {
 </div>
 <div class="moj-admin-body">
     <aside class="moj-admin-sidebar">
-        <div class="mb-3 px-2">
-            <?php if ($ownerImageAbs !== ''): ?>
-                <img src="<?= htmlspecialchars($baseUrl . $ownerImageAbs, ENT_QUOTES) ?>"
-                     alt="تصویر مدیر"
-                     class="rounded-circle flex-shrink-0"
-                     style="width: 36px; height: 36px; object-fit: cover;">
-            <?php else: ?>
-                <i class="bi bi-patch-check-fill fs-3 text-brand flex-shrink-0"></i>
-            <?php endif; ?>
-            <a href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>admin/dashboard" class="text-decoration-none text-brand fw-bold fs-5">
-                <span>پنل مدیریت</span>
-            </a>
-        </div>
         <nav>
             <h6>اصلی</h6>
             <?php $renderLinks([
