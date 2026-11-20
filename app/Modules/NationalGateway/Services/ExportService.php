@@ -87,7 +87,7 @@ final class ExportService
         // UTF-8 BOM so Excel auto-detects the encoding.
         fwrite($fp, "\xEF\xBB\xBF");
         // Header row.
-        fputcsv($fp, self::EXPORT_COLUMNS);
+        fputcsv($fp, self::EXPORT_COLUMNS, ',', '"', '');
         // Data rows.
         foreach ($rows as $row) {
             $line = [];
@@ -95,7 +95,7 @@ final class ExportService
                 $v = $row[$col] ?? '';
                 $line[] = $v === null ? '' : (string)$v;
             }
-            fputcsv($fp, $line);
+            fputcsv($fp, $line, ',', '"', '');
         }
         fclose($fp);
         return (string)ob_get_clean();
